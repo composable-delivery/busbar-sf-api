@@ -1,0 +1,26 @@
+[package]
+name = "busbar-sf-bulk"
+description = "Salesforce Bulk API 2.0 client for large-scale data operations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+busbar-sf-client.workspace = true
+busbar-sf-auth.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+csv.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+bytes.workspace = true
+urlencoding.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

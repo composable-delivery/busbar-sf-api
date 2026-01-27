@@ -1,0 +1,32 @@
+[package]
+name = "busbar-sf-client"
+description = "Core HTTP client infrastructure for Salesforce APIs with retry, compression, and rate limiting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+reqwest.workspace = true
+tokio.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+urlencoding.workspace = true
+
+# For retry with jitter
+rand = "0.8"
+
+# For sanitizing error messages (lightweight regex)
+regex-lite = "0.1"
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tracing-subscriber.workspace = true

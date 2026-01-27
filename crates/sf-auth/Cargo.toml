@@ -1,0 +1,31 @@
+[package]
+name = "busbar-sf-auth"
+description = "Salesforce authentication: OAuth 2.0 flows, JWT Bearer, credentials management"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+busbar-sf-client.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+urlencoding.workspace = true
+base64.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+
+# JWT support
+jsonwebtoken.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile.workspace = true
