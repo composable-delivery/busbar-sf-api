@@ -91,7 +91,10 @@ mod tests {
         assert_eq!(TestLevel::NoTestRun.to_string(), "NoTestRun");
         assert_eq!(TestLevel::RunLocalTests.to_string(), "RunLocalTests");
         assert_eq!(TestLevel::RunAllTestsInOrg.to_string(), "RunAllTestsInOrg");
-        assert_eq!(TestLevel::RunSpecifiedTests.to_string(), "RunSpecifiedTests");
+        assert_eq!(
+            TestLevel::RunSpecifiedTests.to_string(),
+            "RunSpecifiedTests"
+        );
     }
 
     #[test]

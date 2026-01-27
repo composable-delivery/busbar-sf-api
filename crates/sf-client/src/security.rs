@@ -318,10 +318,7 @@ mod tests {
         #[test]
         fn test_escape_string_injection_attempts() {
             // Classic SQL injection patterns
-            assert_eq!(
-                escape_string("' OR '1'='1"),
-                "\\' OR \\'1\\'=\\'1"
-            );
+            assert_eq!(escape_string("' OR '1'='1"), "\\' OR \\'1\\'=\\'1");
             assert_eq!(
                 escape_string("'; DELETE FROM Account--"),
                 "\\'; DELETE FROM Account--"

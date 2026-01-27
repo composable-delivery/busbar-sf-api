@@ -62,16 +62,11 @@ impl Error {
 pub enum ErrorKind {
     /// HTTP request failed.
     #[error("HTTP error: {status} {message}")]
-    Http {
-        status: u16,
-        message: String,
-    },
+    Http { status: u16, message: String },
 
     /// Rate limit exceeded (HTTP 429).
     #[error("Rate limited{}", retry_after.map(|d| format!(", retry after {:?}", d)).unwrap_or_default())]
-    RateLimited {
-        retry_after: Option<Duration>,
-    },
+    RateLimited { retry_after: Option<Duration> },
 
     /// Authentication error (HTTP 401).
     #[error("Authentication error: {0}")]
@@ -115,9 +110,7 @@ pub enum ErrorKind {
 
     /// All retries exhausted.
     #[error("All {attempts} retry attempts exhausted")]
-    RetriesExhausted {
-        attempts: u32,
-    },
+    RetriesExhausted { attempts: u32 },
 
     /// Other error.
     #[error("{0}")]

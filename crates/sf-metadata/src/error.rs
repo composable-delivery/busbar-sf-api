@@ -17,8 +17,14 @@ impl Error {
         Self { kind, source: None }
     }
 
-    pub fn with_source(kind: ErrorKind, source: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self { kind, source: Some(Box::new(source)) }
+    pub fn with_source(
+        kind: ErrorKind,
+        source: impl std::error::Error + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            kind,
+            source: Some(Box::new(source)),
+        }
     }
 }
 
@@ -31,7 +37,10 @@ pub enum ErrorKind {
     #[error("Deploy error: {0}")]
     Deploy(String),
     #[error("Deployment failed: {message}")]
-    DeploymentFailed { message: String, failures: Vec<ComponentFailure> },
+    DeploymentFailed {
+        message: String,
+        failures: Vec<ComponentFailure>,
+    },
     #[error("Retrieve error: {0}")]
     Retrieve(String),
     #[error("Retrieve failed: {0}")]
@@ -54,24 +63,36 @@ pub enum ErrorKind {
 
 impl From<busbar_sf_client::Error> for Error {
     fn from(err: busbar_sf_client::Error) -> Self {
-        Error { kind: ErrorKind::Client(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Client(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<busbar_sf_auth::Error> for Error {
     fn from(err: busbar_sf_auth::Error) -> Self {
-        Error { kind: ErrorKind::Auth(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Auth(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
-        Error { kind: ErrorKind::Io(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Io(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<reqwest::Error> for Error {
     fn from(err: reqwest::Error) -> Self {
-        Error { kind: ErrorKind::Http(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Http(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }

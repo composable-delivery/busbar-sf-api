@@ -30,12 +30,18 @@ pub enum ErrorKind {
 
 impl From<busbar_sf_client::Error> for Error {
     fn from(err: busbar_sf_client::Error) -> Self {
-        Error { kind: ErrorKind::Client(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Client(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }
 
 impl From<busbar_sf_auth::Error> for Error {
     fn from(err: busbar_sf_auth::Error) -> Self {
-        Error { kind: ErrorKind::Auth(err.to_string()), source: Some(Box::new(err)) }
+        Error {
+            kind: ErrorKind::Auth(err.to_string()),
+            source: Some(Box::new(err)),
+        }
     }
 }

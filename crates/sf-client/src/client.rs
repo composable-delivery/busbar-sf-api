@@ -1,7 +1,7 @@
 //! Core HTTP client with retry, compression, and Salesforce-specific handling.
 
 use std::time::Duration;
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::config::ClientConfig;
 use crate::error::{Error, ErrorKind, Result};
@@ -242,7 +242,7 @@ impl SfHttpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path, header};
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
@@ -264,14 +264,14 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SfHttpClient::new(
-            ClientConfig::builder()
-                .without_retry()
-                .build()
-        ).unwrap();
+        let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
 
         let response = client
-            .send(client.get(format!("{}/test", mock_server.uri())).bearer_auth("test-token"))
+            .send(
+                client
+                    .get(format!("{}/test", mock_server.uri()))
+                    .bearer_auth("test-token"),
+            )
             .await
             .unwrap();
 
@@ -284,22 +284,24 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/error"))
-            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!([{
-                "errorCode": "INVALID_FIELD",
-                "message": "No such column 'foo' on entity 'Account'",
-                "fields": ["foo"]
-            }])))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_json(serde_json::json!([{
+                    "errorCode": "INVALID_FIELD",
+                    "message": "No such column 'foo' on entity 'Account'",
+                    "fields": ["foo"]
+                }])),
+            )
             .mount(&mock_server)
             .await;
 
-        let client = SfHttpClient::new(
-            ClientConfig::builder()
-                .without_retry()
-                .build()
-        ).unwrap();
+        let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
 
         let result = client
-            .send(client.get(format!("{}/error", mock_server.uri())).bearer_auth("token"))
+            .send(
+                client
+                    .get(format!("{}/error", mock_server.uri()))
+                    .bearer_auth("token"),
+            )
             .await;
 
         assert!(result.is_err());
@@ -313,21 +315,18 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/limited"))
-            .respond_with(
-                ResponseTemplate::new(429)
-                    .insert_header("Retry-After", "30")
-            )
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "30"))
             .mount(&mock_server)
             .await;
 
-        let client = SfHttpClient::new(
-            ClientConfig::builder()
-                .without_retry()
-                .build()
-        ).unwrap();
+        let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
 
         let result = client
-            .send(client.get(format!("{}/limited", mock_server.uri())).bearer_auth("token"))
+            .send(
+                client
+                    .get(format!("{}/limited", mock_server.uri()))
+                    .bearer_auth("token"),
+            )
             .await;
 
         assert!(result.is_err());
@@ -366,13 +365,18 @@ mod tests {
                 .with_retry(
                     crate::RetryConfig::default()
                         .with_max_attempts(3)
-                        .with_initial_delay(Duration::from_millis(10))
+                        .with_initial_delay(Duration::from_millis(10)),
                 )
-                .build()
-        ).unwrap();
+                .build(),
+        )
+        .unwrap();
 
         let response = client
-            .send(client.get(format!("{}/retry", mock_server.uri())).bearer_auth("token"))
+            .send(
+                client
+                    .get(format!("{}/retry", mock_server.uri()))
+                    .bearer_auth("token"),
+            )
             .await
             .unwrap();
 
@@ -391,18 +395,14 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = SfHttpClient::new(
-            ClientConfig::builder()
-                .without_retry()
-                .build()
-        ).unwrap();
+        let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
 
         let response = client
             .send(
                 client
                     .get(format!("{}/cached", mock_server.uri()))
                     .bearer_auth("token")
-                    .if_none_match("\"abc123\"")
+                    .if_none_match("\"abc123\""),
             )
             .await
             .unwrap();

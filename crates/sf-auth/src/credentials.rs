@@ -39,7 +39,10 @@ impl std::fmt::Debug for SalesforceCredentials {
             .field("instance_url", &self.instance_url)
             .field("access_token", &"[REDACTED]")
             .field("api_version", &self.api_version)
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
             .finish()
     }
 }
@@ -116,7 +119,13 @@ impl SalesforceCredentials {
         use tokio::process::Command;
 
         let output = Command::new("sf")
-            .args(["org", "display", "--target-org", alias_or_username, "--json"])
+            .args([
+                "org",
+                "display",
+                "--target-org",
+                alias_or_username,
+                "--json",
+            ])
             .output()
             .await
             .map_err(|e| Error::new(ErrorKind::SfdxCli(format!("Failed to run sf CLI: {}", e))))?;
@@ -131,9 +140,9 @@ impl SalesforceCredentials {
 
         let json: serde_json::Value = serde_json::from_slice(&output.stdout)?;
 
-        let result = json
-            .get("result")
-            .ok_or_else(|| Error::new(ErrorKind::SfdxCli("Missing 'result' in output".to_string())))?;
+        let result = json.get("result").ok_or_else(|| {
+            Error::new(ErrorKind::SfdxCli("Missing 'result' in output".to_string()))
+        })?;
 
         let instance_url = result
             .get("instanceUrl")
@@ -216,11 +225,8 @@ mod tests {
 
     #[test]
     fn test_credentials_new() {
-        let creds = SalesforceCredentials::new(
-            "https://test.salesforce.com",
-            "access_token_123",
-            "62.0",
-        );
+        let creds =
+            SalesforceCredentials::new("https://test.salesforce.com", "access_token_123", "62.0");
 
         assert_eq!(creds.instance_url(), "https://test.salesforce.com");
         assert_eq!(creds.access_token(), "access_token_123");
@@ -230,23 +236,16 @@ mod tests {
 
     #[test]
     fn test_credentials_with_refresh_token() {
-        let creds = SalesforceCredentials::new(
-            "https://test.salesforce.com",
-            "access_token",
-            "62.0",
-        )
-        .with_refresh_token("refresh_token_123");
+        let creds =
+            SalesforceCredentials::new("https://test.salesforce.com", "access_token", "62.0")
+                .with_refresh_token("refresh_token_123");
 
         assert_eq!(creds.refresh_token(), Some("refresh_token_123"));
     }
 
     #[test]
     fn test_api_urls() {
-        let creds = SalesforceCredentials::new(
-            "https://na1.salesforce.com",
-            "token",
-            "62.0",
-        );
+        let creds = SalesforceCredentials::new("https://na1.salesforce.com", "token", "62.0");
 
         assert_eq!(
             creds.rest_api_url(),

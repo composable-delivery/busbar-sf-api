@@ -5,8 +5,8 @@ use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::error::{Error, ErrorKind, Result};
 use crate::credentials::SalesforceCredentials;
+use crate::error::{Error, ErrorKind, Result};
 
 /// JWT Bearer authentication for server-to-server integration.
 ///
@@ -85,7 +85,7 @@ impl JwtAuth {
     ///
     /// # Arguments
     ///
-    /// * `login_url` - The Salesforce login URL (e.g., "https://login.salesforce.com")
+    /// * `login_url` - The Salesforce login URL (e.g., "<https://login.salesforce.com>")
     ///
     /// # Returns
     ///
@@ -154,10 +154,13 @@ struct JwtTokenResponse {
     access_token: String,
     instance_url: String,
     #[serde(default)]
+    #[allow(dead_code)]
     token_type: String,
     #[serde(default)]
+    #[allow(dead_code)]
     scope: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     id: Option<String>,
 }
 
@@ -189,8 +192,8 @@ mod tests {
 
     #[test]
     fn test_jwt_auth_with_expiration() {
-        let auth = JwtAuth::new("key", "user", b"key".to_vec())
-            .with_expiration(Duration::minutes(5));
+        let auth =
+            JwtAuth::new("key", "user", b"key".to_vec()).with_expiration(Duration::minutes(5));
 
         assert_eq!(auth.expiration, Duration::minutes(5));
     }

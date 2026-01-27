@@ -1,7 +1,7 @@
 //! HTTP response handling with Salesforce-specific extensions.
 
-use std::time::Duration;
 use serde::de::DeserializeOwned;
+use std::time::Duration;
 
 use crate::error::{Error, ErrorKind, Result};
 
@@ -220,11 +220,15 @@ fn sanitize_error_message(message: &str) -> String {
     // Remove anything that looks like a Bearer token or access token
     // Salesforce tokens typically start with "00D" and are 100+ chars
     let token_pattern = regex_lite::Regex::new(r"00[A-Za-z0-9]{13,}[!][A-Za-z0-9_.]+").unwrap();
-    sanitized = token_pattern.replace_all(&sanitized, "[REDACTED_TOKEN]").to_string();
+    sanitized = token_pattern
+        .replace_all(&sanitized, "[REDACTED_TOKEN]")
+        .to_string();
 
     // Remove session IDs (typically 24 chars alphanumeric)
     let session_pattern = regex_lite::Regex::new(r"sid=[A-Za-z0-9]{20,}").unwrap();
-    sanitized = session_pattern.replace_all(&sanitized, "sid=[REDACTED]").to_string();
+    sanitized = session_pattern
+        .replace_all(&sanitized, "sid=[REDACTED]")
+        .to_string();
 
     // Truncate if too long
     if sanitized.len() > MAX_LENGTH {

@@ -1,7 +1,7 @@
 //! SObject Collections for batch operations.
 
-use serde::{Deserialize, Serialize};
 use crate::sobject::SalesforceError;
+use serde::{Deserialize, Serialize};
 
 /// Request for SObject Collections operations.
 #[derive(Debug, Clone, Serialize)]

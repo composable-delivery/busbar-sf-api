@@ -1,8 +1,8 @@
 //! Retrieve operations.
 
+use crate::types::FileProperties;
 use busbar_sf_client::security::xml;
 use serde::{Deserialize, Serialize};
-use crate::types::FileProperties;
 
 /// Options for retrieval.
 #[derive(Debug, Clone, Default)]
@@ -47,7 +47,8 @@ impl PackageManifest {
         let mut xml_parts = Vec::new();
 
         for type_member in &self.types {
-            let members_xml: String = type_member.members
+            let members_xml: String = type_member
+                .members
                 .iter()
                 .map(|m| format!("<members>{}</members>", xml::escape(m)))
                 .collect::<Vec<_>>()
@@ -136,15 +137,27 @@ mod tests {
 
     #[test]
     fn test_retrieve_status_parse() {
-        assert_eq!("Pending".parse::<RetrieveStatus>().unwrap(), RetrieveStatus::Pending);
-        assert_eq!("Succeeded".parse::<RetrieveStatus>().unwrap(), RetrieveStatus::Succeeded);
-        assert_eq!("Failed".parse::<RetrieveStatus>().unwrap(), RetrieveStatus::Failed);
+        assert_eq!(
+            "Pending".parse::<RetrieveStatus>().unwrap(),
+            RetrieveStatus::Pending
+        );
+        assert_eq!(
+            "Succeeded".parse::<RetrieveStatus>().unwrap(),
+            RetrieveStatus::Succeeded
+        );
+        assert_eq!(
+            "Failed".parse::<RetrieveStatus>().unwrap(),
+            RetrieveStatus::Failed
+        );
     }
 
     #[test]
     fn test_package_manifest_to_xml() {
         let manifest = PackageManifest::new("62.0")
-            .add_type("ApexClass", vec!["MyClass".to_string(), "OtherClass".to_string()])
+            .add_type(
+                "ApexClass",
+                vec!["MyClass".to_string(), "OtherClass".to_string()],
+            )
             .add_type("ApexTrigger", vec!["*".to_string()]);
 
         let xml = manifest.to_xml();
@@ -159,8 +172,10 @@ mod tests {
     #[test]
     fn test_package_manifest_escapes_xml_injection() {
         // Attempt XML injection via member name
-        let manifest = PackageManifest::new("62.0")
-            .add_type("ApexClass", vec!["</members><malicious>attack</malicious><members>".to_string()]);
+        let manifest = PackageManifest::new("62.0").add_type(
+            "ApexClass",
+            vec!["</members><malicious>attack</malicious><members>".to_string()],
+        );
 
         let xml = manifest.to_xml();
 

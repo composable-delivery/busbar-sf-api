@@ -45,10 +45,7 @@ pub struct ToolingClient {
 
 impl ToolingClient {
     /// Create a new Tooling API client with the given instance URL and access token.
-    pub fn new(
-        instance_url: impl Into<String>,
-        access_token: impl Into<String>,
-    ) -> Result<Self> {
+    pub fn new(instance_url: impl Into<String>, access_token: impl Into<String>) -> Result<Self> {
         let client = SalesforceClient::new(instance_url, access_token)?;
         Ok(Self { client })
     }
@@ -122,7 +119,10 @@ impl ToolingClient {
     /// to prevent SOQL injection attacks. See `query()` for examples.
     #[instrument(skip(self))]
     pub async fn query_all<T: DeserializeOwned + Clone>(&self, soql: &str) -> Result<Vec<T>> {
-        self.client.tooling_query_all(soql).await.map_err(Into::into)
+        self.client
+            .tooling_query_all(soql)
+            .await
+            .map_err(Into::into)
     }
 
     // =========================================================================
@@ -198,7 +198,7 @@ impl ToolingClient {
         if !url_security::is_valid_salesforce_id(id) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ID".to_string(),
-                message: format!("Invalid Salesforce ID format"),
+                message: "Invalid Salesforce ID format".to_string(),
             }));
         }
         let path = format!("sobjects/ApexClass/{}", id);
@@ -212,8 +212,10 @@ impl ToolingClient {
     /// Get all Apex triggers in the org.
     #[instrument(skip(self))]
     pub async fn get_apex_triggers(&self) -> Result<Vec<ApexTrigger>> {
-        self.query_all("SELECT Id, Name, Body, Status, IsValid, ApiVersion, TableEnumOrId FROM ApexTrigger")
-            .await
+        self.query_all(
+            "SELECT Id, Name, Body, Status, IsValid, ApiVersion, TableEnumOrId FROM ApexTrigger",
+        )
+        .await
     }
 
     /// Get an Apex trigger by name.
@@ -252,7 +254,7 @@ impl ToolingClient {
         if !url_security::is_valid_salesforce_id(log_id) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ID".to_string(),
-                message: format!("Invalid Salesforce ID format"),
+                message: "Invalid Salesforce ID format".to_string(),
             }));
         }
         let url = format!(
@@ -273,7 +275,7 @@ impl ToolingClient {
         if !url_security::is_valid_salesforce_id(log_id) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ID".to_string(),
-                message: format!("Invalid Salesforce ID format"),
+                message: "Invalid Salesforce ID format".to_string(),
             }));
         }
         let url = format!(
@@ -372,13 +374,13 @@ impl ToolingClient {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
-                message: format!("Invalid SObject name"),
+                message: "Invalid SObject name".to_string(),
             }));
         }
         if !url_security::is_valid_salesforce_id(id) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ID".to_string(),
-                message: format!("Invalid Salesforce ID format"),
+                message: "Invalid Salesforce ID format".to_string(),
             }));
         }
         let path = format!("sobjects/{}/{}", sobject, id);
@@ -387,15 +389,11 @@ impl ToolingClient {
 
     /// Create a Tooling API SObject.
     #[instrument(skip(self, record))]
-    pub async fn create<T: serde::Serialize>(
-        &self,
-        sobject: &str,
-        record: &T,
-    ) -> Result<String> {
+    pub async fn create<T: serde::Serialize>(&self, sobject: &str, record: &T) -> Result<String> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
-                message: format!("Invalid SObject name"),
+                message: "Invalid SObject name".to_string(),
             }));
         }
         let path = format!("sobjects/{}", sobject);
@@ -422,13 +420,13 @@ impl ToolingClient {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
-                message: format!("Invalid SObject name"),
+                message: "Invalid SObject name".to_string(),
             }));
         }
         if !url_security::is_valid_salesforce_id(id) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ID".to_string(),
-                message: format!("Invalid Salesforce ID format"),
+                message: "Invalid Salesforce ID format".to_string(),
             }));
         }
         let url = format!(
@@ -466,6 +464,7 @@ struct CreateResponse {
 struct CreateError {
     message: String,
     #[serde(rename = "statusCode")]
+    #[allow(dead_code)]
     status_code: String,
 }
 
@@ -475,10 +474,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = ToolingClient::new(
-            "https://na1.salesforce.com",
-            "token123",
-        ).unwrap();
+        let client = ToolingClient::new("https://na1.salesforce.com", "token123").unwrap();
 
         assert_eq!(client.instance_url(), "https://na1.salesforce.com");
         assert_eq!(client.api_version(), "62.0");
@@ -486,10 +482,9 @@ mod tests {
 
     #[test]
     fn test_api_version_override() {
-        let client = ToolingClient::new(
-            "https://na1.salesforce.com",
-            "token",
-        ).unwrap().with_api_version("60.0");
+        let client = ToolingClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
     }

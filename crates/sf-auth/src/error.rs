@@ -43,10 +43,7 @@ impl Error {
 pub enum ErrorKind {
     /// OAuth error response from Salesforce.
     #[error("OAuth error: {error} - {description}")]
-    OAuth {
-        error: String,
-        description: String,
-    },
+    OAuth { error: String, description: String },
 
     /// Token expired.
     #[error("Token expired")]

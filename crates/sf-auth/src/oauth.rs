@@ -59,6 +59,7 @@ impl OAuthConfig {
     }
 
     /// Get the consumer secret (for internal use).
+    #[allow(dead_code)]
     pub(crate) fn consumer_secret(&self) -> Option<&str> {
         self.consumer_secret.as_deref()
     }
@@ -182,10 +183,7 @@ impl OAuthClient {
     }
 
     /// Handle a token response, checking for errors.
-    async fn handle_token_response(
-        &self,
-        response: reqwest::Response,
-    ) -> Result<TokenResponse> {
+    async fn handle_token_response(&self, response: reqwest::Response) -> Result<TokenResponse> {
         if !response.status().is_success() {
             let error: OAuthErrorResponse = response.json().await?;
             return Err(Error::new(ErrorKind::OAuth {
@@ -256,11 +254,7 @@ impl WebFlowAuth {
     ///
     /// The code parameter is not logged to prevent credential exposure.
     #[instrument(skip(self, code))]
-    pub async fn exchange_code(
-        &self,
-        code: &str,
-        login_url: &str,
-    ) -> Result<TokenResponse> {
+    pub async fn exchange_code(&self, code: &str, login_url: &str) -> Result<TokenResponse> {
         let redirect_uri = self.config.redirect_uri.as_ref().unwrap();
 
         let mut params = vec![
@@ -328,7 +322,10 @@ impl std::fmt::Debug for TokenResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TokenResponse")
             .field("access_token", &"[REDACTED]")
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("instance_url", &self.instance_url)
             .field("id", &self.id)
             .field("token_type", &self.token_type)
@@ -342,11 +339,8 @@ impl std::fmt::Debug for TokenResponse {
 impl TokenResponse {
     /// Convert to SalesforceCredentials.
     pub fn to_credentials(&self, api_version: &str) -> SalesforceCredentials {
-        let mut creds = SalesforceCredentials::new(
-            &self.instance_url,
-            &self.access_token,
-            api_version,
-        );
+        let mut creds =
+            SalesforceCredentials::new(&self.instance_url, &self.access_token, api_version);
 
         if let Some(ref rt) = self.refresh_token {
             creds = creds.with_refresh_token(rt);
@@ -414,8 +408,7 @@ mod tests {
 
     #[test]
     fn test_oauth_config_debug_redacts_secret() {
-        let config = OAuthConfig::new("consumer_key")
-            .with_secret("super_secret_value");
+        let config = OAuthConfig::new("consumer_key").with_secret("super_secret_value");
 
         let debug_output = format!("{:?}", config);
         assert!(debug_output.contains("[REDACTED]"));
