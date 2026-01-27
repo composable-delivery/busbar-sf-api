@@ -27,7 +27,7 @@ jobs:
           - os: macos-latest
             rust: beta
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@master
@@ -71,7 +71,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -85,7 +85,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -123,7 +123,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -161,7 +161,7 @@ jobs:
     name: MSRV (Minimum Supported Rust Version)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Install Rust 1.75
         uses: dtolnay/rust-toolchain@master
