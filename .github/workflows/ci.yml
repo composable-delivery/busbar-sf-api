@@ -102,15 +102,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       
-      - name: Install Rust 1.85
+      - name: Install Rust 1.88
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.85"
+          toolchain: "1.88"
       
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: msrv-1.85
+          shared-key: msrv-1.88
       
       - name: Check MSRV
         run: cargo build --workspace --verbose
