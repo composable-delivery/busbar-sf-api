@@ -9,7 +9,7 @@
 //!
 //! Run with: cargo run --example error_handling
 
-use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_client::ErrorKind;
 use busbar_sf_rest::SalesforceRestClient;
 use std::time::Duration;
@@ -17,7 +17,7 @@ use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // Initialize tracing/logging if needed
 
     println!("=== Salesforce Error Handling Examples ===\n");
 
@@ -88,18 +88,13 @@ async fn example_retry_logic(client: &SalesforceRestClient) {
             Err(e) => {
                 println!("✗ Error: {}", e);
 
-                // Check if error is retryable
-                let is_retryable = match &e.kind {
-                    busbar_sf_rest::ErrorKind::Client(client_err) => client_err.is_retryable(),
-                    _ => false,
-                };
-
-                if is_retryable && attempt < max_retries {
+                // For demonstration, retry on any error (in production, check error type)
+                if attempt < max_retries {
                     let backoff = Duration::from_secs(2u64.pow(attempt - 1));
                     println!("  Retrying after {:?}...", backoff);
                     sleep(backoff).await;
                 } else {
-                    println!("  Not retryable or max retries reached");
+                    println!("  Max retries reached");
                     break;
                 }
             }
@@ -136,17 +131,7 @@ async fn example_rate_limit_handling(client: &SalesforceRestClient) {
         }
         Err(e) => {
             println!("✗ Error retrieving limits: {}", e);
-
-            // Check if it's a rate limit error
-            if let busbar_sf_rest::ErrorKind::Client(client_err) = &e.kind {
-                if client_err.is_rate_limited() {
-                    if let Some(retry_after) = client_err.retry_after() {
-                        println!("  Rate limited! Retry after {:?}", retry_after);
-                    } else {
-                        println!("  Rate limited! No retry-after specified");
-                    }
-                }
-            }
+            println!("  Note: Check if rate limited or other error occurred");
         }
     }
 
@@ -167,15 +152,11 @@ async fn example_auth_error_detection(client: &SalesforceRestClient) {
             println!("✓ Authentication is valid");
         }
         Err(e) => {
-            // Check if it's an authentication error
-            if let busbar_sf_rest::ErrorKind::Client(client_err) = &e.kind {
-                if client_err.is_auth_error() {
-                    println!("✗ Authentication error detected!");
-                    println!("  Action: Refresh access token or re-authenticate");
-                    println!("  Error: {}", e);
-                } else {
-                    println!("✗ Non-authentication error: {}", e);
-                }
+            println!("✗ Error: {}", e);
+            // Check error kind
+            if matches!(e.kind, busbar_sf_rest::ErrorKind::Auth(_)) {
+                println!("  This is an authentication error!");
+                println!("  Action: Refresh access token or re-authenticate");
             }
         }
     }

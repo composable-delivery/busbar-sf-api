@@ -9,42 +9,15 @@
 //!
 //! Run with: cargo run --example queries
 
-use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_client::security::soql;
 use busbar_sf_rest::SalesforceRestClient;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Account {
-    #[serde(rename = "Id")]
-    id: String,
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "Industry")]
-    industry: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Contact {
-    #[serde(rename = "Id")]
-    id: String,
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "Email")]
-    email: Option<String>,
-    #[serde(rename = "Account")]
-    account: Option<AccountRef>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AccountRef {
-    #[serde(rename = "Name")]
-    name: String,
-}
+// We'll use serde_json::Value for simplicity in the examples
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // Initialize tracing/logging if needed
 
     println!("=== Salesforce SOQL Query Examples ===\n");
 
@@ -80,11 +53,13 @@ async fn example_basic_query(
     println!("----------------------------");
 
     let query = "SELECT Id, Name, Industry FROM Account LIMIT 5";
-    let result: busbar_sf_client::QueryResult<Account> = client.query(query).await?;
+    let result: busbar_sf_client::QueryResult<serde_json::Value> = client.query(query).await?;
 
     println!("✓ Found {} accounts (total: {})", result.records.len(), result.total_size);
     for account in &result.records {
-        println!("  - {} ({})", account.name, account.id);
+        let name = account.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let id = account.get("Id").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        println!("  - {} ({})", name, id);
     }
     println!();
 
@@ -100,7 +75,7 @@ async fn example_query_with_limit(
 
     // Query up to 100 records
     let query = "SELECT Id, Name FROM Account WHERE Industry != null LIMIT 100";
-    let accounts: Vec<Account> = client.query_all(query).await?;
+    let accounts: Vec<serde_json::Value> = client.query_all(query).await?;
 
     println!("✓ Retrieved {} accounts with industry", accounts.len());
     println!();
@@ -117,7 +92,7 @@ async fn example_query_pagination(
 
     // query_all automatically handles pagination
     let query = "SELECT Id, Name FROM Account";
-    let all_accounts: Vec<Account> = client.query_all(query).await?;
+    let all_accounts: Vec<serde_json::Value> = client.query_all(query).await?;
 
     println!("✓ Retrieved all {} accounts (with automatic pagination)", all_accounts.len());
     println!();
@@ -146,7 +121,7 @@ async fn example_secure_query_user_input(
     let query = format!("SELECT Id, Name FROM Account WHERE Name = '{}'", safe_name);
     println!("Safe query: {}", query);
 
-    let accounts: Vec<Account> = client.query_all(&query).await?;
+    let accounts: Vec<serde_json::Value> = client.query_all(&query).await?;
     println!("✓ Found {} accounts", accounts.len());
 
     // Show how injection attempt is prevented
@@ -178,7 +153,7 @@ async fn example_secure_like_query(
 
     println!("Query: {}", query);
 
-    let accounts: Vec<Account> = client.query_all(&query).await?;
+    let accounts: Vec<serde_json::Value> = client.query_all(&query).await?;
     println!("✓ Found {} accounts", accounts.len());
     println!();
 
@@ -233,12 +208,16 @@ async fn example_relationship_query(
 
     let query = "SELECT Id, Name, Email, Account.Name FROM Contact WHERE Account.Name != null LIMIT 5";
 
-    let contacts: Vec<Contact> = client.query_all(query).await?;
+    let contacts: Vec<serde_json::Value> = client.query_all(query).await?;
 
     println!("✓ Found {} contacts with accounts", contacts.len());
     for contact in &contacts {
-        if let Some(ref account) = contact.account {
-            println!("  - {} ({}) @ {}", contact.name, contact.id, account.name);
+        let name = contact.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let id = contact.get("Id").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        if let Some(account) = contact.get("Account") {
+            if let Some(account_name) = account.get("Name").and_then(|v| v.as_str()) {
+                println!("  - {} ({}) @ {}", name, id, account_name);
+            }
         }
     }
     println!();
@@ -255,19 +234,13 @@ async fn example_aggregate_query(
 
     let query = "SELECT Industry, COUNT(Id) total FROM Account WHERE Industry != null GROUP BY Industry ORDER BY COUNT(Id) DESC LIMIT 5";
 
-    #[derive(Debug, Deserialize)]
-    struct AggregateResult {
-        #[serde(rename = "Industry")]
-        industry: String,
-        #[serde(rename = "total")]
-        total: i32,
-    }
-
-    let results: Vec<AggregateResult> = client.query_all(query).await?;
+    let results: Vec<serde_json::Value> = client.query_all(query).await?;
 
     println!("✓ Top {} industries:", results.len());
     for result in &results {
-        println!("  - {}: {} accounts", result.industry, result.total);
+        let industry = result.get("Industry").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let total = result.get("total").and_then(|v| v.as_i64()).unwrap_or(0);
+        println!("  - {}: {} accounts", industry, total);
     }
     println!();
 

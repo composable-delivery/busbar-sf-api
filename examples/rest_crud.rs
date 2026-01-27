@@ -5,28 +5,15 @@
 //!
 //! Run with: cargo run --example rest_crud
 
-use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_rest::SalesforceRestClient;
-use serde::{Deserialize, Serialize};
 
-/// Example Account record
-#[derive(Debug, Serialize, Deserialize)]
-struct Account {
-    #[serde(rename = "Id", skip_serializing_if = "Option::is_none")]
-    id: Option<String>,
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "Industry", skip_serializing_if = "Option::is_none")]
-    industry: Option<String>,
-    #[serde(rename = "Phone", skip_serializing_if = "Option::is_none")]
-    phone: Option<String>,
-    #[serde(rename = "Website", skip_serializing_if = "Option::is_none")]
-    website: Option<String>,
-}
+// For examples, we'll use serde_json::Value for simplicity
+// In real code, you'd define your own structs with serde derives
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // Initialize tracing/logging if needed
 
     println!("=== Salesforce REST API CRUD Examples ===\n");
 
@@ -56,13 +43,12 @@ async fn example_create(client: &SalesforceRestClient) -> Result<String, Box<dyn
     println!("Example 1: Create Record");
     println!("------------------------");
 
-    let account = Account {
-        id: None,
-        name: "Acme Corporation".to_string(),
-        industry: Some("Technology".to_string()),
-        phone: Some("+1-555-0100".to_string()),
-        website: Some("https://acme.example.com".to_string()),
-    };
+    let account = serde_json::json!({
+        "Name": "Acme Corporation",
+        "Industry": "Technology",
+        "Phone": "+1-555-0100",
+        "Website": "https://acme.example.com"
+    });
 
     let id = client.create("Account", &account).await?;
     println!("✓ Created account with ID: {}", id);
@@ -80,16 +66,16 @@ async fn example_read(
     println!("----------------------");
 
     // Read with specific fields
-    let account: Account = client
+    let account: serde_json::Value = client
         .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone", "Website"]))
         .await?;
 
     println!("✓ Retrieved account:");
-    println!("  ID: {:?}", account.id);
-    println!("  Name: {}", account.name);
-    println!("  Industry: {:?}", account.industry);
-    println!("  Phone: {:?}", account.phone);
-    println!("  Website: {:?}", account.website);
+    println!("  ID: {:?}", account["Id"]);
+    println!("  Name: {}", account["Name"]);
+    println!("  Industry: {:?}", account["Industry"]);
+    println!("  Phone: {:?}", account["Phone"]);
+    println!("  Website: {:?}", account["Website"]);
     println!();
 
     Ok(())
@@ -174,27 +160,20 @@ async fn example_create_multiple(
     println!("-----------------------------------");
 
     let accounts = vec![
-        Account {
-            id: None,
-            name: "Tech Startup Inc".to_string(),
-            industry: Some("Technology".to_string()),
-            phone: None,
-            website: Some("https://techstartup.example".to_string()),
-        },
-        Account {
-            id: None,
-            name: "Retail Giant LLC".to_string(),
-            industry: Some("Retail".to_string()),
-            phone: None,
-            website: Some("https://retailgiant.example".to_string()),
-        },
-        Account {
-            id: None,
-            name: "Finance Corp".to_string(),
-            industry: Some("Finance".to_string()),
-            phone: None,
-            website: None,
-        },
+        serde_json::json!({
+            "Name": "Tech Startup Inc",
+            "Industry": "Technology",
+            "Website": "https://techstartup.example"
+        }),
+        serde_json::json!({
+            "Name": "Retail Giant LLC",
+            "Industry": "Retail",
+            "Website": "https://retailgiant.example"
+        }),
+        serde_json::json!({
+            "Name": "Finance Corp",
+            "Industry": "Finance"
+        }),
     ];
 
     // Create up to 200 records at once
@@ -204,14 +183,16 @@ async fn example_create_multiple(
     println!("✓ Created {} accounts", results.len());
     for (i, result) in results.iter().enumerate() {
         if result.success {
-            println!("  Account {}: {} - ID: {}", i + 1, accounts[i].name, result.id);
+            let name = accounts[i].get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+            let id = result.id.as_ref().map(|s| s.as_str()).unwrap_or("Unknown");
+            println!("  Account {}: {} - ID: {}", i + 1, name, id);
         } else {
             println!("  Account {}: Failed - {:?}", i + 1, result.errors);
         }
     }
 
     // Clean up
-    let ids: Vec<&str> = results.iter().map(|r| r.id.as_str()).collect();
+    let ids: Vec<&str> = results.iter().filter_map(|r| r.id.as_deref()).collect();
     if !ids.is_empty() {
         let _ = client.delete_multiple(&ids, false).await;
         println!("✓ Cleaned up {} test accounts", ids.len());

@@ -8,12 +8,12 @@
 //!
 //! Run with: cargo run --example basic_auth
 
-use busbar_sf_auth::{JwtAuth, OAuthClient, OAuthConfig, SalesforceCredentials};
+use busbar_sf_auth::{Credentials, JwtAuth, OAuthClient, OAuthConfig, SalesforceCredentials};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing for logging
-    tracing_subscriber::fmt::init();
+    // Initialize tracing/logging if needed
 
     println!("=== Salesforce Authentication Examples ===\n");
 

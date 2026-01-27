@@ -8,23 +8,14 @@
 //!
 //! Run with: cargo run --example bulk_operations
 
-use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_bulk::{BulkApiClient, BulkOperation, CreateIngestJobRequest, CreateQueryJobRequest};
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Account {
-    #[serde(rename = "Name")]
-    name: String,
-    #[serde(rename = "Industry")]
-    industry: Option<String>,
-    #[serde(rename = "Phone")]
-    phone: Option<String>,
-}
+// Using CSV format directly for Bulk API examples
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // Initialize tracing/logging if needed
 
     println!("=== Salesforce Bulk API 2.0 Examples ===\n");
 
