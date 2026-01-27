@@ -1,0 +1,48 @@
+# Pre-commit hooks for Rust project
+# Install pre-commit: https://pre-commit.com/
+# Run: pre-commit install
+
+repos:
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      # Run cargo fmt to check formatting
+      - id: fmt
+        name: Format (cargo fmt)
+        description: Run cargo fmt to check code formatting
+        entry: cargo fmt
+        language: system
+        types: [rust]
+        pass_filenames: false
+        args: ["--all", "--check"]
+
+      # Run cargo clippy for linting
+      - id: clippy
+        name: Clippy (cargo clippy)
+        description: Run cargo clippy for linting
+        entry: cargo clippy
+        language: system
+        types: [rust]
+        pass_filenames: false
+        args: ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+      # Check for merge conflicts
+      - id: check-merge-conflict
+      # Check YAML syntax
+      - id: check-yaml
+        args: ["--unsafe"]  # Allow custom YAML tags
+      # Check TOML syntax
+      - id: check-toml
+      # Trim trailing whitespace
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      # Ensure files end with a newline
+      - id: end-of-file-fixer
+      # Check for large files
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]

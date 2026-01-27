@@ -1,7 +1,7 @@
 //! Client configuration.
 
-use std::time::Duration;
 use crate::retry::RetryConfig;
+use std::time::Duration;
 
 /// Configuration for the HTTP client.
 #[derive(Debug, Clone)]

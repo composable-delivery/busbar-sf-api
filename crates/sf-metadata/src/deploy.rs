@@ -1,7 +1,7 @@
 //! Deploy operations.
 
-use serde::{Deserialize, Serialize};
 use crate::types::{ComponentSuccess, TestFailure, TestLevel};
+use serde::{Deserialize, Serialize};
 
 /// Options for deployment.
 #[derive(Debug, Clone)]
@@ -142,9 +142,21 @@ mod tests {
 
     #[test]
     fn test_deploy_status_parse() {
-        assert_eq!("Pending".parse::<DeployStatus>().unwrap(), DeployStatus::Pending);
-        assert_eq!("InProgress".parse::<DeployStatus>().unwrap(), DeployStatus::InProgress);
-        assert_eq!("Succeeded".parse::<DeployStatus>().unwrap(), DeployStatus::Succeeded);
-        assert_eq!("Failed".parse::<DeployStatus>().unwrap(), DeployStatus::Failed);
+        assert_eq!(
+            "Pending".parse::<DeployStatus>().unwrap(),
+            DeployStatus::Pending
+        );
+        assert_eq!(
+            "InProgress".parse::<DeployStatus>().unwrap(),
+            DeployStatus::InProgress
+        );
+        assert_eq!(
+            "Succeeded".parse::<DeployStatus>().unwrap(),
+            DeployStatus::Succeeded
+        );
+        assert_eq!(
+            "Failed".parse::<DeployStatus>().unwrap(),
+            DeployStatus::Failed
+        );
     }
 }

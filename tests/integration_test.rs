@@ -27,7 +27,7 @@ async fn get_test_credentials() -> SalesforceCredentials {
     let alias = org_alias();
     SalesforceCredentials::from_sfdx_alias(&alias)
         .await
-        .expect(&format!("Failed to get credentials for org: {}", alias))
+        .unwrap_or_else(|_| panic!("Failed to get credentials for org: {}", alias))
 }
 
 // ============================================================================
@@ -40,8 +40,14 @@ async fn test_sfdx_authentication() {
     let creds = get_test_credentials().await;
 
     assert!(creds.is_valid(), "Credentials should be valid");
-    assert!(!creds.instance_url().is_empty(), "Instance URL should be set");
-    assert!(!creds.access_token().is_empty(), "Access token should be set");
+    assert!(
+        !creds.instance_url().is_empty(),
+        "Instance URL should be set"
+    );
+    assert!(
+        !creds.access_token().is_empty(),
+        "Access token should be set"
+    );
 
     // Verify the instance URL is a Salesforce URL
     let instance_url = creds.instance_url();
@@ -59,8 +65,14 @@ async fn test_credentials_debug_redaction() {
 
     // Ensure Debug output doesn't expose the token
     let debug_output = format!("{:?}", creds);
-    assert!(debug_output.contains("[REDACTED]"), "Debug should contain [REDACTED]");
-    assert!(!debug_output.contains(creds.access_token()), "Debug should not contain the actual token");
+    assert!(
+        debug_output.contains("[REDACTED]"),
+        "Debug should contain [REDACTED]"
+    );
+    assert!(
+        !debug_output.contains(creds.access_token()),
+        "Debug should not contain the actual token"
+    );
 }
 
 // ============================================================================
@@ -71,10 +83,8 @@ async fn test_credentials_debug_redaction() {
 #[ignore = "requires scratch org"]
 async fn test_rest_api_versions() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     let versions = client.versions().await.expect("Failed to get API versions");
 
@@ -92,10 +102,8 @@ async fn test_rest_api_versions() {
 #[ignore = "requires scratch org"]
 async fn test_rest_api_limits() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     let limits = client.limits().await.expect("Failed to get limits");
 
@@ -104,28 +112,41 @@ async fn test_rest_api_limits() {
     let limits_obj = limits.as_object().unwrap();
 
     // Check for common limit types
-    assert!(limits_obj.contains_key("DailyApiRequests"), "Should have DailyApiRequests limit");
-    assert!(limits_obj.contains_key("DailyBulkV2QueryJobs"), "Should have DailyBulkV2QueryJobs limit");
+    assert!(
+        limits_obj.contains_key("DailyApiRequests"),
+        "Should have DailyApiRequests limit"
+    );
+    assert!(
+        limits_obj.contains_key("DailyBulkV2QueryJobs"),
+        "Should have DailyBulkV2QueryJobs limit"
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires scratch org"]
 async fn test_rest_describe_global() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
-    let describe = client.describe_global().await.expect("Failed to describe global");
+    let describe = client
+        .describe_global()
+        .await
+        .expect("Failed to describe global");
 
     // Verify we got SObjects
     assert!(!describe.sobjects.is_empty(), "Should have SObjects");
 
     // Check for standard objects
     let sobject_names: Vec<&str> = describe.sobjects.iter().map(|s| s.name.as_str()).collect();
-    assert!(sobject_names.contains(&"Account"), "Should have Account object");
-    assert!(sobject_names.contains(&"Contact"), "Should have Contact object");
+    assert!(
+        sobject_names.contains(&"Account"),
+        "Should have Account object"
+    );
+    assert!(
+        sobject_names.contains(&"Contact"),
+        "Should have Contact object"
+    );
     assert!(sobject_names.contains(&"Lead"), "Should have Lead object");
 }
 
@@ -133,12 +154,13 @@ async fn test_rest_describe_global() {
 #[ignore = "requires scratch org"]
 async fn test_rest_describe_sobject() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
-    let describe = client.describe_sobject("Account").await.expect("Failed to describe Account");
+    let describe = client
+        .describe_sobject("Account")
+        .await
+        .expect("Failed to describe Account");
 
     assert_eq!(describe.name, "Account", "Should be describing Account");
     assert!(!describe.fields.is_empty(), "Account should have fields");
@@ -146,17 +168,18 @@ async fn test_rest_describe_sobject() {
     // Check for standard fields
     let field_names: Vec<&str> = describe.fields.iter().map(|f| f.name.as_str()).collect();
     assert!(field_names.contains(&"Id"), "Account should have Id field");
-    assert!(field_names.contains(&"Name"), "Account should have Name field");
+    assert!(
+        field_names.contains(&"Name"),
+        "Account should have Name field"
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires scratch org"]
 async fn test_rest_query() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     // Query for a small set of Accounts
     let result = client
@@ -165,7 +188,10 @@ async fn test_rest_query() {
         .expect("Query should succeed");
 
     // Verify query result structure
-    assert!(result.done || result.next_records_url.is_some(), "Query should complete or have pagination");
+    assert!(
+        result.done || result.next_records_url.is_some(),
+        "Query should complete or have pagination"
+    );
 
     // If there are records, verify structure
     for record in &result.records {
@@ -178,10 +204,8 @@ async fn test_rest_query() {
 #[ignore = "requires scratch org"]
 async fn test_rest_crud_lifecycle() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     // Create a test Account
     let test_name = format!("Test Account {}", chrono::Utc::now().timestamp_millis());
@@ -205,7 +229,10 @@ async fn test_rest_crud_lifecycle() {
         .await
         .expect("Get should succeed");
 
-    assert_eq!(retrieved.get("Name").and_then(|v| v.as_str()), Some(test_name.as_str()));
+    assert_eq!(
+        retrieved.get("Name").and_then(|v| v.as_str()),
+        Some(test_name.as_str())
+    );
 
     // UPDATE
     let update_data = serde_json::json!({
@@ -247,10 +274,8 @@ async fn test_rest_crud_lifecycle() {
 #[ignore = "requires scratch org"]
 async fn test_tooling_query() {
     let creds = get_test_credentials().await;
-    let client = ToolingClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create Tooling client");
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
 
     // Query ApexClass
     let classes = client
@@ -259,17 +284,18 @@ async fn test_tooling_query() {
         .expect("Tooling query should succeed");
 
     // Verify the query completed (might be empty if no Apex classes exist)
-    assert!(classes.done || classes.next_records_url.is_some(), "Query should complete");
+    assert!(
+        classes.done || classes.next_records_url.is_some(),
+        "Query should complete"
+    );
 }
 
 #[tokio::test]
 #[ignore = "requires scratch org"]
 async fn test_tooling_execute_anonymous() {
     let creds = get_test_credentials().await;
-    let client = ToolingClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create Tooling client");
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
 
     // Execute simple Apex
     let result = client
@@ -285,15 +311,11 @@ async fn test_tooling_execute_anonymous() {
 #[ignore = "requires scratch org"]
 async fn test_tooling_execute_anonymous_with_error() {
     let creds = get_test_credentials().await;
-    let client = ToolingClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create Tooling client");
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
 
     // Execute Apex with a compilation error
-    let result = client
-        .execute_anonymous("this is not valid apex;")
-        .await;
+    let result = client.execute_anonymous("this is not valid apex;").await;
 
     // Should return an error due to compilation failure
     assert!(result.is_err(), "Invalid Apex should return an error");
@@ -307,10 +329,8 @@ async fn test_tooling_execute_anonymous_with_error() {
 #[ignore = "requires scratch org"]
 async fn test_invalid_query_error() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     // Execute an invalid query
     let result = client
@@ -324,15 +344,16 @@ async fn test_invalid_query_error() {
 #[ignore = "requires scratch org"]
 async fn test_invalid_sobject_error() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     // Try to describe a non-existent SObject
     let result = client.describe_sobject("NonExistentObject__c").await;
 
-    assert!(result.is_err(), "Describing non-existent object should return an error");
+    assert!(
+        result.is_err(),
+        "Describing non-existent object should return an error"
+    );
 }
 
 // ============================================================================
@@ -343,19 +364,21 @@ async fn test_invalid_sobject_error() {
 #[ignore = "requires scratch org"]
 async fn test_client_debug_redacts_token() {
     let creds = get_test_credentials().await;
-    let client = SalesforceRestClient::new(
-        creds.instance_url(),
-        creds.access_token(),
-    ).expect("Failed to create REST client");
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
     // Get the debug output
     let debug_output = format!("{:?}", client);
 
     // Should contain redacted marker
-    assert!(debug_output.contains("[REDACTED]") || debug_output.contains("SalesforceRestClient"),
-            "Debug should be safe");
+    assert!(
+        debug_output.contains("[REDACTED]") || debug_output.contains("SalesforceRestClient"),
+        "Debug should be safe"
+    );
 
     // Should not contain the actual token
-    assert!(!debug_output.contains(creds.access_token()),
-            "Debug output should not contain the actual access token");
+    assert!(
+        !debug_output.contains(creds.access_token()),
+        "Debug output should not contain the actual access token"
+    );
 }

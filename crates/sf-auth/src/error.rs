@@ -43,10 +43,7 @@ impl Error {
 pub enum ErrorKind {
     /// OAuth error response from Salesforce.
     #[error("OAuth error: {error} - {description}")]
-    OAuth {
-        error: String,
-        description: String,
-    },
+    OAuth { error: String, description: String },
 
     /// Token expired.
     #[error("Token expired")]
@@ -75,6 +72,10 @@ pub enum ErrorKind {
     /// JSON error.
     #[error("JSON error: {0}")]
     Json(String),
+
+    /// Serialization error.
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 
     /// Environment variable not set.
     #[error("Environment variable not set: {0}")]
@@ -109,6 +110,12 @@ impl From<reqwest::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Error::with_source(ErrorKind::Json(err.to_string()), err)
+    }
+}
+
+impl From<serde_urlencoded::ser::Error> for Error {
+    fn from(err: serde_urlencoded::ser::Error) -> Self {
+        Error::with_source(ErrorKind::Serialization(err.to_string()), err)
     }
 }
 

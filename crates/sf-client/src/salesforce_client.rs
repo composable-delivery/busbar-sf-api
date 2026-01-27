@@ -65,10 +65,7 @@ impl std::fmt::Debug for SalesforceClient {
 
 impl SalesforceClient {
     /// Create a new Salesforce client with the given instance URL and access token.
-    pub fn new(
-        instance_url: impl Into<String>,
-        access_token: impl Into<String>,
-    ) -> Result<Self> {
+    pub fn new(instance_url: impl Into<String>, access_token: impl Into<String>) -> Result<Self> {
         Self::with_config(instance_url, access_token, ClientConfig::default())
     }
 
@@ -146,10 +143,7 @@ impl SalesforceClient {
 
     /// Build the Metadata API URL (SOAP endpoint).
     pub fn metadata_url(&self) -> String {
-        format!(
-            "{}/services/Soap/m/{}",
-            self.instance_url, self.api_version
-        )
+        format!("{}/services/Soap/m/{}", self.instance_url, self.api_version)
     }
 
     /// Build the Bulk API 2.0 URL for a path.
@@ -251,11 +245,7 @@ impl SalesforceClient {
 
     /// PATCH request with JSON body and optional response.
     #[instrument(skip(self, body), fields(url = %url))]
-    pub async fn patch_json<B: Serialize>(
-        &self,
-        url: &str,
-        body: &B,
-    ) -> Result<()> {
+    pub async fn patch_json<B: Serialize>(&self, url: &str, body: &B) -> Result<()> {
         let full_url = self.url(url);
         let request = self.patch(&full_url).json(body)?;
         let response = self.http.execute(request).await?;
@@ -272,11 +262,7 @@ impl SalesforceClient {
     }
 
     /// PATCH request to REST API with JSON body.
-    pub async fn rest_patch<B: Serialize>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<()> {
+    pub async fn rest_patch<B: Serialize>(&self, path: &str, body: &B) -> Result<()> {
         self.patch_json(&self.rest_url(path), body).await
     }
 
@@ -387,7 +373,10 @@ impl SalesforceClient {
     }
 
     /// Execute a Tooling API query and automatically fetch all pages.
-    pub async fn tooling_query_all<T: DeserializeOwned + Clone>(&self, soql: &str) -> Result<Vec<T>> {
+    pub async fn tooling_query_all<T: DeserializeOwned + Clone>(
+        &self,
+        soql: &str,
+    ) -> Result<Vec<T>> {
         let mut all_records = Vec::new();
         let mut result: QueryResult<T> = self.tooling_query(soql).await?;
 
@@ -426,10 +415,7 @@ mod tests {
 
     #[test]
     fn test_url_building() {
-        let client = SalesforceClient::new(
-            "https://na1.salesforce.com",
-            "token123",
-        ).unwrap();
+        let client = SalesforceClient::new("https://na1.salesforce.com", "token123").unwrap();
 
         // Absolute paths
         assert_eq!(
@@ -484,9 +470,10 @@ mod tests {
     #[test]
     fn test_trailing_slash_handling() {
         let client = SalesforceClient::new(
-            "https://na1.salesforce.com/",  // Trailing slash
+            "https://na1.salesforce.com/", // Trailing slash
             "token",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(client.instance_url(), "https://na1.salesforce.com");
         assert_eq!(

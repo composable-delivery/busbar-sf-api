@@ -62,12 +62,15 @@ pub use client::{ApiVersion, SalesforceRestClient, SearchResult};
 pub use collections::{CollectionRequest, CollectionResult};
 
 // Composite API
-pub use composite::{CompositeRequest, CompositeResponse, CompositeSubrequest, CompositeSubresponse};
+pub use composite::{
+    CompositeRequest, CompositeResponse, CompositeSubrequest, CompositeSubresponse,
+};
 
 // Describe types
 pub use describe::{
     ActionOverride, ChildRelationship, DescribeGlobalResult, DescribeSObjectResult, FieldDescribe,
-    FilteredLookupInfo, NamedLayoutInfo, PicklistValue, RecordTypeInfo, SObjectBasicInfo, ScopeInfo,
+    FilteredLookupInfo, NamedLayoutInfo, PicklistValue, RecordTypeInfo, SObjectBasicInfo,
+    ScopeInfo,
 };
 
 // Error types

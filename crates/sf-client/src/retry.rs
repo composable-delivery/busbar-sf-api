@@ -1,7 +1,7 @@
 //! Retry policy with exponential backoff and jitter.
 
-use std::time::Duration;
 use rand::Rng;
+use std::time::Duration;
 
 /// Configuration for retry behavior.
 #[derive(Debug, Clone)]
@@ -107,8 +107,8 @@ impl BackoffStrategy {
                 let base_delay = initial_delay.as_secs_f64() * base_multiplier;
 
                 // Add jitter: random value between 0 and base_delay
-                let mut rng = rand::thread_rng();
-                let jitter = rng.gen::<f64>() * base_delay;
+                let mut rng = rand::rng();
+                let jitter = rng.random::<f64>() * base_delay;
 
                 Duration::from_secs_f64(base_delay + jitter)
             }
@@ -198,18 +198,12 @@ mod tests {
 
     #[test]
     fn test_constant_backoff() {
-        let delay = BackoffStrategy::Constant.delay(
-            0,
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-        );
+        let delay =
+            BackoffStrategy::Constant.delay(0, Duration::from_secs(1), Duration::from_secs(60));
         assert_eq!(delay, Duration::from_secs(1));
 
-        let delay = BackoffStrategy::Constant.delay(
-            5,
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-        );
+        let delay =
+            BackoffStrategy::Constant.delay(5, Duration::from_secs(1), Duration::from_secs(60));
         assert_eq!(delay, Duration::from_secs(1));
     }
 
@@ -276,8 +270,10 @@ mod tests {
 
     #[test]
     fn test_retry_after_header() {
-        let mut config = RetryConfig::default();
-        config.max_retry_after = Duration::from_secs(60);
+        let config = RetryConfig {
+            max_retry_after: Duration::from_secs(60),
+            ..Default::default()
+        };
         let mut policy = RetryPolicy::new(config);
 
         // Should respect Retry-After

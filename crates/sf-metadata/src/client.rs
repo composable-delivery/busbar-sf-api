@@ -12,7 +12,9 @@ use crate::describe::{DescribeMetadataResult, MetadataType};
 use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
 use crate::retrieve::{PackageManifest, RetrieveMessage, RetrieveResult, RetrieveStatus};
-use crate::types::{ComponentSuccess, FileProperties, SoapFault, TestFailure, TestLevel, DEFAULT_API_VERSION};
+use crate::types::{
+    ComponentSuccess, FileProperties, SoapFault, TestFailure, TestLevel, DEFAULT_API_VERSION,
+};
 
 /// SOAP Action header name.
 static SOAP_ACTION_HEADER: HeaderName = HeaderName::from_static("soapaction");
@@ -67,8 +69,14 @@ impl MetadataClient {
     /// Build common headers for SOAP requests.
     fn build_headers(&self, soap_action: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("text/xml;charset=UTF-8"));
-        headers.insert(SOAP_ACTION_HEADER.clone(), HeaderValue::from_str(soap_action).unwrap());
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("text/xml;charset=UTF-8"),
+        );
+        headers.insert(
+            SOAP_ACTION_HEADER.clone(),
+            HeaderValue::from_str(soap_action).unwrap(),
+        );
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {}", self.access_token)).unwrap(),
@@ -86,19 +94,17 @@ impl MetadataClient {
     /// in the correct directory structure (e.g., `classes/MyClass.cls`).
     ///
     /// Returns the async process ID for tracking the deployment.
-    pub async fn deploy(
-        &self,
-        package_zip: &[u8],
-        options: DeployOptions,
-    ) -> Result<String> {
+    pub async fn deploy(&self, package_zip: &[u8], options: DeployOptions) -> Result<String> {
         let encoded_zip = general_purpose::STANDARD.encode(package_zip);
 
-        let test_level_xml = options.test_level
+        let test_level_xml = options
+            .test_level
             .map(|tl| format!("<testLevel>{}</testLevel>", tl))
             .unwrap_or_default();
 
         let run_tests_xml = if options.test_level == Some(TestLevel::RunSpecifiedTests) {
-            options.run_tests
+            options
+                .run_tests
                 .iter()
                 .map(|t| format!("<runTests>{}</runTests>", xml::escape(t)))
                 .collect::<Vec<_>>()
@@ -149,8 +155,9 @@ impl MetadataClient {
             run_tests = run_tests_xml,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("deploy"))
             .body(envelope)
             .send()
@@ -163,10 +170,11 @@ impl MetadataClient {
             return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
         }
 
-        self.extract_element(&response_text, "id")
-            .ok_or_else(|| Error::new(ErrorKind::InvalidResponse(
-                "No async process ID in deploy response".to_string()
-            )))
+        self.extract_element(&response_text, "id").ok_or_else(|| {
+            Error::new(ErrorKind::InvalidResponse(
+                "No async process ID in deploy response".to_string(),
+            ))
+        })
     }
 
     /// Check the status of a deploy operation.
@@ -195,8 +203,9 @@ impl MetadataClient {
             include_details = include_details,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("checkDeployStatus"))
             .body(envelope)
             .send()
@@ -232,7 +241,9 @@ impl MetadataClient {
                     return Ok(result);
                 } else {
                     return Err(Error::new(ErrorKind::DeploymentFailed {
-                        message: result.error_message.unwrap_or_else(|| "Unknown error".to_string()),
+                        message: result
+                            .error_message
+                            .unwrap_or_else(|| "Unknown error".to_string()),
                         failures: result.component_failures,
                     }));
                 }
@@ -251,7 +262,8 @@ impl MetadataClient {
         poll_interval: Duration,
     ) -> Result<DeployResult> {
         let async_id = self.deploy(package_zip, options).await?;
-        self.poll_deploy_status(&async_id, timeout, poll_interval).await
+        self.poll_deploy_status(&async_id, timeout, poll_interval)
+            .await
     }
 
     // ========================================================================
@@ -274,10 +286,7 @@ impl MetadataClient {
     ///
     /// let async_id = client.retrieve_unpackaged(&manifest).await?;
     /// ```
-    pub async fn retrieve_unpackaged(
-        &self,
-        manifest: &PackageManifest,
-    ) -> Result<String> {
+    pub async fn retrieve_unpackaged(&self, manifest: &PackageManifest) -> Result<String> {
         // Build XML with proper escaping to prevent injection
         let package_xml = manifest.to_xml();
 
@@ -305,8 +314,9 @@ impl MetadataClient {
             package_xml = package_xml,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("retrieve"))
             .body(envelope)
             .send()
@@ -318,17 +328,15 @@ impl MetadataClient {
             return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
         }
 
-        self.extract_element(&response_text, "id")
-            .ok_or_else(|| Error::new(ErrorKind::InvalidResponse(
-                "No async process ID in retrieve response".to_string()
-            )))
+        self.extract_element(&response_text, "id").ok_or_else(|| {
+            Error::new(ErrorKind::InvalidResponse(
+                "No async process ID in retrieve response".to_string(),
+            ))
+        })
     }
 
     /// Start a retrieve operation for a managed package.
-    pub async fn retrieve_packaged(
-        &self,
-        package_name: &str,
-    ) -> Result<String> {
+    pub async fn retrieve_packaged(&self, package_name: &str) -> Result<String> {
         let envelope = format!(
             r#"<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -351,8 +359,9 @@ impl MetadataClient {
             package_name = xml::escape(package_name),
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("retrieve"))
             .body(envelope)
             .send()
@@ -364,10 +373,11 @@ impl MetadataClient {
             return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
         }
 
-        self.extract_element(&response_text, "id")
-            .ok_or_else(|| Error::new(ErrorKind::InvalidResponse(
-                "No async process ID in retrieve response".to_string()
-            )))
+        self.extract_element(&response_text, "id").ok_or_else(|| {
+            Error::new(ErrorKind::InvalidResponse(
+                "No async process ID in retrieve response".to_string(),
+            ))
+        })
     }
 
     /// Check the status of a retrieve operation.
@@ -396,8 +406,9 @@ impl MetadataClient {
             include_zip = include_zip,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("checkRetrieveStatus"))
             .body(envelope)
             .send()
@@ -433,7 +444,9 @@ impl MetadataClient {
                     return Ok(result);
                 } else {
                     return Err(Error::new(ErrorKind::RetrieveFailed(
-                        result.error_message.unwrap_or_else(|| "Unknown error".to_string()),
+                        result
+                            .error_message
+                            .unwrap_or_else(|| "Unknown error".to_string()),
                     )));
                 }
             }
@@ -466,7 +479,8 @@ impl MetadataClient {
         poll_interval: Duration,
     ) -> Result<RetrieveResult> {
         let async_id = self.retrieve_unpackaged(manifest).await?;
-        self.poll_retrieve_status(&async_id, timeout, poll_interval).await
+        self.poll_retrieve_status(&async_id, timeout, poll_interval)
+            .await
     }
 
     // ========================================================================
@@ -506,8 +520,9 @@ impl MetadataClient {
             api_version = self.api_version,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("listMetadata"))
             .body(envelope)
             .send()
@@ -546,8 +561,9 @@ impl MetadataClient {
             api_version = self.api_version,
         );
 
-        let response = self.http_client
-            .post(&self.metadata_url())
+        let response = self
+            .http_client
+            .post(self.metadata_url())
             .headers(self.build_headers("describeMetadata"))
             .body(envelope)
             .send()
@@ -565,7 +581,8 @@ impl MetadataClient {
     /// Get a list of all metadata type names.
     pub async fn list_metadata_types(&self) -> Result<Vec<String>> {
         let result = self.describe_metadata().await?;
-        let mut types: Vec<String> = result.metadata_objects
+        let mut types: Vec<String> = result
+            .metadata_objects
             .into_iter()
             .flat_map(|obj| {
                 let mut names = vec![obj.xml_name];
@@ -589,10 +606,14 @@ impl MetadataClient {
         }
 
         let fault_code = self.extract_element(xml, "faultcode")?;
-        let fault_string = self.extract_element(xml, "faultstring")
+        let fault_string = self
+            .extract_element(xml, "faultstring")
             .unwrap_or_else(|| "Unknown error".to_string());
 
-        Some(SoapFault { fault_code, fault_string })
+        Some(SoapFault {
+            fault_code,
+            fault_string,
+        })
     }
 
     /// Extract a simple element value from XML.
@@ -611,9 +632,9 @@ impl MetadataClient {
             if let Some(start_idx) = xml.find(start) {
                 let content_start = start_idx + start.len();
                 let search_from = &xml[content_start..];
-                if let Some(end_idx) = search_from.find(&end_tag)
-                    .or_else(|| search_from.find(&format!("</{}", tag.split(':').last().unwrap_or(tag))))
-                {
+                if let Some(end_idx) = search_from.find(&end_tag).or_else(|| {
+                    search_from.find(&format!("</{}", tag.split(':').next_back().unwrap_or(tag)))
+                }) {
                     return Some(search_from[..end_idx].to_string());
                 }
             }
@@ -643,42 +664,51 @@ impl MetadataClient {
 
     /// Parse deploy result from XML.
     fn parse_deploy_result(&self, xml: &str) -> Result<DeployResult> {
-        let id = self.extract_element(xml, "id")
+        let id = self
+            .extract_element(xml, "id")
             .ok_or_else(|| Error::new(ErrorKind::InvalidResponse("Missing id".to_string())))?;
 
-        let done = self.extract_element(xml, "done")
+        let done = self
+            .extract_element(xml, "done")
             .map(|s| s == "true")
             .unwrap_or(false);
 
-        let status_str = self.extract_element(xml, "status")
+        let status_str = self
+            .extract_element(xml, "status")
             .unwrap_or_else(|| "Pending".to_string());
-        let status = status_str.parse()
-            .unwrap_or(DeployStatus::Pending);
+        let status = status_str.parse().unwrap_or(DeployStatus::Pending);
 
-        let success = self.extract_element(xml, "success")
+        let success = self
+            .extract_element(xml, "success")
             .map(|s| s == "true")
             .unwrap_or(false);
 
         let error_message = self.extract_element(xml, "errorMessage");
         let state_detail = self.extract_element(xml, "stateDetail");
 
-        let number_components_deployed = self.extract_element(xml, "numberComponentsDeployed")
+        let number_components_deployed = self
+            .extract_element(xml, "numberComponentsDeployed")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let number_components_errors = self.extract_element(xml, "numberComponentErrors")
+        let number_components_errors = self
+            .extract_element(xml, "numberComponentErrors")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let number_components_total = self.extract_element(xml, "numberComponentsTotal")
+        let number_components_total = self
+            .extract_element(xml, "numberComponentsTotal")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
 
-        let number_tests_completed = self.extract_element(xml, "numberTestsCompleted")
+        let number_tests_completed = self
+            .extract_element(xml, "numberTestsCompleted")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let number_tests_errors = self.extract_element(xml, "numberTestErrors")
+        let number_tests_errors = self
+            .extract_element(xml, "numberTestErrors")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
-        let number_tests_total = self.extract_element(xml, "numberTestsTotal")
+        let number_tests_total = self
+            .extract_element(xml, "numberTestsTotal")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
 
@@ -720,18 +750,24 @@ impl MetadataClient {
                     component_type: self.extract_element(block, "componentType"),
                     file_name: self.extract_element(block, "fileName"),
                     full_name: self.extract_element(block, "fullName"),
-                    line_number: self.extract_element(block, "lineNumber")
+                    line_number: self
+                        .extract_element(block, "lineNumber")
                         .and_then(|s| s.parse().ok()),
-                    column_number: self.extract_element(block, "columnNumber")
+                    column_number: self
+                        .extract_element(block, "columnNumber")
                         .and_then(|s| s.parse().ok()),
-                    problem: self.extract_element(block, "problem")
+                    problem: self
+                        .extract_element(block, "problem")
                         .unwrap_or_else(|| "Unknown problem".to_string()),
-                    problem_type: self.extract_element(block, "problemType")
+                    problem_type: self
+                        .extract_element(block, "problemType")
                         .unwrap_or_else(|| "Error".to_string()),
-                    created: self.extract_element(block, "created")
+                    created: self
+                        .extract_element(block, "created")
                         .map(|s| s == "true")
                         .unwrap_or(false),
-                    deleted: self.extract_element(block, "deleted")
+                    deleted: self
+                        .extract_element(block, "deleted")
                         .map(|s| s == "true")
                         .unwrap_or(false),
                 };
@@ -761,10 +797,12 @@ impl MetadataClient {
                     component_type: self.extract_element(block, "componentType"),
                     file_name: self.extract_element(block, "fileName"),
                     full_name: self.extract_element(block, "fullName"),
-                    created: self.extract_element(block, "created")
+                    created: self
+                        .extract_element(block, "created")
                         .map(|s| s == "true")
                         .unwrap_or(false),
-                    deleted: self.extract_element(block, "deleted")
+                    deleted: self
+                        .extract_element(block, "deleted")
                         .map(|s| s == "true")
                         .unwrap_or(false),
                 };
@@ -810,19 +848,22 @@ impl MetadataClient {
 
     /// Parse retrieve result from XML.
     fn parse_retrieve_result(&self, xml: &str) -> Result<RetrieveResult> {
-        let id = self.extract_element(xml, "id")
+        let id = self
+            .extract_element(xml, "id")
             .ok_or_else(|| Error::new(ErrorKind::InvalidResponse("Missing id".to_string())))?;
 
-        let done = self.extract_element(xml, "done")
+        let done = self
+            .extract_element(xml, "done")
             .map(|s| s == "true")
             .unwrap_or(false);
 
-        let status_str = self.extract_element(xml, "status")
+        let status_str = self
+            .extract_element(xml, "status")
             .unwrap_or_else(|| "Pending".to_string());
-        let status = status_str.parse()
-            .unwrap_or(RetrieveStatus::Pending);
+        let status = status_str.parse().unwrap_or(RetrieveStatus::Pending);
 
-        let success = self.extract_element(xml, "success")
+        let success = self
+            .extract_element(xml, "success")
             .map(|s| s == "true")
             .unwrap_or(false);
 
@@ -863,25 +904,30 @@ impl MetadataClient {
                     self.extract_element(block, "id"),
                 ) {
                     let prop = FileProperties {
-                        created_by_id: self.extract_element(block, "createdById")
+                        created_by_id: self
+                            .extract_element(block, "createdById")
                             .unwrap_or_default(),
-                        created_by_name: self.extract_element(block, "createdByName")
+                        created_by_name: self
+                            .extract_element(block, "createdByName")
                             .unwrap_or_default(),
-                        created_date: self.extract_element(block, "createdDate")
+                        created_date: self
+                            .extract_element(block, "createdDate")
                             .unwrap_or_default(),
                         file_name,
                         full_name,
                         id,
-                        last_modified_by_id: self.extract_element(block, "lastModifiedById")
+                        last_modified_by_id: self
+                            .extract_element(block, "lastModifiedById")
                             .unwrap_or_default(),
-                        last_modified_by_name: self.extract_element(block, "lastModifiedByName")
+                        last_modified_by_name: self
+                            .extract_element(block, "lastModifiedByName")
                             .unwrap_or_default(),
-                        last_modified_date: self.extract_element(block, "lastModifiedDate")
+                        last_modified_date: self
+                            .extract_element(block, "lastModifiedDate")
                             .unwrap_or_default(),
                         manageable_state: self.extract_element(block, "manageableState"),
                         namespace_prefix: self.extract_element(block, "namespacePrefix"),
-                        component_type: self.extract_element(block, "type")
-                            .unwrap_or_default(),
+                        component_type: self.extract_element(block, "type").unwrap_or_default(),
                     };
                     properties.push(prop);
                 }
@@ -950,7 +996,8 @@ impl MetadataClient {
                         last_modified_date: self.extract_element(block, "lastModifiedDate"),
                         manageable_state: self.extract_element(block, "manageableState"),
                         namespace_prefix: self.extract_element(block, "namespacePrefix"),
-                        metadata_type: self.extract_element(block, "type")
+                        metadata_type: self
+                            .extract_element(block, "type")
                             .unwrap_or_else(|| metadata_type.to_string()),
                     };
                     results.push(info);
@@ -966,10 +1013,7 @@ impl MetadataClient {
     }
 
     /// Parse describe metadata result.
-    fn parse_describe_metadata_result(
-        &self,
-        xml: &str,
-    ) -> Result<DescribeMetadataResult> {
+    fn parse_describe_metadata_result(&self, xml: &str) -> Result<DescribeMetadataResult> {
         let mut metadata_objects = Vec::new();
         let pattern = "<metadataObjects>";
         let mut search_from = xml;
@@ -986,10 +1030,12 @@ impl MetadataClient {
                         xml_name,
                         directory_name: self.extract_element(block, "directoryName"),
                         suffix: self.extract_element(block, "suffix"),
-                        in_folder: self.extract_element(block, "inFolder")
+                        in_folder: self
+                            .extract_element(block, "inFolder")
                             .map(|s| s == "true")
                             .unwrap_or(false),
-                        meta_file: self.extract_element(block, "metaFile")
+                        meta_file: self
+                            .extract_element(block, "metaFile")
                             .map(|s| s == "true")
                             .unwrap_or(false),
                         child_xml_names: child_names,
@@ -1004,10 +1050,12 @@ impl MetadataClient {
         }
 
         let organization_namespace = self.extract_element(xml, "organizationNamespace");
-        let partial_save_allowed = self.extract_element(xml, "partialSaveAllowed")
+        let partial_save_allowed = self
+            .extract_element(xml, "partialSaveAllowed")
             .map(|s| s == "true")
             .unwrap_or(false);
-        let test_required = self.extract_element(xml, "testRequired")
+        let test_required = self
+            .extract_element(xml, "testRequired")
             .map(|s| s == "true")
             .unwrap_or(false);
 
@@ -1043,7 +1091,10 @@ mod tests {
         let xml = "<root><id>12345</id><done>true</done></root>";
 
         assert_eq!(client.extract_element(xml, "id"), Some("12345".to_string()));
-        assert_eq!(client.extract_element(xml, "done"), Some("true".to_string()));
+        assert_eq!(
+            client.extract_element(xml, "done"),
+            Some("true".to_string())
+        );
         assert_eq!(client.extract_element(xml, "missing"), None);
     }
 

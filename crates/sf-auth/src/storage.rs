@@ -1,7 +1,7 @@
 //! Token storage for persisting credentials.
 
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::oauth::TokenResponse;
@@ -51,7 +51,13 @@ impl FileTokenStorage {
         // Sanitize the key to create a safe filename
         let safe_key = key
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
 
         self.base_path.join(format!("{}.json", safe_key))
@@ -153,13 +159,17 @@ struct StoredToken {
 
 /// Get the default token storage directory.
 pub fn default_token_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| Error::new(ErrorKind::Config("Could not find home directory".to_string())))?;
+    let home = dirs::home_dir().ok_or_else(|| {
+        Error::new(ErrorKind::Config(
+            "Could not find home directory".to_string(),
+        ))
+    })?;
 
     Ok(home.join(".sf-api").join("tokens"))
 }
 
 /// Get the default token storage path.
+#[allow(dead_code)]
 pub fn default_token_path(key: &str) -> Result<PathBuf> {
     let dir = default_token_dir()?;
     Ok(dir.join(format!("{}.json", key)))
@@ -242,6 +252,11 @@ mod tests {
         storage.save("user@example.com", &test_token()).unwrap();
 
         let path = storage.token_path("user@example.com");
-        assert!(path.file_name().unwrap().to_str().unwrap().contains("user_example_com"));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("user_example_com"));
     }
 }

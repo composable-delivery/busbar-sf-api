@@ -56,10 +56,7 @@ pub struct SalesforceRestClient {
 
 impl SalesforceRestClient {
     /// Create a new REST client with the given instance URL and access token.
-    pub fn new(
-        instance_url: impl Into<String>,
-        access_token: impl Into<String>,
-    ) -> Result<Self> {
+    pub fn new(instance_url: impl Into<String>, access_token: impl Into<String>) -> Result<Self> {
         let client = SalesforceClient::new(instance_url, access_token)?;
         Ok(Self { client })
     }
@@ -187,7 +184,12 @@ impl SalesforceRestClient {
                     message: "No valid field names provided".to_string(),
                 }));
             }
-            format!("sobjects/{}/{}?fields={}", sobject, id, safe_fields.join(","))
+            format!(
+                "sobjects/{}/{}?fields={}",
+                sobject,
+                id,
+                safe_fields.join(",")
+            )
         } else {
             format!("sobjects/{}/{}", sobject, id)
         };
@@ -196,12 +198,7 @@ impl SalesforceRestClient {
 
     /// Update a record.
     #[instrument(skip(self, record))]
-    pub async fn update<T: Serialize>(
-        &self,
-        sobject: &str,
-        id: &str,
-        record: &T,
-    ) -> Result<()> {
+    pub async fn update<T: Serialize>(&self, sobject: &str, id: &str, record: &T) -> Result<()> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -215,7 +212,10 @@ impl SalesforceRestClient {
             }));
         }
         let path = format!("sobjects/{}/{}", sobject, id);
-        self.client.rest_patch(&path, record).await.map_err(Into::into)
+        self.client
+            .rest_patch(&path, record)
+            .await
+            .map_err(Into::into)
     }
 
     /// Delete a record.
@@ -358,7 +358,10 @@ impl SalesforceRestClient {
         &self,
         next_records_url: &str,
     ) -> Result<QueryResult<T>> {
-        self.client.get_json(next_records_url).await.map_err(Into::into)
+        self.client
+            .get_json(next_records_url)
+            .await
+            .map_err(Into::into)
     }
 
     // =========================================================================
@@ -602,10 +605,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = SalesforceRestClient::new(
-            "https://na1.salesforce.com",
-            "token123",
-        ).unwrap();
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token123").unwrap();
 
         assert_eq!(client.instance_url(), "https://na1.salesforce.com");
         assert_eq!(client.api_version(), "62.0");
@@ -613,10 +613,9 @@ mod tests {
 
     #[test]
     fn test_api_version_override() {
-        let client = SalesforceRestClient::new(
-            "https://na1.salesforce.com",
-            "token",
-        ).unwrap().with_api_version("60.0");
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
     }

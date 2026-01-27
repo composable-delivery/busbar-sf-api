@@ -73,9 +73,9 @@ pub use client::SfHttpClient;
 pub use config::{ClientConfig, ClientConfigBuilder, CompressionConfig};
 pub use error::{Error, ErrorKind, Result};
 pub use request::{RequestBuilder, RequestMethod};
-pub use response::{Response, ResponseExt, ApiUsage};
-pub use retry::{RetryConfig, RetryPolicy, BackoffStrategy};
-pub use salesforce_client::{SalesforceClient, QueryResult};
+pub use response::{ApiUsage, Response, ResponseExt};
+pub use retry::{BackoffStrategy, RetryConfig, RetryPolicy};
+pub use salesforce_client::{QueryResult, SalesforceClient};
 
 /// Default Salesforce API version
 pub const DEFAULT_API_VERSION: &str = "62.0";

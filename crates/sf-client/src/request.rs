@@ -1,8 +1,8 @@
 //! HTTP request building with Salesforce-specific headers.
 
-use std::collections::HashMap;
 use bytes::Bytes;
 use serde::Serialize;
+use std::collections::HashMap;
 
 use crate::error::Result;
 
@@ -98,8 +98,7 @@ impl RequestBuilder {
     pub fn json<T: Serialize>(mut self, body: &T) -> Result<Self> {
         let value = serde_json::to_value(body)?;
         self.body = Some(RequestBody::Json(value));
-        self
-            .headers
+        self.headers
             .insert("Content-Type".to_string(), "application/json".to_string());
         Ok(self)
     }
@@ -147,8 +146,10 @@ impl RequestBuilder {
     /// Set XML body (for SOAP/Metadata API).
     pub fn xml(mut self, data: impl Into<String>) -> Self {
         self.body = Some(RequestBody::Text(data.into()));
-        self.headers
-            .insert("Content-Type".to_string(), "text/xml; charset=UTF-8".to_string());
+        self.headers.insert(
+            "Content-Type".to_string(),
+            "text/xml; charset=UTF-8".to_string(),
+        );
         self
     }
 

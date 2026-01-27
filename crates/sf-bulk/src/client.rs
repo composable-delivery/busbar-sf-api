@@ -55,10 +55,7 @@ pub struct BulkApiClient {
 
 impl BulkApiClient {
     /// Create a new Bulk API client.
-    pub fn new(
-        instance_url: impl Into<String>,
-        access_token: impl Into<String>,
-    ) -> Result<Self> {
+    pub fn new(instance_url: impl Into<String>, access_token: impl Into<String>) -> Result<Self> {
         let client = SalesforceClient::new(instance_url, access_token)?;
         Ok(Self {
             client,
@@ -228,10 +225,13 @@ impl BulkApiClient {
     /// Get successful results from an ingest job (CSV format).
     #[instrument(skip(self))]
     pub async fn get_successful_results(&self, job_id: &str) -> Result<String> {
-        let url = format!("{}/{}/successfulResults", self.client.bulk_url("ingest"), job_id);
+        let url = format!(
+            "{}/{}/successfulResults",
+            self.client.bulk_url("ingest"),
+            job_id
+        );
 
-        let request = self.client.get(&url)
-            .header("Accept", "text/csv");
+        let request = self.client.get(&url).header("Accept", "text/csv");
 
         let response = self.client.execute(request).await?;
 
@@ -248,10 +248,13 @@ impl BulkApiClient {
     /// Get failed results from an ingest job (CSV format).
     #[instrument(skip(self))]
     pub async fn get_failed_results(&self, job_id: &str) -> Result<String> {
-        let url = format!("{}/{}/failedResults", self.client.bulk_url("ingest"), job_id);
+        let url = format!(
+            "{}/{}/failedResults",
+            self.client.bulk_url("ingest"),
+            job_id
+        );
 
-        let request = self.client.get(&url)
-            .header("Accept", "text/csv");
+        let request = self.client.get(&url).header("Accept", "text/csv");
 
         let response = self.client.execute(request).await?;
 
@@ -268,10 +271,13 @@ impl BulkApiClient {
     /// Get unprocessed records from an ingest job (CSV format).
     #[instrument(skip(self))]
     pub async fn get_unprocessed_records(&self, job_id: &str) -> Result<String> {
-        let url = format!("{}/{}/unprocessedrecords", self.client.bulk_url("ingest"), job_id);
+        let url = format!(
+            "{}/{}/unprocessedrecords",
+            self.client.bulk_url("ingest"),
+            job_id
+        );
 
-        let request = self.client.get(&url)
-            .header("Accept", "text/csv");
+        let request = self.client.get(&url).header("Accept", "text/csv");
 
         let response = self.client.execute(request).await?;
 
@@ -371,8 +377,7 @@ impl BulkApiClient {
             url = format!("{}?{}", url, query_params.join("&"));
         }
 
-        let request = self.client.get(&url)
-            .header("Accept", "text/csv");
+        let request = self.client.get(&url).header("Accept", "text/csv");
 
         let response = self.client.execute(request).await?;
 
@@ -510,10 +515,7 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = BulkApiClient::new(
-            "https://test.salesforce.com",
-            "token123",
-        ).unwrap();
+        let client = BulkApiClient::new("https://test.salesforce.com", "token123").unwrap();
 
         assert_eq!(client.instance_url(), "https://test.salesforce.com");
         assert_eq!(client.api_version(), "62.0");
@@ -521,22 +523,18 @@ mod tests {
 
     #[test]
     fn test_poll_interval() {
-        let client = BulkApiClient::new(
-            "https://test.salesforce.com",
-            "token123",
-        ).unwrap()
-        .with_poll_interval(Duration::from_secs(10));
+        let client = BulkApiClient::new("https://test.salesforce.com", "token123")
+            .unwrap()
+            .with_poll_interval(Duration::from_secs(10));
 
         assert_eq!(client.poll_interval, Duration::from_secs(10));
     }
 
     #[test]
     fn test_max_wait() {
-        let client = BulkApiClient::new(
-            "https://test.salesforce.com",
-            "token123",
-        ).unwrap()
-        .with_max_wait(Duration::from_secs(120));
+        let client = BulkApiClient::new("https://test.salesforce.com", "token123")
+            .unwrap()
+            .with_max_wait(Duration::from_secs(120));
 
         assert_eq!(client.max_wait, Duration::from_secs(120));
     }

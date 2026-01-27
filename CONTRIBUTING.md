@@ -117,6 +117,26 @@ cargo clippy --workspace
 cargo clippy --workspace -- -D warnings
 ```
 
+### Pre-commit Hooks (Recommended)
+
+We provide pre-commit hooks to automatically check formatting and run clippy before each commit:
+
+```bash
+# Install pre-commit (if not already installed)
+# On macOS/Linux:
+pip install pre-commit
+# Or with Homebrew:
+brew install pre-commit
+
+# Install the git hooks
+pre-commit install
+
+# Run manually on all files (optional)
+pre-commit run --all-files
+```
+
+Once installed, the hooks will automatically run on staged files before each commit. This helps catch issues early and ensures consistent code quality.
+
 ## Code Style
 
 - Follow Rust naming conventions
