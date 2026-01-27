@@ -107,8 +107,8 @@ impl BackoffStrategy {
                 let base_delay = initial_delay.as_secs_f64() * base_multiplier;
 
                 // Add jitter: random value between 0 and base_delay
-                let mut rng = rand::thread_rng();
-                let jitter = rng.gen::<f64>() * base_delay;
+                let mut rng = rand::rng();
+                let jitter = rng.random::<f64>() * base_delay;
 
                 Duration::from_secs_f64(base_delay + jitter)
             }

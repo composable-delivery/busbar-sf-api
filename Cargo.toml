@@ -51,7 +51,7 @@ tokio = { version = "1.40", features = ["full"] }
 futures = "0.3"
 
 # HTTP
-reqwest = { version = "0.13", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "gzip", "deflate", "rustls-tls"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
