@@ -96,12 +96,18 @@ impl JwtAuth {
         debug!(login_url, "Authenticating with JWT Bearer flow");
 
         let client = reqwest::Client::new();
+
+        // Prepare form data
+        let form_data = [
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", &assertion),
+        ];
+        let body = serde_urlencoded::to_string(form_data)?;
+
         let response = client
             .post(format!("{}/services/oauth2/token", login_url))
-            .form(&[
-                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                ("assertion", &assertion),
-            ])
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await?;
 

@@ -96,6 +96,14 @@ pub enum ErrorKind {
     #[error("JSON error: {0}")]
     Json(String),
 
+    /// Invalid URL.
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
+
+    /// Serialization error.
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+
     /// Invalid configuration.
     #[error("Configuration error: {0}")]
     Config(String),

@@ -125,10 +125,13 @@ impl OAuthClient {
             params.push(("client_secret", secret));
         }
 
+        let body = serde_urlencoded::to_string(params)?;
+
         let response = self
             .http_client
             .post(format!("{}/services/oauth2/token", login_url))
-            .form(&params)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await?;
 
@@ -143,10 +146,14 @@ impl OAuthClient {
     pub async fn validate_token(&self, token: &str, login_url: &str) -> Result<TokenInfo> {
         // Use POST with token in body instead of GET with query param
         // This prevents the token from appearing in server logs
+        let form_data = [("access_token", token)];
+        let body = serde_urlencoded::to_string(form_data)?;
+
         let response = self
             .http_client
             .post(format!("{}/services/oauth2/tokeninfo", login_url))
-            .form(&[("access_token", token)])
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await?;
 
@@ -165,10 +172,14 @@ impl OAuthClient {
     /// The token parameter is not logged to prevent credential exposure.
     #[instrument(skip(self, token))]
     pub async fn revoke_token(&self, token: &str, login_url: &str) -> Result<()> {
+        let form_data = [("token", token)];
+        let body = serde_urlencoded::to_string(form_data)?;
+
         let response = self
             .http_client
             .post(format!("{}/services/oauth2/revoke", login_url))
-            .form(&[("token", token)])
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await?;
 
@@ -268,10 +279,13 @@ impl WebFlowAuth {
             params.push(("client_secret", secret));
         }
 
+        let body = serde_urlencoded::to_string(params)?;
+
         let response = self
             .http_client
             .post(format!("{}/services/oauth2/token", login_url))
-            .form(&params)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
             .send()
             .await?;
 

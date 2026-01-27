@@ -129,9 +129,22 @@ impl SfHttpClient {
 
     /// Execute a single request without retry logic.
     async fn execute_once(&self, request: &RequestBuilder) -> Result<Response> {
-        let mut req = self
-            .inner
-            .request(request.method.to_reqwest(), &request.url);
+        // Build URL with query parameters
+        let url = if !request.query_params.is_empty() {
+            let mut url = url::Url::parse(&request.url)
+                .map_err(|e| Error::with_source(ErrorKind::InvalidUrl(request.url.clone()), e))?;
+
+            // Add query parameters
+            for (key, value) in &request.query_params {
+                url.query_pairs_mut().append_pair(key, value);
+            }
+
+            url.to_string()
+        } else {
+            request.url.clone()
+        };
+
+        let mut req = self.inner.request(request.method.to_reqwest(), &url);
 
         // Add bearer token
         if let Some(ref token) = request.bearer_token {
@@ -141,11 +154,6 @@ impl SfHttpClient {
         // Add headers
         for (name, value) in &request.headers {
             req = req.header(name.as_str(), value.as_str());
-        }
-
-        // Add query parameters
-        if !request.query_params.is_empty() {
-            req = req.query(&request.query_params);
         }
 
         // Add conditional headers
@@ -173,7 +181,17 @@ impl SfHttpClient {
                 RequestBody::Json(value) => req.json(value),
                 RequestBody::Text(text) => req.body(text.clone()),
                 RequestBody::Bytes(bytes) => req.body(bytes.clone()),
-                RequestBody::Form(data) => req.form(data),
+                RequestBody::Form(data) => {
+                    // Serialize form data to URL-encoded format
+                    let encoded = serde_urlencoded::to_string(data).map_err(|e| {
+                        Error::with_source(
+                            ErrorKind::Serialization("Failed to encode form data".to_string()),
+                            e,
+                        )
+                    })?;
+                    req.header("Content-Type", "application/x-www-form-urlencoded")
+                        .body(encoded)
+                }
             };
         }
 
