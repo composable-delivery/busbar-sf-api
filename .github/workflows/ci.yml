@@ -140,13 +140,15 @@ jobs:
 
             - name: Run unit test coverage
               run: |
+                  echo "::group::Unit coverage"
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
+                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info --summary-only | tee coverage/summary.txt
+                  echo "::endgroup::"
 
             - name: Coverage summary
               run: |
-                  cargo llvm-cov report --summary-only | tee coverage/summary.txt
-                  cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  echo "### Coverage (Unit Tests)" >> "$GITHUB_STEP_SUMMARY"
+                  sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
 
             - name: Upload coverage artifacts
               uses: actions/upload-artifact@v4
@@ -190,7 +192,7 @@ jobs:
               run: |
                   echo "::group::Integration tests"
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info -- --nocapture
+                cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Integration tests summary
@@ -199,11 +201,18 @@ jobs:
                   echo "### Integration Tests (Real Org)" >> "$GITHUB_STEP_SUMMARY"
                   echo "- SF_AUTH_URL available: true" >> "$GITHUB_STEP_SUMMARY"
                   echo "- Job status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+                  if [ -f coverage/summary.txt ]; then
+                    echo "" >> "$GITHUB_STEP_SUMMARY"
+                    sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  fi
 
             - name: Coverage summary
               run: |
-                  cargo llvm-cov report --summary-only | tee coverage/summary.txt
-                  cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  if [ -f coverage/summary.txt ]; then
+                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  else
+                    echo "No coverage summary generated" >> "$GITHUB_STEP_SUMMARY"
+                  fi
 
             - name: Upload coverage artifacts
               uses: actions/upload-artifact@v4

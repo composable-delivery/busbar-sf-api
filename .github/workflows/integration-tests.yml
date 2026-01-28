@@ -53,12 +53,12 @@ jobs:
               run: |
                   echo "Running integration tests with coverage..."
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info -- --nocapture
+                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
 
             - name: Coverage summary
               run: |
-                  cargo llvm-cov report --summary-only | tee coverage/summary.txt
-                  cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  echo "### Coverage (Integration)" >> "$GITHUB_STEP_SUMMARY"
+                  sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
 
             - name: Upload coverage artifacts
               uses: actions/upload-artifact@v4
