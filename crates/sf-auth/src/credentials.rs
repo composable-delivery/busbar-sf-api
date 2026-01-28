@@ -240,7 +240,8 @@ impl SalesforceCredentials {
         // Build token endpoint URL from instance URL
         // For localhost/test servers, use the instance_url directly
         // For Salesforce production/sandbox, use the appropriate login URL
-        let token_url = if instance_url.contains("localhost") || instance_url.contains("127.0.0.1") {
+        let token_url = if instance_url.contains("localhost") || instance_url.contains("127.0.0.1")
+        {
             instance_url
         } else if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
             "https://test.salesforce.com"
@@ -396,13 +397,13 @@ mod tests {
         // Test parsing with client_secret present
         // Format: force://<client_id>:<client_secret>:<refresh_token>@<instance_url>
         let auth_url = "force://client123:secret456:refresh789@https://test.salesforce.com";
-        
+
         // We can't test the full async function without mocking the OAuth server,
         // but we can test the parsing logic by extracting it
         let url = auth_url.strip_prefix("force://").unwrap();
         let parts: Vec<&str> = url.splitn(2, '@').collect();
         assert_eq!(parts.len(), 2);
-        
+
         let cred_parts: Vec<&str> = parts[0].splitn(4, ':').collect();
         assert!(cred_parts.len() >= 3);
         assert_eq!(cred_parts[0], "client123");
@@ -415,11 +416,11 @@ mod tests {
         // Test parsing with empty client_secret (default Salesforce CLI connected app)
         // Format: force://<client_id>::<refresh_token>@<instance_url>
         let auth_url = "force://client123::refresh789@https://test.salesforce.com";
-        
+
         let url = auth_url.strip_prefix("force://").unwrap();
         let parts: Vec<&str> = url.splitn(2, '@').collect();
         assert_eq!(parts.len(), 2);
-        
+
         let cred_parts: Vec<&str> = parts[0].splitn(4, ':').collect();
         assert!(cred_parts.len() >= 3);
         assert_eq!(cred_parts[0], "client123");
@@ -434,11 +435,11 @@ mod tests {
         // Note: username cannot contain @ since splitn(2, '@') splits on the first @,
         // making it the delimiter between credentials and instance_url
         let auth_url = "force://client123:secret456:refresh789:user@https://test.salesforce.com";
-        
+
         let url = auth_url.strip_prefix("force://").unwrap();
         let parts: Vec<&str> = url.splitn(2, '@').collect();
         assert_eq!(parts.len(), 2);
-        
+
         let cred_parts: Vec<&str> = parts[0].splitn(4, ':').collect();
         assert_eq!(cred_parts.len(), 4);
         assert_eq!(cred_parts[0], "client123");
@@ -451,25 +452,28 @@ mod tests {
     fn test_parse_auth_url_invalid_format() {
         // Test invalid format with too few parts
         let auth_url = "force://client123:secret456@https://test.salesforce.com";
-        
+
         let url = auth_url.strip_prefix("force://").unwrap();
         let parts: Vec<&str> = url.splitn(2, '@').collect();
         assert_eq!(parts.len(), 2);
-        
+
         let cred_parts: Vec<&str> = parts[0].splitn(4, ':').collect();
         // Should have only 2 parts, which is less than the required 3
         assert_eq!(cred_parts.len(), 2);
-        assert!(cred_parts.len() < 3, "Invalid format should have less than 3 parts");
+        assert!(
+            cred_parts.len() < 3,
+            "Invalid format should have less than 3 parts"
+        );
     }
 
     #[tokio::test]
     async fn test_from_sfdx_auth_url_with_client_secret() {
-        use wiremock::{Mock, MockServer, ResponseTemplate};
         use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
 
         // Set up mock OAuth server
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("POST"))
             .and(path("/services/oauth2/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -489,7 +493,7 @@ mod tests {
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
         assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
-        
+
         let creds = creds.unwrap();
         assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
         assert_eq!(creds.access_token(), "test_access_token");
@@ -498,23 +502,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_sfdx_auth_url_without_client_secret() {
-        use wiremock::{Mock, MockServer, ResponseTemplate, Request, Match};
         use wiremock::matchers::{method, path};
+        use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
         // Custom matcher to verify client_secret is NOT in the request
         struct NoClientSecretMatcher;
         impl Match for NoClientSecretMatcher {
             fn matches(&self, request: &Request) -> bool {
                 let body = String::from_utf8_lossy(&request.body);
-                body.contains("client_id=client123") &&
-                body.contains("refresh_token=refresh789") &&
-                !body.contains("client_secret")
+                body.contains("client_id=client123")
+                    && body.contains("refresh_token=refresh789")
+                    && !body.contains("client_secret")
             }
         }
 
         // Set up mock OAuth server
         let mock_server = MockServer::start().await;
-        
+
         // Verify that client_secret is NOT sent when empty
         Mock::given(method("POST"))
             .and(path("/services/oauth2/token"))
@@ -530,14 +534,11 @@ mod tests {
             .await;
 
         // Auth URL with empty client_secret (double colon ::)
-        let auth_url = format!(
-            "force://client123::refresh789@{}",
-            mock_server.uri()
-        );
+        let auth_url = format!("force://client123::refresh789@{}", mock_server.uri());
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
         assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
-        
+
         let creds = creds.unwrap();
         assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
         assert_eq!(creds.access_token(), "test_access_token_no_secret");
@@ -546,13 +547,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_sfdx_auth_url_sandbox() {
-        use wiremock::{Mock, MockServer, ResponseTemplate};
         use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
 
         // Set up mock OAuth server - note we can't actually test the sandbox URL selection
         // without mocking the actual Salesforce endpoint, but we can test that the parsing works
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("POST"))
             .and(path("/services/oauth2/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -574,7 +575,7 @@ mod tests {
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
         assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
-        
+
         let creds = creds.unwrap();
         assert_eq!(creds.instance_url(), "https://test.salesforce.com");
         assert_eq!(creds.access_token(), "test_access_token_sandbox");
@@ -582,12 +583,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_from_sfdx_auth_url_with_username() {
-        use wiremock::{Mock, MockServer, ResponseTemplate};
         use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
 
         // Set up mock OAuth server
         let mock_server = MockServer::start().await;
-        
+
         Mock::given(method("POST"))
             .and(path("/services/oauth2/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -608,7 +609,7 @@ mod tests {
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
         assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
-        
+
         let creds = creds.unwrap();
         assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
         assert_eq!(creds.access_token(), "test_access_token_with_user");
@@ -622,6 +623,8 @@ mod tests {
         let creds = SalesforceCredentials::from_sfdx_auth_url(auth_url).await;
         assert!(creds.is_err());
         let err = creds.unwrap_err();
-        assert!(err.to_string().contains("expected client_id:client_secret:refresh_token"));
+        assert!(err
+            .to_string()
+            .contains("expected client_id:client_secret:refresh_token"));
     }
 }
