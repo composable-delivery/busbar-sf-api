@@ -10,6 +10,7 @@ A comprehensive Salesforce API client library for Rust, providing type-safe acce
 
 - 🔐 **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
 - 🚀 **REST API** - CRUD operations, queries, composite requests, and collections
+- 🛡️ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
 - 📦 **Bulk API 2.0** - Large-scale data operations with efficient processing
 - 🛠️ **Tooling API** - Apex operations, debug logs, and code coverage
 - 📋 **Metadata API** - Deploy and retrieve Salesforce metadata
@@ -50,6 +51,49 @@ busbar-sf-rest = "0.1"
 ```
 
 ## Quick Start
+
+### Safe Query Builder (Recommended)
+
+The QueryBuilder provides a fluent API with automatic SOQL injection prevention:
+
+```rust
+use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Account {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let creds = SalesforceCredentials::from_sfdx_alias("my-org").await?;
+    let client = SalesforceRestClient::new(
+        creds.instance_url(),
+        creds.access_token(),
+    )?;
+
+    // User input is automatically escaped - safe by default!
+    let user_input = "O'Brien's Company";
+    
+    let accounts: Vec<Account> = QueryBuilder::new("Account")?
+        .select(&["Id", "Name", "Industry"])
+        .where_eq("Name", user_input)?  // Automatically escaped!
+        .limit(10)
+        .execute(&client)
+        .await?;
+
+    for account in accounts {
+        println!("{}: {}", account.id, account.name);
+    }
+
+    Ok(())
+}
+```
 
 ### Using Credentials from Salesforce CLI
 
@@ -199,6 +243,7 @@ cargo run --example queries
 This library is designed with security in mind. See [SECURITY.md](SECURITY.md) for full details.
 
 **Key Security Features:**
+- ✅ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (RECOMMENDED)
 - ✅ Automatic credential redaction in logs and debug output
 - ✅ SOQL injection prevention utilities (escape_string, field validation)
 - ✅ URL parameter encoding to prevent path traversal
@@ -207,14 +252,19 @@ This library is designed with security in mind. See [SECURITY.md](SECURITY.md) f
 
 **Security Best Practices:**
 ```rust
-use busbar_sf_client::security::soql;
+use busbar_sf_rest::QueryBuilder;
 
-// CORRECT - Always escape user input
+// RECOMMENDED - QueryBuilder is safe by default
+let accounts: Vec<Account> = QueryBuilder::new("Account")?
+    .select(&["Id", "Name"])
+    .where_eq("Name", user_input)?  // Automatically escaped!
+    .execute(&client)
+    .await?;
+
+// Alternative - Manual escaping (easy to forget!)
+use busbar_sf_client::security::soql;
 let safe_name = soql::escape_string(user_input);
 let query = format!("SELECT Id FROM Account WHERE Name = '{}'", safe_name);
-
-// WRONG - NEVER concatenate user input directly
-// let query = format!("SELECT Id FROM Account WHERE Name = '{}'", user_input);
 ```
 
 For security vulnerabilities, see our [Security Policy](SECURITY.md)
