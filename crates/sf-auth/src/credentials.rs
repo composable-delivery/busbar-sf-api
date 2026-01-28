@@ -162,6 +162,97 @@ impl SalesforceCredentials {
         Ok(Self::new(instance_url, access_token, api_version))
     }
 
+    /// Load credentials from an SFDX auth URL.
+    ///
+    /// The SFDX auth URL format is:
+    /// `force://<client_id>:<client_secret>:<refresh_token>@<instance_url>`
+    ///
+    /// This method will parse the auth URL and use the refresh token to obtain
+    /// an access token from Salesforce.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use busbar_sf_auth::SalesforceCredentials;
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let auth_url = std::env::var("SF_AUTH_URL")?;
+    /// let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn from_sfdx_auth_url(auth_url: &str) -> Result<Self> {
+        use crate::oauth::{OAuthClient, OAuthConfig};
+
+        // Parse the auth URL
+        // Format: force://<client_id>:<client_secret>:<refresh_token>@<instance_url>
+        if !auth_url.starts_with("force://") {
+            return Err(Error::new(ErrorKind::InvalidInput(
+                "Auth URL must start with force://".to_string(),
+            )));
+        }
+
+        let url = auth_url.strip_prefix("force://").unwrap();
+
+        // Split at @ to separate credentials from instance URL
+        let parts: Vec<&str> = url.splitn(2, '@').collect();
+        if parts.len() != 2 {
+            return Err(Error::new(ErrorKind::InvalidInput(
+                "Invalid auth URL format: missing @".to_string(),
+            )));
+        }
+
+        let credentials_part = parts[0];
+        let instance_url = parts[1];
+
+        // Split credentials into client_id:client_secret:refresh_token
+        let cred_parts: Vec<&str> = credentials_part.splitn(4, ':').collect();
+        if cred_parts.len() < 4 {
+            return Err(Error::new(ErrorKind::InvalidInput(
+                "Invalid auth URL format: expected client_id:client_secret:refresh_token:username"
+                    .to_string(),
+            )));
+        }
+
+        let client_id = cred_parts[0];
+        let client_secret = if cred_parts[1].is_empty() {
+            None
+        } else {
+            Some(cred_parts[1].to_string())
+        };
+        // The refresh token is the entire remaining part after the second colon
+        // This handles refresh tokens that may contain colons
+        let refresh_token = cred_parts[2];
+
+        // Create OAuth client
+        let mut config = OAuthConfig::new(client_id);
+        if let Some(secret) = client_secret {
+            config = config.with_secret(secret);
+        }
+
+        let oauth_client = OAuthClient::new(config);
+
+        // Build token endpoint URL from instance URL
+        let token_url =
+            if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
+                "https://test.salesforce.com"
+            } else {
+                "https://login.salesforce.com"
+            };
+
+        // Use refresh token to get access token
+        let token_response = oauth_client.refresh_token(refresh_token, token_url).await?;
+
+        // Create credentials from token response
+        let api_version = busbar_sf_client::DEFAULT_API_VERSION.to_string();
+        let mut creds = Self::new(
+            token_response.instance_url,
+            token_response.access_token,
+            api_version,
+        );
+        creds = creds.with_refresh_token(refresh_token);
+
+        Ok(creds)
+    }
+
     /// Change the API version.
     pub fn with_api_version(mut self, version: impl Into<String>) -> Self {
         self.api_version = version.into();

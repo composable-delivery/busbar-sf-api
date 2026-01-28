@@ -286,6 +286,7 @@ For security vulnerabilities, see our [Security Policy](SECURITY.md)
 
 - 📖 [API Documentation](https://docs.rs/busbar-sf-api) - Complete API reference
 - 🔒 [Security Policy](SECURITY.md) - Security best practices and vulnerability reporting
+- 🧪 [Integration Testing Guide](INTEGRATION_TESTING.md) - How to run integration tests
 - 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.1.0 release
 - 📝 [Changelog](CHANGELOG.md) - Version history and release notes
 - 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
@@ -306,6 +307,11 @@ cargo build --workspace
 
 # Run tests
 cargo test --workspace
+
+# Run integration tests (requires SF_AUTH_URL or authenticated SF CLI)
+# See INTEGRATION_TESTING.md for details
+SF_AUTH_URL="force://..." cargo test --test integration_sf_auth_url -- --ignored
+SF_AUTH_URL="force://..." cargo test --test integration_examples -- --ignored
 
 # Run linter
 cargo clippy --workspace -- -D warnings
