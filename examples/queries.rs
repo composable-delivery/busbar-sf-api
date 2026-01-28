@@ -1,94 +1,17 @@
 //! SOQL query examples with security best practices
 //!
 //! This example demonstrates:
-//! 1. Type-safe structs vs dynamic JSON (both patterns shown)
-//! 2. SAFE query building with automatic escaping (RECOMMENDED)
-//! 3. Manual escaping (last resort - easy to forget!)
-//!
-//! SECURITY WARNING: The library should provide a QueryBuilder to make
-//! security the default. Manual escaping is error-prone!
+//! 1. QueryBuilder - Safe by default with fluent API (RECOMMENDED)
+//! 2. Type-safe structs vs dynamic JSON (both patterns shown)
+//! 3. Manual escaping (last resort - shown for completeness)
 //!
 //! Run with: cargo run --example queries
 
 use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_client::security::soql;
-use busbar_sf_rest::SalesforceRestClient;
+use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-/// Safe query builder helper - THIS SHOULD BE IN THE LIBRARY!
-/// 
-/// This shows the pattern the library should provide for safe-by-default queries.
-struct SafeQueryBuilder {
-    sobject: String,
-    fields: Vec<String>,
-    conditions: Vec<String>,
-    limit: Option<u32>,
-}
-
-impl SafeQueryBuilder {
-    fn new(sobject: &str) -> Self {
-        // Validate SObject name
-        if !soql::is_safe_sobject_name(sobject) {
-            panic!("Invalid SObject name: {}", sobject);
-        }
-        Self {
-            sobject: sobject.to_string(),
-            fields: Vec::new(),
-            conditions: Vec::new(),
-            limit: None,
-        }
-    }
-
-    fn select(mut self, fields: &[&str]) -> Self {
-        // Validate all field names
-        for field in fields {
-            if soql::is_safe_field_name(field) {
-                self.fields.push(field.to_string());
-            }
-        }
-        self
-    }
-
-    /// Add WHERE condition with automatic escaping
-    fn where_eq(mut self, field: &str, value: &str) -> Self {
-        if !soql::is_safe_field_name(field) {
-            panic!("Invalid field name: {}", field);
-        }
-        let escaped_value = soql::escape_string(value);
-        self.conditions.push(format!("{} = '{}'", field, escaped_value));
-        self
-    }
-
-    /// Add LIKE condition with automatic escaping
-    fn where_like(mut self, field: &str, pattern: &str) -> Self {
-        if !soql::is_safe_field_name(field) {
-            panic!("Invalid field name: {}", field);
-        }
-        let escaped_pattern = soql::escape_like(pattern);
-        self.conditions.push(format!("{} LIKE '%{}%'", field, escaped_pattern));
-        self
-    }
-
-    fn limit(mut self, limit: u32) -> Self {
-        self.limit = Some(limit);
-        self
-    }
-
-    fn build(self) -> String {
-        let mut query = format!("SELECT {} FROM {}", self.fields.join(", "), self.sobject);
-        
-        if !self.conditions.is_empty() {
-            query.push_str(&format!(" WHERE {}", self.conditions.join(" AND ")));
-        }
-        
-        if let Some(limit) = self.limit {
-            query.push_str(&format!(" LIMIT {}", limit));
-        }
-        
-        query
-    }
-}
 
 /// Account record for type-safe queries
 /// 
@@ -145,16 +68,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let creds = get_credentials().await?;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())?;
 
-    // SAFE query pattern (RECOMMENDED)
-    println!("--- SAFE Query Builder Pattern (RECOMMENDED) ---\n");
-    example_safe_query_builder(&client).await?;
+    // RECOMMENDED: Use QueryBuilder (safe by default)
+    println!("--- QueryBuilder Pattern (RECOMMENDED) ---\n");
+    example_query_builder_typed(&client).await?;
+    example_query_builder_dynamic(&client).await?;
+    example_query_builder_advanced(&client).await?;
 
-    // Type-safe vs Dynamic JSON patterns
-    println!("\n--- Type-Safe vs Dynamic JSON ---\n");
+    // Alternative: Raw queries (less safe, but flexible)
+    println!("\n--- Raw Query Patterns ---\n");
     example_basic_query_typed(&client).await?;
     example_basic_query_dynamic(&client).await?;
 
-    // UNSAFE manual escaping (shown for completeness, but discouraged)
+    // Manual escaping (NOT recommended, but shown for completeness)
     println!("\n--- Manual Escaping (NOT RECOMMENDED) ---\n");
     example_manual_escaping(&client).await?;
 
@@ -168,41 +93,78 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Example 0: SAFE query builder pattern (THIS IS THE RIGHT WAY!)
-async fn example_safe_query_builder(
+/// Example 1a: QueryBuilder with type-safe results (RECOMMENDED)
+async fn example_query_builder_typed(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Example 0: Safe Query Builder");
-    println!("------------------------------");
-    println!("This pattern should be built into the library!");
-    println!();
+    println!("Example 1a: QueryBuilder with Type Safety");
+    println!("------------------------------------------");
 
     // Simulated user input (potentially dangerous)
     let user_name = "O'Brien's Company"; // Has single quote
+
+    // Build and execute query with automatic escaping
+    let accounts: Vec<Account> = QueryBuilder::new("Account")?
+        .select(&["Id", "Name", "Industry"])
+        .where_eq("Name", user_name)?  // Automatically escaped!
+        .limit(10)
+        .execute(&client)
+        .await?;
+
+    println!("✓ Found {} accounts", accounts.len());
+    println!("  Benefits: Type-safe results, automatic escaping, fluent API");
+    println!();
+
+    Ok(())
+}
+
+/// Example 1b: QueryBuilder with dynamic JSON results
+async fn example_query_builder_dynamic(
+    client: &SalesforceRestClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Example 1b: QueryBuilder with Dynamic JSON");
+    println!("-------------------------------------------");
+
     let user_pattern = "tech%value"; // Has SQL wildcards
 
-    // Build query with automatic escaping
-    let query = SafeQueryBuilder::new("Account")
+    // Works with HashMap for ergonomic access
+    let accounts: Vec<HashMap<String, serde_json::Value>> = QueryBuilder::new("Account")?
         .select(&["Id", "Name", "Industry"])
-        .where_eq("Name", user_name)  // Automatically escaped!
-        .limit(10)
-        .build();
-
-    println!("✓ Built safe query: {}", query);
-    let accounts: Vec<Account> = client.query_all(&query).await?;
-    println!("✓ Found {} accounts", accounts.len());
-
-    // LIKE query with automatic escaping
-    let like_query = SafeQueryBuilder::new("Account")
-        .select(&["Id", "Name"])
-        .where_like("Name", user_pattern)  // Automatically escaped!
+        .where_like("Name", user_pattern)?  // Wildcards automatically escaped!
         .limit(5)
-        .build();
+        .execute(&client)
+        .await?;
 
-    println!("✓ Built safe LIKE query: {}", like_query);
-    let like_accounts: Vec<Account> = client.query_all(&like_query).await?;
-    println!("✓ Found {} matching accounts", like_accounts.len());
-    println!("\n  Benefits: Safe by default, no chance of forgetting to escape");
+    println!("✓ Found {} accounts", accounts.len());
+    for account in accounts.iter().take(3) {
+        let name = account.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        println!("  - {}", name);
+    }
+    println!("  Benefits: Flexible, ergonomic HashMap access, no struct needed");
+    println!();
+
+    Ok(())
+}
+
+/// Example 1c: QueryBuilder with advanced features
+async fn example_query_builder_advanced(
+    client: &SalesforceRestClient,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Example 1c: QueryBuilder Advanced Features");
+    println!("-------------------------------------------");
+
+    let industries = vec!["Technology", "Finance"];
+
+    let accounts: Vec<Account> = QueryBuilder::new("Account")?
+        .select(&["Id", "Name", "Industry"])
+        .where_in("Industry", &industries)?  // Multiple values
+        .order_by("Name", true)?  // Sort ascending
+        .limit(20)
+        .execute(&client)
+        .await?;
+
+    println!("✓ Found {} accounts in specified industries", accounts.len());
+    println!("  Features: WHERE IN, ORDER BY, fluent chaining");
     println!();
 
     Ok(())
