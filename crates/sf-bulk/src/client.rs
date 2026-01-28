@@ -320,49 +320,79 @@ impl BulkApiClient {
     }
 
     // =========================================================================
-    // Query Job Operations
+    // Query Job Operations - SECURED
     // =========================================================================
+    // All query operations now use QueryBuilder for automatic SOQL injection prevention.
+    // No raw SOQL methods are exposed in the public API.
 
-    /// Create a new query job.
-    #[instrument(skip(self, request))]
-    pub async fn create_query_job(&self, request: CreateQueryJobRequest) -> Result<QueryJob> {
+    /// Execute a complete query operation with automatic SOQL injection prevention.
+    ///
+    /// This is the ONLY way to execute bulk queries. It uses QueryBuilder for automatic
+    /// escaping of user input, making it impossible to introduce SOQL injection vulnerabilities.
+    ///
+    /// Creates job, waits for completion, and returns all results.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::{BulkApiClient, QueryBuilder};
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // User input is automatically escaped - safe by default!
+    /// let user_input = "O'Brien's Company";
+    /// let result = client.execute_query(
+    ///     QueryBuilder::new("Account")?
+    ///         .select(&["Id", "Name", "Industry"])
+    ///         .where_eq("Name", user_input)?  // Automatically escaped!
+    ///         .limit(10000)
+    /// ).await?;
+    ///
+    /// println!("Retrieved {} records", result.job.number_records_processed);
+    /// ```
+    ///
+    /// # Security
+    ///
+    /// QueryBuilder automatically escapes all user input to prevent SOQL injection attacks.
+    /// There is no way to bypass this security - it's built into the API design.
+    #[cfg(feature = "query-builder")]
+    #[instrument(skip(self, query_builder))]
+    pub async fn execute_query<T>(
+        &self,
+        query_builder: busbar_sf_rest::QueryBuilder<T>,
+    ) -> Result<QueryJobResult>
+    where
+        T: serde::de::DeserializeOwned + Clone,
+    {
+        // Build the safe SOQL query
+        let soql = query_builder.build().map_err(|e| {
+            Error::new(ErrorKind::Api(format!("Failed to build query: {}", e)))
+        })?;
+
+        // Create job
+        let request = CreateQueryJobRequest::new(soql);
         let url = self.client.bulk_url("query");
         let job: QueryJob = self.client.post_json(&url, &request).await?;
-        Ok(job)
-    }
 
-    /// Get query job status.
-    #[instrument(skip(self))]
-    pub async fn get_query_job(&self, job_id: &str) -> Result<QueryJob> {
-        let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
-        let job: QueryJob = self.client.get_json(&url).await?;
-        Ok(job)
-    }
+        // Wait for completion
+        let completed_job = self.wait_for_query_job_internal(&job.id).await?;
 
-    /// Wait for a query job to complete.
-    #[instrument(skip(self))]
-    pub async fn wait_for_query_job(&self, job_id: &str) -> Result<QueryJob> {
-        let start = std::time::Instant::now();
+        // Get all results
+        let results = if completed_job.state.is_success() {
+            Some(self.get_all_query_results(&job.id).await?)
+        } else {
+            None
+        };
 
-        loop {
-            let job = self.get_query_job(job_id).await?;
-
-            if job.state.is_terminal() {
-                return Ok(job);
-            }
-
-            if start.elapsed() > self.max_wait {
-                return Err(Error::new(ErrorKind::Timeout(format!(
-                    "Query job {} did not complete within {:?}",
-                    job_id, self.max_wait
-                ))));
-            }
-
-            sleep(self.poll_interval).await;
-        }
+        Ok(QueryJobResult {
+            job: completed_job,
+            results,
+        })
     }
 
     /// Abort a query job.
+    ///
+    /// This can be used with job IDs from `execute_query()`.
     #[instrument(skip(self))]
     pub async fn abort_query_job(&self, job_id: &str) -> Result<QueryJob> {
         let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
@@ -380,6 +410,30 @@ impl BulkApiClient {
 
         let job: QueryJob = response.json().await?;
         Ok(job)
+    }
+
+    /// Wait for a query job to complete (internal implementation).
+    #[instrument(skip(self))]
+    async fn wait_for_query_job_internal(&self, job_id: &str) -> Result<QueryJob> {
+        let start = std::time::Instant::now();
+
+        loop {
+            let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
+            let job: QueryJob = self.client.get_json(&url).await?;
+
+            if job.state.is_terminal() {
+                return Ok(job);
+            }
+
+            if start.elapsed() > self.max_wait {
+                return Err(Error::new(ErrorKind::Timeout(format!(
+                    "Query job {} did not complete within {:?}",
+                    job_id, self.max_wait
+                ))));
+            }
+
+            sleep(self.poll_interval).await;
+        }
     }
 
     /// Get query results with pagination.
@@ -536,31 +590,6 @@ impl BulkApiClient {
             job: completed_job,
             successful_results,
             failed_results,
-        })
-    }
-
-    /// Execute a complete query operation.
-    ///
-    /// Creates job, waits for completion, and returns all results.
-    #[instrument(skip(self))]
-    pub async fn execute_query(&self, soql: &str) -> Result<QueryJobResult> {
-        // Create job
-        let request = CreateQueryJobRequest::new(soql);
-        let job = self.create_query_job(request).await?;
-
-        // Wait for completion
-        let completed_job = self.wait_for_query_job(&job.id).await?;
-
-        // Get all results
-        let results = if completed_job.state.is_success() {
-            Some(self.get_all_query_results(&job.id).await?)
-        } else {
-            None
-        };
-
-        Ok(QueryJobResult {
-            job: completed_job,
-            results,
         })
     }
 }

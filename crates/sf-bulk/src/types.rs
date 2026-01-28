@@ -244,10 +244,13 @@ impl CreateIngestJobRequest {
     }
 }
 
-/// Request to create a query job.
+/// Request to create a query job (internal use only).
+///
+/// This type is not exposed publicly to prevent bypassing SOQL injection prevention.
+/// Use `BulkApiClient::execute_query()` with QueryBuilder instead.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateQueryJobRequest {
+pub(crate) struct CreateQueryJobRequest {
     /// SOQL query
     pub query: String,
     /// Operation type (query or queryAll)
@@ -259,8 +262,8 @@ pub struct CreateQueryJobRequest {
 }
 
 impl CreateQueryJobRequest {
-    /// Create a new query job request.
-    pub fn new(soql: impl Into<String>) -> Self {
+    /// Create a new query job request (internal).
+    pub(crate) fn new(soql: impl Into<String>) -> Self {
         Self {
             query: soql.into(),
             operation: BulkOperation::Query,
@@ -270,13 +273,15 @@ impl CreateQueryJobRequest {
     }
 
     /// Use queryAll instead of query (includes deleted records).
-    pub fn with_query_all(mut self) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn with_query_all(mut self) -> Self {
         self.operation = BulkOperation::QueryAll;
         self
     }
 
     /// Set the column delimiter.
-    pub fn with_column_delimiter(mut self, delimiter: ColumnDelimiter) -> Self {
+    #[allow(dead_code)]
+    pub(crate) fn with_column_delimiter(mut self, delimiter: ColumnDelimiter) -> Self {
         self.column_delimiter = delimiter;
         self
     }
