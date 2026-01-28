@@ -73,9 +73,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .query_all("SELECT Id, Name FROM Account LIMIT 10")
         .await?;
 
-    for account in accounts {
-        println!("{}", account["Name"]);
-    }
+    println!("Retrieved {} accounts", accounts.len());
+    // Note: In production, be cautious about logging sensitive data
+    // For debugging: println!("Account: {}", account["Name"]);
 
     Ok(())
 }
