@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Account record for type-safe queries
-/// 
+///
 /// Use typed structs when:
 /// - Building production applications  
 /// - You know the schema ahead of time
@@ -31,6 +31,7 @@ struct Account {
 
 /// Contact record with relationship query support
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct Contact {
     #[serde(rename = "Id")]
     id: String,
@@ -44,6 +45,7 @@ struct Contact {
 
 /// Nested Account reference in Contact
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AccountRef {
     #[serde(rename = "Name")]
     name: String,
@@ -51,6 +53,7 @@ struct AccountRef {
 
 /// Aggregate query result
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct IndustryCount {
     #[serde(rename = "Industry")]
     industry: String,
@@ -106,9 +109,9 @@ async fn example_query_builder_typed(
     // Build and execute query with automatic escaping
     let accounts: Vec<Account> = QueryBuilder::new("Account")?
         .select(&["Id", "Name", "Industry"])
-        .where_eq("Name", user_name)?  // Automatically escaped!
+        .where_eq("Name", user_name)? // Automatically escaped!
         .limit(10)
-        .execute(&client)
+        .execute(client)
         .await?;
 
     println!("✓ Found {} accounts", accounts.len());
@@ -130,14 +133,17 @@ async fn example_query_builder_dynamic(
     // Works with HashMap for ergonomic access
     let accounts: Vec<HashMap<String, serde_json::Value>> = QueryBuilder::new("Account")?
         .select(&["Id", "Name", "Industry"])
-        .where_like("Name", user_pattern)?  // Wildcards automatically escaped!
+        .where_like("Name", user_pattern)? // Wildcards automatically escaped!
         .limit(5)
-        .execute(&client)
+        .execute(client)
         .await?;
 
     println!("✓ Found {} accounts", accounts.len());
     for account in accounts.iter().take(3) {
-        let name = account.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let name = account
+            .get("Name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
         println!("  - {}", name);
     }
     println!("  Benefits: Flexible, ergonomic HashMap access, no struct needed");
@@ -157,13 +163,16 @@ async fn example_query_builder_advanced(
 
     let accounts: Vec<Account> = QueryBuilder::new("Account")?
         .select(&["Id", "Name", "Industry"])
-        .where_in("Industry", &industries)?  // Multiple values
-        .order_by("Name", true)?  // Sort ascending
+        .where_in("Industry", &industries)? // Multiple values
+        .order_by("Name", true)? // Sort ascending
         .limit(20)
-        .execute(&client)
+        .execute(client)
         .await?;
 
-    println!("✓ Found {} accounts in specified industries", accounts.len());
+    println!(
+        "✓ Found {} accounts in specified industries",
+        accounts.len()
+    );
     println!("  Features: WHERE IN, ORDER BY, fluent chaining");
     println!();
 
@@ -180,7 +189,11 @@ async fn example_basic_query_typed(
     let query = "SELECT Id, Name, Industry FROM Account LIMIT 5";
     let result: busbar_sf_client::QueryResult<Account> = client.query(query).await?;
 
-    println!("✓ Found {} accounts (total: {})", result.records.len(), result.total_size);
+    println!(
+        "✓ Found {} accounts (total: {})",
+        result.records.len(),
+        result.total_size
+    );
     for account in &result.records {
         println!("  - {} (Industry: {:?})", account.name, account.industry);
     }
@@ -198,18 +211,20 @@ async fn example_basic_query_dynamic(
     println!("-------------------------------");
 
     let query = "SELECT Id, Name, Industry FROM Account LIMIT 5";
-    
+
     // Use HashMap for more ergonomic access than raw Value
-    let result: busbar_sf_client::QueryResult<HashMap<String, serde_json::Value>> = 
+    let result: busbar_sf_client::QueryResult<HashMap<String, serde_json::Value>> =
         client.query(query).await?;
 
     println!("✓ Found {} accounts", result.records.len());
     for account in &result.records {
         // Much more ergonomic than account["Name"].as_str().unwrap_or()
-        let name = account.get("Name")
+        let name = account
+            .get("Name")
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown");
-        let industry = account.get("Industry")
+        let industry = account
+            .get("Industry")
             .and_then(|v| v.as_str())
             .unwrap_or("None");
         println!("  - {} (Industry: {})", name, industry);
@@ -221,6 +236,7 @@ async fn example_basic_query_dynamic(
 }
 
 /// Example 2: Automatic pagination with type safety
+#[allow(dead_code)]
 async fn example_query_pagination_typed(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -231,7 +247,10 @@ async fn example_query_pagination_typed(
     let query = "SELECT Id, Name FROM Account LIMIT 100";
     let accounts: Vec<Account> = client.query_all(query).await?;
 
-    println!("✓ Retrieved {} accounts (automatic pagination)", accounts.len());
+    println!(
+        "✓ Retrieved {} accounts (automatic pagination)",
+        accounts.len()
+    );
     println!();
 
     Ok(())
@@ -239,7 +258,7 @@ async fn example_query_pagination_typed(
 
 /// Example 3: Manual escaping - NOT RECOMMENDED but shown for completeness
 ///
-/// WARNING: This approach is error-prone! 
+/// WARNING: This approach is error-prone!
 /// - Easy to forget to escape
 /// - Easy to use wrong escape function (escape_string vs escape_like)
 /// - Not safe by default
@@ -276,6 +295,7 @@ async fn example_manual_escaping(
 }
 
 /// Example 4: Field validation
+#[allow(dead_code)]
 async fn example_field_validation(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -300,7 +320,7 @@ async fn example_field_validation(
     // Build SELECT clause with safe fields
     if let Some(select_clause) = soql::build_safe_select(&safe_fields) {
         let query = format!("SELECT {} FROM Account LIMIT 5", select_clause);
-        
+
         // Use HashMap for dynamic field access
         let result: busbar_sf_client::QueryResult<HashMap<String, serde_json::Value>> =
             client.query(&query).await?;
@@ -321,14 +341,21 @@ async fn example_relationship_query(
     println!("Example 7: Relationship Query");
     println!("-----------------------------");
 
-    let query = "SELECT Id, Name, Email, Account.Name FROM Contact WHERE Account.Name != null LIMIT 5";
+    let query =
+        "SELECT Id, Name, Email, Account.Name FROM Contact WHERE Account.Name != null LIMIT 5";
 
     let contacts: Vec<serde_json::Value> = client.query_all(query).await?;
 
     println!("✓ Found {} contacts with accounts", contacts.len());
     for contact in &contacts {
-        let name = contact.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
-        let id = contact.get("Id").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let name = contact
+            .get("Name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+        let id = contact
+            .get("Id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
         if let Some(account) = contact.get("Account") {
             if let Some(account_name) = account.get("Name").and_then(|v| v.as_str()) {
                 println!("  - {} ({}) @ {}", name, id, account_name);
@@ -353,7 +380,10 @@ async fn example_aggregate_query(
 
     println!("✓ Top {} industries:", results.len());
     for result in &results {
-        let industry = result.get("Industry").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        let industry = result
+            .get("Industry")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
         let total = result.get("total").and_then(|v| v.as_i64()).unwrap_or(0);
         println!("  - {}: {} accounts", industry, total);
     }

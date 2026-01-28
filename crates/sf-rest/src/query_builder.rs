@@ -20,8 +20,8 @@
 use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 
-use busbar_sf_client::security::soql;
 use crate::{Error, ErrorKind, Result, SalesforceRestClient};
+use busbar_sf_client::security::soql;
 
 /// Safe SOQL query builder with automatic injection prevention.
 ///
@@ -42,7 +42,7 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     /// Validates the SObject name for safety.
     pub fn new(sobject: impl AsRef<str>) -> Result<Self> {
         let sobject = sobject.as_ref();
-        
+
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -89,16 +89,17 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     pub fn where_eq(mut self, field: impl AsRef<str>, value: impl AsRef<str>) -> Result<Self> {
         let field = field.as_ref();
         let value = value.as_ref();
-        
+
         if !soql::is_safe_field_name(field) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_FIELD".to_string(),
                 message: format!("Invalid field name: {}", field),
             }));
         }
-        
+
         let escaped_value = soql::escape_string(value);
-        self.conditions.push(format!("{} = '{}'", field, escaped_value));
+        self.conditions
+            .push(format!("{} = '{}'", field, escaped_value));
         Ok(self)
     }
 
@@ -106,16 +107,17 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     pub fn where_ne(mut self, field: impl AsRef<str>, value: impl AsRef<str>) -> Result<Self> {
         let field = field.as_ref();
         let value = value.as_ref();
-        
+
         if !soql::is_safe_field_name(field) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_FIELD".to_string(),
                 message: format!("Invalid field name: {}", field),
             }));
         }
-        
+
         let escaped_value = soql::escape_string(value);
-        self.conditions.push(format!("{} != '{}'", field, escaped_value));
+        self.conditions
+            .push(format!("{} != '{}'", field, escaped_value));
         Ok(self)
     }
 
@@ -134,16 +136,17 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     pub fn where_like(mut self, field: impl AsRef<str>, pattern: impl AsRef<str>) -> Result<Self> {
         let field = field.as_ref();
         let pattern = pattern.as_ref();
-        
+
         if !soql::is_safe_field_name(field) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_FIELD".to_string(),
                 message: format!("Invalid field name: {}", field),
             }));
         }
-        
+
         let escaped_pattern = soql::escape_like(pattern);
-        self.conditions.push(format!("{} LIKE '%{}%'", field, escaped_pattern));
+        self.conditions
+            .push(format!("{} LIKE '%{}%'", field, escaped_pattern));
         Ok(self)
     }
 
@@ -152,20 +155,21 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     /// Values are automatically escaped.
     pub fn where_in(mut self, field: impl AsRef<str>, values: &[impl AsRef<str>]) -> Result<Self> {
         let field = field.as_ref();
-        
+
         if !soql::is_safe_field_name(field) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_FIELD".to_string(),
                 message: format!("Invalid field name: {}", field),
             }));
         }
-        
+
         let escaped_values: Vec<String> = values
             .iter()
             .map(|v| format!("'{}'", soql::escape_string(v.as_ref())))
             .collect();
-        
-        self.conditions.push(format!("{} IN ({})", field, escaped_values.join(", ")));
+
+        self.conditions
+            .push(format!("{} IN ({})", field, escaped_values.join(", ")));
         Ok(self)
     }
 
@@ -183,14 +187,14 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
     /// Validates field names for safety.
     pub fn order_by(mut self, field: impl AsRef<str>, ascending: bool) -> Result<Self> {
         let field = field.as_ref();
-        
+
         if !soql::is_safe_field_name(field) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_FIELD".to_string(),
                 message: format!("Invalid field name: {}", field),
             }));
         }
-        
+
         let direction = if ascending { "ASC" } else { "DESC" };
         self.order_by.push(format!("{} {}", field, direction));
         Ok(self)
@@ -220,23 +224,23 @@ impl<T: DeserializeOwned + Clone> QueryBuilder<T> {
         }
 
         let mut query = format!("SELECT {} FROM {}", self.fields.join(", "), self.sobject);
-        
+
         if !self.conditions.is_empty() {
             query.push_str(&format!(" WHERE {}", self.conditions.join(" AND ")));
         }
-        
+
         if !self.order_by.is_empty() {
             query.push_str(&format!(" ORDER BY {}", self.order_by.join(", ")));
         }
-        
+
         if let Some(limit) = self.limit {
             query.push_str(&format!(" LIMIT {}", limit));
         }
-        
+
         if let Some(offset) = self.offset {
             query.push_str(&format!(" OFFSET {}", offset));
         }
-        
+
         Ok(query)
     }
 
