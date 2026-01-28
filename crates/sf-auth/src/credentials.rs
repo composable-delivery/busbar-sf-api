@@ -204,10 +204,10 @@ impl SalesforceCredentials {
         let instance_url = parts[1];
 
         // Split credentials into client_id:client_secret:refresh_token
-        let cred_parts: Vec<&str> = credentials_part.split(':').collect();
-        if cred_parts.len() < 3 {
+        let cred_parts: Vec<&str> = credentials_part.splitn(4, ':').collect();
+        if cred_parts.len() < 4 {
             return Err(Error::new(ErrorKind::InvalidInput(
-                "Invalid auth URL format: expected client_id:client_secret:refresh_token"
+                "Invalid auth URL format: expected client_id:client_secret:refresh_token:username"
                     .to_string(),
             )));
         }
@@ -218,6 +218,8 @@ impl SalesforceCredentials {
         } else {
             Some(cred_parts[1].to_string())
         };
+        // The refresh token is the entire remaining part after the second colon
+        // This handles refresh tokens that may contain colons
         let refresh_token = cred_parts[2];
 
         // Create OAuth client

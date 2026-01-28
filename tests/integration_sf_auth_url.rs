@@ -91,12 +91,9 @@ async fn test_rest_search_sosl() {
 
     assert!(result.is_ok(), "SOSL search should succeed");
 
-    let search_results = result.unwrap();
+    let _search_results = result.unwrap();
     // search_results is a SearchResult<T> which contains searchRecords
-    assert!(
-        search_results.search_records.is_empty() || !search_results.search_records.is_empty(),
-        "Search should return results"
-    );
+    // Results can be empty or non-empty depending on org data, both are valid
 }
 
 #[tokio::test]

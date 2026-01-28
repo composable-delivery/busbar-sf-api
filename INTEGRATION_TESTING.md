@@ -160,7 +160,7 @@ Tests that all example programs work correctly:
 
 The integration tests run automatically on GitHub Actions when:
 - Manually triggered via workflow_dispatch
-- On push to main branch (with SF_AUTH_URL secret)
+- On push to main branch (when SF_AUTH_URL secret is available)
 
 The tests use the `copilot` environment which has access to the `SF_AUTH_URL` secret.
 
