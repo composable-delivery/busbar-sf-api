@@ -155,7 +155,7 @@ impl BulkApiClient {
     #[instrument(skip(self))]
     pub async fn close_ingest_job(&self, job_id: &str) -> Result<IngestJob> {
         let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
-        let request = serde_json::json!({ "state": "UploadComplete" });
+        let request = UpdateJobStateRequest::upload_complete();
 
         let req = self.client.patch(&url).json(&request)?;
         let response = self.client.execute(req).await?;
@@ -175,7 +175,7 @@ impl BulkApiClient {
     #[instrument(skip(self))]
     pub async fn abort_ingest_job(&self, job_id: &str) -> Result<IngestJob> {
         let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
-        let request = serde_json::json!({ "state": "Aborted" });
+        let request = UpdateJobStateRequest::abort();
 
         let req = self.client.patch(&url).json(&request)?;
         let response = self.client.execute(req).await?;
@@ -291,6 +291,34 @@ impl BulkApiClient {
         response.text().await.map_err(Into::into)
     }
 
+    /// Delete an ingest job.
+    #[instrument(skip(self))]
+    pub async fn delete_ingest_job(&self, job_id: &str) -> Result<()> {
+        let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
+
+        let request = self.client.delete(&url);
+        let response = self.client.execute(request).await?;
+
+        if !response.is_success() {
+            return Err(Error::new(ErrorKind::Api(format!(
+                "Failed to delete job: status {}",
+                response.status()
+            ))));
+        }
+
+        Ok(())
+    }
+
+    /// Get all ingest jobs.
+    ///
+    /// Returns a list of all ingest jobs in the org.
+    #[instrument(skip(self))]
+    pub async fn get_all_ingest_jobs(&self) -> Result<IngestJobList> {
+        let url = self.client.bulk_url("ingest");
+        let jobs: IngestJobList = self.client.get_json(&url).await?;
+        Ok(jobs)
+    }
+
     // =========================================================================
     // Query Job Operations
     // =========================================================================
@@ -338,7 +366,7 @@ impl BulkApiClient {
     #[instrument(skip(self))]
     pub async fn abort_query_job(&self, job_id: &str) -> Result<QueryJob> {
         let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
-        let request = serde_json::json!({ "state": "Aborted" });
+        let request = UpdateJobStateRequest::abort();
 
         let req = self.client.patch(&url).json(&request)?;
         let response = self.client.execute(req).await?;
@@ -438,6 +466,34 @@ impl BulkApiClient {
         }
 
         Ok(all_results)
+    }
+
+    /// Delete a query job.
+    #[instrument(skip(self))]
+    pub async fn delete_query_job(&self, job_id: &str) -> Result<()> {
+        let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
+
+        let request = self.client.delete(&url);
+        let response = self.client.execute(request).await?;
+
+        if !response.is_success() {
+            return Err(Error::new(ErrorKind::Api(format!(
+                "Failed to delete query job: status {}",
+                response.status()
+            ))));
+        }
+
+        Ok(())
+    }
+
+    /// Get all query jobs.
+    ///
+    /// Returns a list of all query jobs in the org.
+    #[instrument(skip(self))]
+    pub async fn get_all_query_jobs(&self) -> Result<QueryJobList> {
+        let url = self.client.bulk_url("query");
+        let jobs: QueryJobList = self.client.get_json(&url).await?;
+        Ok(jobs)
     }
 
     // =========================================================================
