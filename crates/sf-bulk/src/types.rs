@@ -67,10 +67,12 @@ pub enum BulkOperation {
     /// Delete records (soft delete)
     Delete,
     /// Hard delete records (permanent)
+    #[serde(rename = "hardDelete")]
     HardDelete,
     /// Query records
     Query,
     /// Query all records including deleted
+    #[serde(rename = "queryAll")]
     QueryAll,
 }
 
@@ -167,6 +169,30 @@ impl ColumnDelimiter {
 // Request Types
 // =============================================================================
 
+/// Request to update job state (close or abort).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateJobStateRequest {
+    /// New state for the job
+    pub state: JobState,
+}
+
+impl UpdateJobStateRequest {
+    /// Create request to mark job as upload complete.
+    pub fn upload_complete() -> Self {
+        Self {
+            state: JobState::UploadComplete,
+        }
+    }
+
+    /// Create request to abort a job.
+    pub fn abort() -> Self {
+        Self {
+            state: JobState::Aborted,
+        }
+    }
+}
+
 /// Request to create an ingest job.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -174,16 +200,16 @@ pub struct CreateIngestJobRequest {
     /// SObject API name
     pub object: String,
     /// Operation type
-    pub operation: String,
+    pub operation: BulkOperation,
     /// External ID field for upsert
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id_field_name: Option<String>,
     /// Content type
-    pub content_type: String,
+    pub content_type: ContentType,
     /// Column delimiter
-    pub column_delimiter: String,
+    pub column_delimiter: ColumnDelimiter,
     /// Line ending
-    pub line_ending: String,
+    pub line_ending: LineEnding,
 }
 
 impl CreateIngestJobRequest {
@@ -191,11 +217,11 @@ impl CreateIngestJobRequest {
     pub fn new(sobject: impl Into<String>, operation: BulkOperation) -> Self {
         Self {
             object: sobject.into(),
-            operation: operation.api_name().to_string(),
+            operation,
             external_id_field_name: None,
-            content_type: "CSV".to_string(),
-            column_delimiter: ColumnDelimiter::default().api_name().to_string(),
-            line_ending: "LF".to_string(),
+            content_type: ContentType::default(),
+            column_delimiter: ColumnDelimiter::default(),
+            line_ending: LineEnding::default(),
         }
     }
 
@@ -207,55 +233,56 @@ impl CreateIngestJobRequest {
 
     /// Set the column delimiter.
     pub fn with_column_delimiter(mut self, delimiter: ColumnDelimiter) -> Self {
-        self.column_delimiter = delimiter.api_name().to_string();
+        self.column_delimiter = delimiter;
         self
     }
 
     /// Set the line ending.
     pub fn with_line_ending(mut self, line_ending: LineEnding) -> Self {
-        self.line_ending = match line_ending {
-            LineEnding::Lf => "LF",
-            LineEnding::Crlf => "CRLF",
-        }
-        .to_string();
+        self.line_ending = line_ending;
         self
     }
 }
 
-/// Request to create a query job.
+/// Request to create a query job (internal use only).
+///
+/// This type is not exposed publicly to prevent bypassing SOQL injection prevention.
+/// Use `BulkApiClient::execute_query()` with QueryBuilder instead.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateQueryJobRequest {
+pub(crate) struct CreateQueryJobRequest {
     /// SOQL query
     pub query: String,
     /// Operation type (query or queryAll)
-    pub operation: String,
+    pub operation: BulkOperation,
     /// Column delimiter
-    pub column_delimiter: String,
+    pub column_delimiter: ColumnDelimiter,
     /// Line ending
-    pub line_ending: String,
+    pub line_ending: LineEnding,
 }
 
 impl CreateQueryJobRequest {
-    /// Create a new query job request.
-    pub fn new(soql: impl Into<String>) -> Self {
+    /// Create a new query job request (internal).
+    pub(crate) fn new(soql: impl Into<String>) -> Self {
         Self {
             query: soql.into(),
-            operation: BulkOperation::Query.api_name().to_string(),
-            column_delimiter: ColumnDelimiter::default().api_name().to_string(),
-            line_ending: "LF".to_string(),
+            operation: BulkOperation::Query,
+            column_delimiter: ColumnDelimiter::default(),
+            line_ending: LineEnding::default(),
         }
     }
 
     /// Use queryAll instead of query (includes deleted records).
-    pub fn with_query_all(mut self) -> Self {
-        self.operation = BulkOperation::QueryAll.api_name().to_string();
+    #[allow(dead_code)]
+    pub(crate) fn with_query_all(mut self) -> Self {
+        self.operation = BulkOperation::QueryAll;
         self
     }
 
     /// Set the column delimiter.
-    pub fn with_column_delimiter(mut self, delimiter: ColumnDelimiter) -> Self {
-        self.column_delimiter = delimiter.api_name().to_string();
+    #[allow(dead_code)]
+    pub(crate) fn with_column_delimiter(mut self, delimiter: ColumnDelimiter) -> Self {
+        self.column_delimiter = delimiter;
         self
     }
 }
@@ -330,6 +357,34 @@ pub struct QueryJob {
     /// Error message if failed
     #[serde(default)]
     pub error_message: Option<String>,
+}
+
+/// List of ingest jobs response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestJobList {
+    /// List of jobs
+    pub records: Vec<IngestJob>,
+    /// Whether there are more records
+    #[serde(default)]
+    pub done: bool,
+    /// Next records URL (for pagination)
+    #[serde(default)]
+    pub next_records_url: Option<String>,
+}
+
+/// List of query jobs response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryJobList {
+    /// List of jobs
+    pub records: Vec<QueryJob>,
+    /// Whether there are more records
+    #[serde(default)]
+    pub done: bool,
+    /// Next records URL (for pagination)
+    #[serde(default)]
+    pub next_records_url: Option<String>,
 }
 
 /// Query results with pagination info.
@@ -423,14 +478,56 @@ mod tests {
     fn test_create_ingest_job_request() {
         let request = CreateIngestJobRequest::new("Account", BulkOperation::Insert);
         assert_eq!(request.object, "Account");
-        assert_eq!(request.operation, "insert");
+        assert_eq!(request.operation, BulkOperation::Insert);
         assert!(request.external_id_field_name.is_none());
     }
 
     #[test]
     fn test_create_query_job_request() {
         let request = CreateQueryJobRequest::new("SELECT Id, Name FROM Account");
-        assert_eq!(request.operation, "query");
+        assert_eq!(request.operation, BulkOperation::Query);
         assert!(request.query.contains("Account"));
+    }
+
+    #[test]
+    fn test_update_job_state_request() {
+        let upload_complete = UpdateJobStateRequest::upload_complete();
+        assert_eq!(upload_complete.state, JobState::UploadComplete);
+
+        let abort = UpdateJobStateRequest::abort();
+        assert_eq!(abort.state, JobState::Aborted);
+    }
+
+    #[test]
+    fn test_bulk_operation_serialization() {
+        // Test that enum variants serialize correctly to match Salesforce API
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Insert).unwrap(),
+            "\"insert\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Update).unwrap(),
+            "\"update\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Upsert).unwrap(),
+            "\"upsert\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Delete).unwrap(),
+            "\"delete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::HardDelete).unwrap(),
+            "\"hardDelete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Query).unwrap(),
+            "\"query\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::QueryAll).unwrap(),
+            "\"queryAll\""
+        );
     }
 }

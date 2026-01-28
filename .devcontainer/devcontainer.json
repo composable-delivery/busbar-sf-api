@@ -1,0 +1,16 @@
+# devcontainer.json
+{
+    "version": "2",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "settings": {
+        "rust-analyzer.cargo.runBuildScripts": true,
+        "rust-analyzer.checkOnSave.command": "clippy"
+    },
+    "extensions": [
+        "rust-lang.rust-analyzer",
+        "esbenp.prettier-vscode"
+    ],
+    "postCreateCommand": "cargo install clippy rustfmt"
+}

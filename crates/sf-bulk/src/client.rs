@@ -155,7 +155,7 @@ impl BulkApiClient {
     #[instrument(skip(self))]
     pub async fn close_ingest_job(&self, job_id: &str) -> Result<IngestJob> {
         let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
-        let request = serde_json::json!({ "state": "UploadComplete" });
+        let request = UpdateJobStateRequest::upload_complete();
 
         let req = self.client.patch(&url).json(&request)?;
         let response = self.client.execute(req).await?;
@@ -175,7 +175,7 @@ impl BulkApiClient {
     #[instrument(skip(self))]
     pub async fn abort_ingest_job(&self, job_id: &str) -> Result<IngestJob> {
         let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
-        let request = serde_json::json!({ "state": "Aborted" });
+        let request = UpdateJobStateRequest::abort();
 
         let req = self.client.patch(&url).json(&request)?;
         let response = self.client.execute(req).await?;
@@ -291,33 +291,135 @@ impl BulkApiClient {
         response.text().await.map_err(Into::into)
     }
 
-    // =========================================================================
-    // Query Job Operations
-    // =========================================================================
+    /// Delete an ingest job.
+    #[instrument(skip(self))]
+    pub async fn delete_ingest_job(&self, job_id: &str) -> Result<()> {
+        let url = format!("{}/{}", self.client.bulk_url("ingest"), job_id);
 
-    /// Create a new query job.
-    #[instrument(skip(self, request))]
-    pub async fn create_query_job(&self, request: CreateQueryJobRequest) -> Result<QueryJob> {
+        let request = self.client.delete(&url);
+        let response = self.client.execute(request).await?;
+
+        if !response.is_success() {
+            return Err(Error::new(ErrorKind::Api(format!(
+                "Failed to delete ingest job: status {}",
+                response.status()
+            ))));
+        }
+
+        Ok(())
+    }
+
+    /// Get all ingest jobs.
+    ///
+    /// Returns a list of all ingest jobs in the org.
+    #[instrument(skip(self))]
+    pub async fn get_all_ingest_jobs(&self) -> Result<IngestJobList> {
+        let url = self.client.bulk_url("ingest");
+        let jobs: IngestJobList = self.client.get_json(&url).await?;
+        Ok(jobs)
+    }
+
+    // =========================================================================
+    // Query Job Operations - SECURED
+    // =========================================================================
+    // All query operations now use QueryBuilder for automatic SOQL injection prevention.
+    // No raw SOQL methods are exposed in the public API.
+
+    /// Execute a complete query operation with automatic SOQL injection prevention.
+    ///
+    /// This is the ONLY way to execute bulk queries. It uses QueryBuilder for automatic
+    /// escaping of user input, making it impossible to introduce SOQL injection vulnerabilities.
+    ///
+    /// Creates job, waits for completion, and returns all results.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::{BulkApiClient, QueryBuilder};
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // User input is automatically escaped - safe by default!
+    /// let user_input = "O'Brien's Company";
+    /// let result = client.execute_query(
+    ///     QueryBuilder::new("Account")?
+    ///         .select(&["Id", "Name", "Industry"])
+    ///         .where_eq("Name", user_input)?  // Automatically escaped!
+    ///         .limit(10000)
+    /// ).await?;
+    ///
+    /// println!("Retrieved {} records", result.job.number_records_processed);
+    /// ```
+    ///
+    /// # Security
+    ///
+    /// QueryBuilder automatically escapes all user input to prevent SOQL injection attacks.
+    /// There is no way to bypass this security - it's built into the API design.
+    #[cfg(feature = "query-builder")]
+    #[instrument(skip(self, query_builder))]
+    pub async fn execute_query<T>(
+        &self,
+        query_builder: busbar_sf_rest::QueryBuilder<T>,
+    ) -> Result<QueryJobResult>
+    where
+        T: serde::de::DeserializeOwned + Clone,
+    {
+        // Build the safe SOQL query
+        let soql = query_builder
+            .build()
+            .map_err(|e| Error::new(ErrorKind::Api(format!("Failed to build query: {}", e))))?;
+
+        // Create job
+        let request = CreateQueryJobRequest::new(soql);
         let url = self.client.bulk_url("query");
         let job: QueryJob = self.client.post_json(&url, &request).await?;
-        Ok(job)
+
+        // Wait for completion
+        let completed_job = self.wait_for_query_job_internal(&job.id).await?;
+
+        // Get all results
+        let results = if completed_job.state.is_success() {
+            Some(self.get_all_query_results(&job.id).await?)
+        } else {
+            None
+        };
+
+        Ok(QueryJobResult {
+            job: completed_job,
+            results,
+        })
     }
 
-    /// Get query job status.
+    /// Abort a query job.
+    ///
+    /// This can be used with job IDs from `execute_query()`.
     #[instrument(skip(self))]
-    pub async fn get_query_job(&self, job_id: &str) -> Result<QueryJob> {
+    pub async fn abort_query_job(&self, job_id: &str) -> Result<QueryJob> {
         let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
-        let job: QueryJob = self.client.get_json(&url).await?;
+        let request = UpdateJobStateRequest::abort();
+
+        let req = self.client.patch(&url).json(&request)?;
+        let response = self.client.execute(req).await?;
+
+        if !response.is_success() {
+            return Err(Error::new(ErrorKind::Api(format!(
+                "Failed to abort query job: status {}",
+                response.status()
+            ))));
+        }
+
+        let job: QueryJob = response.json().await?;
         Ok(job)
     }
 
-    /// Wait for a query job to complete.
+    /// Wait for a query job to complete (internal implementation).
     #[instrument(skip(self))]
-    pub async fn wait_for_query_job(&self, job_id: &str) -> Result<QueryJob> {
+    async fn wait_for_query_job_internal(&self, job_id: &str) -> Result<QueryJob> {
         let start = std::time::Instant::now();
 
         loop {
-            let job = self.get_query_job(job_id).await?;
+            let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
+            let job: QueryJob = self.client.get_json(&url).await?;
 
             if job.state.is_terminal() {
                 return Ok(job);
@@ -332,26 +434,6 @@ impl BulkApiClient {
 
             sleep(self.poll_interval).await;
         }
-    }
-
-    /// Abort a query job.
-    #[instrument(skip(self))]
-    pub async fn abort_query_job(&self, job_id: &str) -> Result<QueryJob> {
-        let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
-        let request = serde_json::json!({ "state": "Aborted" });
-
-        let req = self.client.patch(&url).json(&request)?;
-        let response = self.client.execute(req).await?;
-
-        if !response.is_success() {
-            return Err(Error::new(ErrorKind::Api(format!(
-                "Failed to abort query job: status {}",
-                response.status()
-            ))));
-        }
-
-        let job: QueryJob = response.json().await?;
-        Ok(job)
     }
 
     /// Get query results with pagination.
@@ -440,6 +522,34 @@ impl BulkApiClient {
         Ok(all_results)
     }
 
+    /// Delete a query job.
+    #[instrument(skip(self))]
+    pub async fn delete_query_job(&self, job_id: &str) -> Result<()> {
+        let url = format!("{}/{}", self.client.bulk_url("query"), job_id);
+
+        let request = self.client.delete(&url);
+        let response = self.client.execute(request).await?;
+
+        if !response.is_success() {
+            return Err(Error::new(ErrorKind::Api(format!(
+                "Failed to delete query job: status {}",
+                response.status()
+            ))));
+        }
+
+        Ok(())
+    }
+
+    /// Get all query jobs.
+    ///
+    /// Returns a list of all query jobs in the org.
+    #[instrument(skip(self))]
+    pub async fn get_all_query_jobs(&self) -> Result<QueryJobList> {
+        let url = self.client.bulk_url("query");
+        let jobs: QueryJobList = self.client.get_json(&url).await?;
+        Ok(jobs)
+    }
+
     // =========================================================================
     // High-Level Operations
     // =========================================================================
@@ -480,31 +590,6 @@ impl BulkApiClient {
             job: completed_job,
             successful_results,
             failed_results,
-        })
-    }
-
-    /// Execute a complete query operation.
-    ///
-    /// Creates job, waits for completion, and returns all results.
-    #[instrument(skip(self))]
-    pub async fn execute_query(&self, soql: &str) -> Result<QueryJobResult> {
-        // Create job
-        let request = CreateQueryJobRequest::new(soql);
-        let job = self.create_query_job(request).await?;
-
-        // Wait for completion
-        let completed_job = self.wait_for_query_job(&job.id).await?;
-
-        // Get all results
-        let results = if completed_job.state.is_success() {
-            Some(self.get_all_query_results(&job.id).await?)
-        } else {
-            None
-        };
-
-        Ok(QueryJobResult {
-            job: completed_job,
-            results,
         })
     }
 }

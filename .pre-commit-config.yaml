@@ -46,3 +46,13 @@ repos:
       # Check for large files
       - id: check-added-large-files
         args: ["--maxkb=1000"]
+
+  - repo: https://github.com/rust-lang/rustfmt
+    rev: v1.4.37
+    hooks:
+      - id: rustfmt
+
+  - repo: https://github.com/rust-lang/rust-clippy
+    rev: v0.1.54
+    hooks:
+      - id: clippy

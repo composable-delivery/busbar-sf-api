@@ -14,6 +14,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 busbar-sf-client.workspace = true
 busbar-sf-auth.workspace = true
+busbar-sf-rest = { workspace = true, optional = true }
 reqwest.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -24,6 +25,10 @@ tracing.workspace = true
 chrono.workspace = true
 bytes.workspace = true
 urlencoding.workspace = true
+
+[features]
+default = ["query-builder"]
+query-builder = ["busbar-sf-rest"]
 
 [dev-dependencies]
 wiremock.workspace = true

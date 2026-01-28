@@ -65,7 +65,7 @@ For questions, ideas, or general discussion:
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust 1.88 or later (MSRV)
 - Cargo (comes with Rust)
 - Git
 
@@ -89,6 +89,9 @@ cargo build -p busbar-sf-auth
 # Run all tests
 cargo test --workspace
 
+# Run all tests (integration tests auto-skip if env is missing)
+cargo test --workspace
+
 # Run tests for specific crate
 cargo test -p busbar-sf-rest
 
@@ -97,6 +100,41 @@ cargo test test_name
 
 # Run tests with output
 cargo test -- --nocapture
+```
+
+### Integration Tests (Real Org)
+
+Integration tests require a real org and use `SF_AUTH_URL`:
+
+```bash
+# Run all integration tests
+SF_AUTH_URL=your_auth_url \
+   cargo test --test integration -- --nocapture
+
+# Run a specific integration module (REST/Bulk/Tooling/Metadata/Examples/Scratch)
+SF_AUTH_URL=your_auth_url \
+   cargo test --test integration rest:: -- --nocapture
+```
+
+### Coverage
+
+We use `cargo-llvm-cov` for coverage.
+
+```bash
+# Install coverage tooling
+cargo install cargo-llvm-cov
+
+# Unit test coverage (all crates)
+mkdir -p coverage
+cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info
+
+# Integration test coverage (real org)
+SF_AUTH_URL=your_auth_url \
+   cargo llvm-cov --workspace --all-features --test integration --lcov \
+   --output-path coverage/lcov.info -- --nocapture
+
+# Human-readable summary
+cargo llvm-cov report --summary-only
 ```
 
 ### Linting and Formatting
@@ -127,6 +165,8 @@ We provide pre-commit hooks to automatically check formatting and run clippy bef
 pip install pre-commit
 # Or with Homebrew:
 brew install pre-commit
+# Or with pipx:
+pipx install pre-commit
 
 # Install the git hooks
 pre-commit install

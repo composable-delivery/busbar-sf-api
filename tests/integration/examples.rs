@@ -2,13 +2,9 @@
 //!
 //! These tests verify that all example programs work correctly against
 //! a real Salesforce org using the SF_AUTH_URL environment variable.
-//!
-//! Run with: `cargo test --test integration_examples -- --ignored`
-//!
-//! Prerequisites:
-//! - SF_AUTH_URL environment variable set with SFDX auth URL
 
-use busbar_sf_auth::{Credentials, SalesforceCredentials};
+use super::common::require_credentials;
+use busbar_sf_auth::Credentials;
 use busbar_sf_bulk::BulkApiClient;
 use busbar_sf_client::QueryResult;
 use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
@@ -16,25 +12,15 @@ use busbar_sf_tooling::ToolingClient;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Helper to get authenticated credentials from SF_AUTH_URL.
-async fn get_test_credentials() -> SalesforceCredentials {
-    let auth_url =
-        std::env::var("SF_AUTH_URL").expect("SF_AUTH_URL environment variable must be set");
-
-    SalesforceCredentials::from_sfdx_auth_url(&auth_url)
-        .await
-        .expect("Failed to authenticate from SF_AUTH_URL")
-}
-
 // ============================================================================
 // basic_auth.rs Example Tests
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_basic_auth_from_sfdx_auth_url() {
-    // Test that we can authenticate from SF_AUTH_URL
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
 
     assert!(creds.is_valid(), "Credentials should be valid");
     assert!(
@@ -46,7 +32,6 @@ async fn test_example_basic_auth_from_sfdx_auth_url() {
         "Access token should be set"
     );
 
-    // Verify the instance URL is a Salesforce URL
     let instance_url = creds.instance_url();
     assert!(
         instance_url.contains(".salesforce.com") || instance_url.contains(".my.salesforce.com"),
@@ -60,11 +45,11 @@ async fn test_example_basic_auth_from_sfdx_auth_url() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_basic_auth_credentials_redaction() {
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
 
-    // Ensure Debug output doesn't expose the token (from basic_auth.rs example)
     let debug_output = format!("{:?}", creds);
     assert!(
         debug_output.contains("[REDACTED]") || !debug_output.contains(creds.access_token()),
@@ -89,14 +74,13 @@ struct ExampleAccount {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_rest_crud_typed() {
-    // Test type-safe CRUD operations from rest_crud.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // CREATE with type-safe struct
     let account = ExampleAccount {
         id: None,
         name: format!(
@@ -114,7 +98,6 @@ async fn test_example_rest_crud_typed() {
 
     println!("✓ Created account: {}", id);
 
-    // READ with type-safe struct
     let retrieved: ExampleAccount = client
         .get("Account", &id, Some(&["Id", "Name", "Industry", "Phone"]))
         .await
@@ -123,7 +106,6 @@ async fn test_example_rest_crud_typed() {
     assert_eq!(retrieved.name, account.name);
     println!("✓ Retrieved account: {:?}", retrieved.name);
 
-    // UPDATE
     let updates = serde_json::json!({
         "Phone": "+1-555-0101"
     });
@@ -135,7 +117,6 @@ async fn test_example_rest_crud_typed() {
 
     println!("✓ Updated account: {}", id);
 
-    // DELETE
     client
         .delete("Account", &id)
         .await
@@ -145,14 +126,13 @@ async fn test_example_rest_crud_typed() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_rest_crud_dynamic() {
-    // Test dynamic JSON CRUD operations from rest_crud.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // CREATE with dynamic JSON
     let account = serde_json::json!({
         "Name": format!("Dynamic Test {}", chrono::Utc::now().timestamp_millis()),
         "Industry": "Technology"
@@ -165,7 +145,6 @@ async fn test_example_rest_crud_dynamic() {
 
     println!("✓ Created account with dynamic JSON: {}", id);
 
-    // READ with dynamic JSON
     let retrieved: serde_json::Value = client
         .get("Account", &id, Some(&["Id", "Name", "Industry"]))
         .await
@@ -175,7 +154,6 @@ async fn test_example_rest_crud_dynamic() {
 
     println!("✓ Retrieved account: {}", retrieved["Name"]);
 
-    // Clean up
     client
         .delete("Account", &id)
         .await
@@ -183,10 +161,10 @@ async fn test_example_rest_crud_dynamic() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_rest_crud_multiple() {
-    // Test create_multiple from rest_crud.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -205,7 +183,6 @@ async fn test_example_rest_crud_multiple() {
         },
     ];
 
-    // Create multiple
     let results = client
         .create_multiple("Account", &accounts, true)
         .await
@@ -218,7 +195,6 @@ async fn test_example_rest_crud_multiple() {
 
     println!("✓ Created {} accounts", ids.len());
 
-    // Clean up
     if !ids.is_empty() {
         let _ = client.delete_multiple(&ids, false).await;
         println!("✓ Cleaned up {} accounts", ids.len());
@@ -230,14 +206,13 @@ async fn test_example_rest_crud_multiple() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_queries_query_builder() {
-    // Test QueryBuilder from queries.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test with potentially dangerous input (should be escaped)
     let user_input = "Test'--";
 
     let accounts: Vec<serde_json::Value> = QueryBuilder::new("Account")
@@ -255,7 +230,6 @@ async fn test_example_queries_query_builder() {
         accounts.len()
     );
 
-    // Test WHERE IN
     let industries = vec!["Technology", "Finance"];
     let accounts2: Vec<serde_json::Value> = QueryBuilder::new("Account")
         .expect("QueryBuilder creation should succeed")
@@ -274,14 +248,13 @@ async fn test_example_queries_query_builder() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_queries_basic_query() {
-    // Test basic queries from queries.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Type-safe query
     let result: QueryResult<HashMap<String, serde_json::Value>> = client
         .query("SELECT Id, Name FROM Account LIMIT 5")
         .await
@@ -289,7 +262,6 @@ async fn test_example_queries_basic_query() {
 
     println!("✓ Basic query: found {} records", result.records.len());
 
-    // query_all with automatic pagination
     let all_accounts: Vec<HashMap<String, serde_json::Value>> = client
         .query_all("SELECT Id, Name FROM Account LIMIT 50")
         .await
@@ -299,10 +271,10 @@ async fn test_example_queries_basic_query() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_queries_relationship_query() {
-    // Test relationship queries from queries.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -315,7 +287,6 @@ async fn test_example_queries_relationship_query() {
 
     println!("✓ Relationship query: found {} contacts", contacts.len());
 
-    // Verify structure
     for contact in contacts.iter().take(3) {
         if let Some(account) = contact.get("Account") {
             if let Some(_name) = account.get("Name") {
@@ -326,10 +297,10 @@ async fn test_example_queries_relationship_query() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_queries_aggregate() {
-    // Test aggregate queries from queries.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -355,10 +326,10 @@ async fn test_example_queries_aggregate() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_bulk_insert() {
-    // Test bulk insert from bulk_operations.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -389,7 +360,6 @@ async fn test_example_bulk_insert() {
     assert_eq!(result.job.number_records_processed, 2);
     assert_eq!(result.job.number_records_failed, 0);
 
-    // Clean up created records
     if let Some(success_results) = result.successful_results {
         let rest_client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
             .expect("Failed to create REST client");
@@ -406,17 +376,20 @@ async fn test_example_bulk_insert() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_bulk_query() {
-    // Test bulk query from bulk_operations.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
-    let soql = "SELECT Id, Name, Industry FROM Account LIMIT 100";
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(100);
 
     let result = client
-        .execute_query(soql)
+        .execute_query(query_builder)
         .await
         .expect("Bulk query should succeed");
 
@@ -439,14 +412,13 @@ async fn test_example_bulk_query() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_error_handling_basic() {
-    // Test basic error handling from error_handling.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Try to get a non-existent record
     let result: Result<serde_json::Value, _> =
         client.get("Account", "001000000000000AAA", None).await;
 
@@ -462,10 +434,10 @@ async fn test_example_error_handling_basic() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_error_handling_limits() {
-    // Test rate limit checking from error_handling.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -473,7 +445,6 @@ async fn test_example_error_handling_limits() {
 
     println!("✓ Retrieved org limits");
 
-    // Check API usage
     if let Some(daily_api) = limits.get("DailyApiRequests") {
         if let (Some(max), Some(remaining)) = (
             daily_api.get("Max").and_then(|v| v.as_i64()),
@@ -491,14 +462,13 @@ async fn test_example_error_handling_limits() {
 }
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_example_error_handling_invalid_query() {
-    // Test error handling for invalid queries from error_handling.rs example
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Invalid query
     let result = client
         .query::<serde_json::Value>("SELECT InvalidField FROM Account")
         .await;
@@ -512,15 +482,14 @@ async fn test_example_error_handling_invalid_query() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires SF_AUTH_URL"]
 async fn test_all_examples_integration() {
     println!("\n=== Running All Examples Integration Test ===\n");
 
-    // 1. Authenticate (basic_auth.rs)
-    let creds = get_test_credentials().await;
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     println!("✓ Authentication successful");
 
-    // 2. Create clients
     let rest_client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
     let bulk_client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -528,7 +497,6 @@ async fn test_all_examples_integration() {
     let tooling_client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
-    // 3. REST CRUD (rest_crud.rs)
     let account = serde_json::json!({
         "Name": format!("Integration Test {}", chrono::Utc::now().timestamp_millis())
     });
@@ -538,7 +506,6 @@ async fn test_all_examples_integration() {
         .expect("Create should succeed");
     println!("✓ REST: Created account {}", account_id);
 
-    // 4. Query with QueryBuilder (queries.rs)
     let accounts: Vec<serde_json::Value> = QueryBuilder::new("Account")
         .expect("QueryBuilder creation should succeed")
         .select(&["Id", "Name"])
@@ -550,12 +517,13 @@ async fn test_all_examples_integration() {
     assert_eq!(accounts.len(), 1);
     println!("✓ Queries: Found account with QueryBuilder");
 
-    // 5. Bulk query (bulk_operations.rs)
+    let bulk_query: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .where_eq("Id", &account_id)
+        .expect("where_eq should succeed");
     let bulk_result = bulk_client
-        .execute_query(&format!(
-            "SELECT Id, Name FROM Account WHERE Id = '{}'",
-            account_id
-        ))
+        .execute_query(bulk_query)
         .await
         .expect("Bulk query should succeed");
     println!(
@@ -563,7 +531,6 @@ async fn test_all_examples_integration() {
         bulk_result.job.number_records_processed
     );
 
-    // 6. Tooling API (error_handling.rs uses this)
     let tooling_result = tooling_client
         .execute_anonymous("System.debug('All examples test');")
         .await
@@ -571,12 +538,10 @@ async fn test_all_examples_integration() {
     assert!(tooling_result.compiled && tooling_result.success);
     println!("✓ Tooling: Executed anonymous Apex");
 
-    // 7. Get limits (error_handling.rs)
     let limits = rest_client.limits().await.expect("Should get limits");
     assert!(limits.is_object());
     println!("✓ Error Handling: Retrieved limits");
 
-    // 8. Clean up
     rest_client
         .delete("Account", &account_id)
         .await

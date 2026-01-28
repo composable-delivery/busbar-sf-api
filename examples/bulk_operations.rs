@@ -9,9 +9,20 @@
 //! Run with: cargo run --example bulk_operations
 
 use busbar_sf_auth::{Credentials, SalesforceCredentials};
-use busbar_sf_bulk::{BulkApiClient, BulkOperation, CreateIngestJobRequest, CreateQueryJobRequest};
+use busbar_sf_bulk::{BulkApiClient, BulkOperation, CreateIngestJobRequest, QueryBuilder};
+use serde::Deserialize;
 
-// Using CSV format directly for Bulk API examples
+// Type for deserializing query results
+#[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
+struct Account {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Industry")]
+    industry: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -80,17 +91,22 @@ Finance Corp,Finance,+1-555-0104"#;
     Ok(())
 }
 
-/// Example 2: Bulk query
+/// Example 2: Bulk query with QueryBuilder for automatic SOQL injection prevention
 async fn example_bulk_query(client: &BulkApiClient) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Example 2: Bulk Query");
-    println!("---------------------");
+    println!("Example 2: Bulk Query (Automatic SOQL Injection Prevention)");
+    println!("------------------------------------------------------------");
 
-    let soql = "SELECT Id, Name, Industry FROM Account WHERE Industry != null LIMIT 1000";
+    println!("Executing bulk query with QueryBuilder...");
 
-    println!("Executing bulk query...");
-
-    // Execute complete query operation
-    let result = client.execute_query(soql).await?;
+    // Using QueryBuilder - all user input is automatically escaped
+    let result = client
+        .execute_query(
+            QueryBuilder::<Account>::new("Account")?
+                .select(&["Id", "Name", "Industry"])
+                .where_raw("Industry != null") // Static condition - safe
+                .limit(1000),
+        )
+        .await?;
 
     println!("\n✓ Bulk query completed!");
     println!("  Job ID: {}", result.job.id);
@@ -258,51 +274,6 @@ async fn example_abort_job(client: &BulkApiClient) -> Result<(), Box<dyn std::er
     let aborted_job = client.abort_ingest_job(&job.id).await?;
     println!("✓ Job aborted");
     println!("  State: {:?}", aborted_job.state);
-
-    println!();
-
-    Ok(())
-}
-
-/// Example: Query job with pagination
-#[allow(dead_code)]
-async fn example_query_pagination(
-    client: &BulkApiClient,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Example: Query with Pagination");
-    println!("-------------------------------");
-
-    // Create query job
-    let request = CreateQueryJobRequest::new("SELECT Id, Name FROM Account LIMIT 10000");
-    let job = client.create_query_job(request).await?;
-
-    // Wait for completion
-    let completed_job = client.wait_for_query_job(&job.id).await?;
-    println!("✓ Query completed");
-    println!("  Records: {}", completed_job.number_records_processed);
-
-    // Get results with pagination
-    let mut locator: Option<String> = None;
-    let mut page = 1;
-
-    loop {
-        println!("\nFetching page {}...", page);
-        let results = client
-            .get_query_results(&job.id, locator.as_deref(), Some(1000))
-            .await?;
-
-        println!("  Retrieved {} bytes", results.csv_data.len());
-
-        match results.locator {
-            Some(next_locator) => {
-                locator = Some(next_locator);
-                page += 1;
-            }
-            None => break,
-        }
-    }
-
-    println!("\n✓ All pages retrieved");
 
     println!();
 
