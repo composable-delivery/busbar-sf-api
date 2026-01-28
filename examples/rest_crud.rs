@@ -1,7 +1,8 @@
 //! REST API CRUD operations example
 //!
-//! This example demonstrates best practices for Create, Read, Update, Delete operations
-//! using the Salesforce REST API with proper type safety.
+//! This example demonstrates TWO approaches to working with Salesforce data:
+//! 1. Type-safe structs (recommended for production)
+//! 2. Dynamic serde_json::Value (useful for exploration/prototyping)
 //!
 //! Run with: cargo run --example rest_crud
 
@@ -10,6 +11,11 @@ use busbar_sf_rest::SalesforceRestClient;
 use serde::{Deserialize, Serialize};
 
 /// Account record with proper type safety
+/// 
+/// Use this approach when:
+/// - Building production applications
+/// - You know the schema ahead of time
+/// - You want compile-time safety and IDE support
 #[derive(Debug, Serialize, Deserialize)]
 struct Account {
     #[serde(rename = "Id", skip_serializing_if = "Option::is_none")]
@@ -37,14 +43,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create REST client
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())?;
 
-    // Run CRUD examples with proper error handling
-    let account_id = example_create(&client).await?;
-    example_read(&client, &account_id).await?;
-    example_update(&client, &account_id).await?;
-    example_upsert(&client).await?;
+    // Run CRUD examples - showing BOTH patterns
+    println!("--- Type-Safe Struct Pattern ---\n");
+    let account_id = example_create_typed(&client).await?;
+    example_read_typed(&client, &account_id).await?;
+    example_update_typed(&client, &account_id).await?;
+    
+    println!("\n--- Dynamic JSON Pattern ---\n");
+    let dynamic_id = example_create_dynamic(&client).await?;
+    example_read_dynamic(&client, &dynamic_id).await?;
+    
+    // Clean up
     example_delete(&client, &account_id).await?;
+    example_delete(&client, &dynamic_id).await?;
 
-    // Collection operations
+    // Advanced operations
+    example_upsert(&client).await?;
     example_create_multiple(&client).await?;
 
     println!("\n✓ All CRUD examples completed successfully!");
@@ -52,10 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Example 1: Create a record with type-safe struct
-async fn example_create(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
-    println!("Example 1: Create Record");
-    println!("------------------------");
+/// Example 1a: Create with type-safe struct (RECOMMENDED)
+async fn example_create_typed(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
+    println!("Example 1a: Create with Type-Safe Struct");
+    println!("------------------------------------------");
 
     let account = Account {
         id: None,
@@ -67,20 +81,39 @@ async fn example_create(client: &SalesforceRestClient) -> Result<String, Box<dyn
 
     let id = client.create("Account", &account).await?;
     println!("✓ Created account with ID: {}", id);
+    println!("  Benefits: Type safety, IDE support, compile-time checking");
     println!();
 
     Ok(id)
 }
 
-/// Example 2: Read a record with type-safe deserialization
-async fn example_read(
+/// Example 1b: Create with dynamic JSON
+async fn example_create_dynamic(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
+    println!("Example 1b: Create with Dynamic JSON");
+    println!("--------------------------------------");
+
+    let account = serde_json::json!({
+        "Name": "Dynamic Industries",
+        "Industry": "Technology",
+        "Phone": "+1-555-0200"
+    });
+
+    let id = client.create("Account", &account).await?;
+    println!("✓ Created account with ID: {}", id);
+    println!("  Benefits: Flexible, good for exploration/prototyping");
+    println!();
+
+    Ok(id)
+}
+
+/// Example 2a: Read with type-safe deserialization
+async fn example_read_typed(
     client: &SalesforceRestClient,
     account_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Example 2: Read Record");
-    println!("----------------------");
+    println!("Example 2a: Read with Type-Safe Struct");
+    println!("----------------------------------------");
 
-    // Type-safe read with specific fields
     let account: Account = client
         .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone", "Website"]))
         .await?;
@@ -96,18 +129,40 @@ async fn example_read(
     Ok(())
 }
 
-/// Example 3: Update a record with partial updates
-async fn example_update(
+/// Example 2b: Read with dynamic JSON
+async fn example_read_dynamic(
+    client: &SalesforceRestClient,
+    account_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Example 2b: Read with Dynamic JSON");
+    println!("------------------------------------");
+
+    let account: serde_json::Value = client
+        .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone"]))
+        .await?;
+
+    println!("✓ Retrieved account:");
+    println!("  ID: {}", account["Id"]);
+    println!("  Name: {}", account["Name"]);
+    println!("  Industry: {}", account["Industry"]);
+    println!("  Phone: {}", account["Phone"]);
+    println!();
+
+    Ok(())
+}
+
+/// Example 3: Update with partial data (works with either pattern)
+async fn example_update_typed(
     client: &SalesforceRestClient,
     account_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 3: Update Record");
     println!("------------------------");
 
+    // For updates, dynamic JSON is often more convenient
     let updates = serde_json::json!({
         "Name": "Acme Corporation (Updated)",
-        "Phone": "+1-555-0101",
-        "Website": "https://www.acme.example.com"
+        "Phone": "+1-555-0101"
     });
 
     client.update("Account", account_id, &updates).await?;
