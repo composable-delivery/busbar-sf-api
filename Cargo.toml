@@ -18,6 +18,7 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Salesforce API client library for Rust"
+autotests = false
 
 [package.metadata.docs.rs]
 all-features = true
@@ -37,8 +38,8 @@ serde_json.workspace = true
 tracing-subscriber.workspace = true
 
 [[test]]
-name = "integration_test"
-path = "tests/integration_test.rs"
+name = "integration"
+path = "tests/integration.rs"
 
 [workspace.package]
 version = "0.1.0"
@@ -53,7 +54,12 @@ tokio = { version = "1.40", features = ["full"] }
 futures = "0.3"
 
 # HTTP
-reqwest = { version = "0.13", default-features = false, features = ["json", "gzip", "deflate", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "gzip",
+    "deflate",
+    "rustls",
+] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
