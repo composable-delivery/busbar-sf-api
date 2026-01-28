@@ -52,6 +52,7 @@ mod composite;
 mod describe;
 mod error;
 mod query;
+mod query_builder;
 mod sobject;
 mod types;
 
@@ -78,6 +79,9 @@ pub use error::{Error, ErrorKind, Result};
 
 // Query types
 pub use query::{QueryOptions, QueryResult};
+
+// Query builder (safe by default)
+pub use query_builder::QueryBuilder;
 
 // SObject CRUD types
 pub use sobject::{CreateResult, DeleteResult, SalesforceError, UpdateResult, UpsertResult};
