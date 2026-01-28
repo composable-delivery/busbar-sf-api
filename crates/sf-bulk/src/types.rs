@@ -67,10 +67,12 @@ pub enum BulkOperation {
     /// Delete records (soft delete)
     Delete,
     /// Hard delete records (permanent)
+    #[serde(rename = "hardDelete")]
     HardDelete,
     /// Query records
     Query,
     /// Query all records including deleted
+    #[serde(rename = "queryAll")]
     QueryAll,
 }
 
@@ -489,5 +491,38 @@ mod tests {
 
         let abort = UpdateJobStateRequest::abort();
         assert_eq!(abort.state, JobState::Aborted);
+    }
+
+    #[test]
+    fn test_bulk_operation_serialization() {
+        // Test that enum variants serialize correctly to match Salesforce API
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Insert).unwrap(),
+            "\"insert\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Update).unwrap(),
+            "\"update\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Upsert).unwrap(),
+            "\"upsert\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Delete).unwrap(),
+            "\"delete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::HardDelete).unwrap(),
+            "\"hardDelete\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::Query).unwrap(),
+            "\"query\""
+        );
+        assert_eq!(
+            serde_json::to_string(&BulkOperation::QueryAll).unwrap(),
+            "\"queryAll\""
+        );
     }
 }

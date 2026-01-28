@@ -301,7 +301,7 @@ impl BulkApiClient {
 
         if !response.is_success() {
             return Err(Error::new(ErrorKind::Api(format!(
-                "Failed to delete job: status {}",
+                "Failed to delete ingest job: status {}",
                 response.status()
             ))));
         }
