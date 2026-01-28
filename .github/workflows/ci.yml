@@ -157,6 +157,7 @@ jobs:
     integration:
         name: Integration Tests (Real Org)
         runs-on: ubuntu-latest
+        environment: scratch
         steps:
             - uses: actions/checkout@v6
 
