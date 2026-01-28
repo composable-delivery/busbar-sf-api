@@ -238,12 +238,15 @@ impl SalesforceCredentials {
         let oauth_client = OAuthClient::new(config);
 
         // Build token endpoint URL from instance URL
-        let token_url =
-            if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
-                "https://test.salesforce.com"
-            } else {
-                "https://login.salesforce.com"
-            };
+        // For localhost/test servers, use the instance_url directly
+        // For Salesforce production/sandbox, use the appropriate login URL
+        let token_url = if instance_url.contains("localhost") || instance_url.starts_with("http://127.0.0.1") {
+            instance_url
+        } else if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
+            "https://test.salesforce.com"
+        } else {
+            "https://login.salesforce.com"
+        };
 
         // Use refresh token to get access token
         let token_response = oauth_client.refresh_token(refresh_token, token_url).await?;
@@ -466,5 +469,122 @@ mod tests {
                 assert!(cred_parts.len() < 3 || cred_parts.len() >= 3);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_with_client_secret() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        // Set up mock OAuth server
+        let mock_server = MockServer::start().await;
+        
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test_access_token",
+                "instance_url": "https://na1.salesforce.com",
+                "id": "https://login.salesforce.com/id/00Dxx0000000000EAA/005xx000000000QAAQ",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let auth_url = format!(
+            "force://client123:secret456:refresh789@{}",
+            mock_server.uri()
+        );
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
+        assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
+        
+        let creds = creds.unwrap();
+        assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
+        assert_eq!(creds.access_token(), "test_access_token");
+        assert_eq!(creds.refresh_token(), Some("refresh789"));
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_without_client_secret() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path, body_string_contains};
+
+        // Set up mock OAuth server
+        let mock_server = MockServer::start().await;
+        
+        // Verify that client_secret is NOT sent when empty
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .and(body_string_contains("client_id=client123"))
+            .and(body_string_contains("refresh_token=refresh789"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test_access_token_no_secret",
+                "instance_url": "https://na1.salesforce.com",
+                "id": "https://login.salesforce.com/id/00Dxx0000000000EAA/005xx000000000QAAQ",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Auth URL with empty client_secret (double colon ::)
+        let auth_url = format!(
+            "force://client123::refresh789@{}",
+            mock_server.uri()
+        );
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
+        assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
+        
+        let creds = creds.unwrap();
+        assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
+        assert_eq!(creds.access_token(), "test_access_token_no_secret");
+        assert_eq!(creds.refresh_token(), Some("refresh789"));
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_with_username() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::matchers::{method, path};
+
+        // Set up mock OAuth server
+        let mock_server = MockServer::start().await;
+        
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test_access_token_with_user",
+                "instance_url": "https://na1.salesforce.com",
+                "id": "https://login.salesforce.com/id/00Dxx0000000000EAA/005xx000000000QAAQ",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Auth URL with username field
+        let auth_url = format!(
+            "force://client123:secret456:refresh789:username@{}",
+            mock_server.uri()
+        );
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
+        assert!(creds.is_ok(), "Failed to authenticate: {:?}", creds.err());
+        
+        let creds = creds.unwrap();
+        assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
+        assert_eq!(creds.access_token(), "test_access_token_with_user");
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_invalid_too_few_parts() {
+        // Auth URL with only 2 parts (missing refresh token)
+        let auth_url = "force://client123:secret456@https://test.salesforce.com";
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(auth_url).await;
+        assert!(creds.is_err());
+        let err = creds.unwrap_err();
+        assert!(err.to_string().contains("expected client_id:client_secret:refresh_token"));
     }
 }
