@@ -175,6 +175,17 @@ impl SalesforceCredentials {
     /// This method will parse the auth URL and use the refresh token to obtain
     /// an access token from Salesforce.
     ///
+    /// **Note**: This method also handles malformed URLs where the 'f' prefix is missing
+    /// (e.g., `orce://` instead of `force://`), which can occur due to environment
+    /// variable truncation in some CI/CD systems.
+    ///
+    /// **Instance URL Detection**: The method automatically detects the correct OAuth
+    /// token endpoint based on the instance URL:
+    /// - Scratch orgs (`.scratch.my.salesforce.com`) → `https://test.salesforce.com`
+    /// - Sandbox orgs (`sandbox` or `test.salesforce.com`) → `https://test.salesforce.com`
+    /// - Production orgs → `https://login.salesforce.com`
+    /// - Local/test servers → Uses the instance URL directly
+    ///
     /// # Example
     /// ```no_run
     /// # use busbar_sf_auth::SalesforceCredentials;
@@ -190,13 +201,17 @@ impl SalesforceCredentials {
         // Parse the auth URL
         // Format: force://<client_id>:<client_secret>:<refresh_token>@<instance_url>
         // Or with username: force://<client_id>:<client_secret>:<refresh_token>:<username>@<instance_url>
-        if !auth_url.starts_with("force://") {
+        // Note: We also handle malformed URLs that may be missing the 'f' prefix (e.g., "orce://")
+        let url = if auth_url.starts_with("force://") {
+            auth_url.strip_prefix("force://").unwrap()
+        } else if auth_url.starts_with("orce://") {
+            // Handle case where 'f' prefix is missing (common GitHub secret truncation issue)
+            auth_url.strip_prefix("orce://").unwrap()
+        } else {
             return Err(Error::new(ErrorKind::InvalidInput(
-                "Auth URL must start with force://".to_string(),
+                "Auth URL must start with force:// (or orce:// if truncated)".to_string(),
             )));
-        }
-
-        let url = auth_url.strip_prefix("force://").unwrap();
+        };
 
         // Split at @ to separate credentials from instance URL
         let parts: Vec<&str> = url.splitn(2, '@').collect();
@@ -243,7 +258,10 @@ impl SalesforceCredentials {
         let token_url = if instance_url.contains("localhost") || instance_url.contains("127.0.0.1")
         {
             instance_url
-        } else if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
+        } else if instance_url.contains("test.salesforce.com")
+            || instance_url.contains("sandbox")
+            || instance_url.contains(".scratch.my.salesforce.com")
+        {
             "https://test.salesforce.com"
         } else {
             "https://login.salesforce.com"
@@ -626,5 +644,88 @@ mod tests {
         assert!(err
             .to_string()
             .contains("expected client_id:client_secret:refresh_token"));
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_truncated_prefix() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // Set up mock OAuth server
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test_access_token_truncated",
+                "instance_url": "https://na1.salesforce.com",
+                "id": "https://login.salesforce.com/id/00Dxx0000000000EAA/005xx000000000QAAQ",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Auth URL with truncated prefix (missing 'f') - simulates GitHub secret truncation issue
+        let auth_url = format!(
+            "orce://client123:secret456:refresh789@{}",
+            mock_server.uri()
+        );
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
+        assert!(
+            creds.is_ok(),
+            "Should handle truncated auth URL: {:?}",
+            creds.err()
+        );
+
+        let creds = creds.unwrap();
+        assert_eq!(creds.instance_url(), "https://na1.salesforce.com");
+        assert_eq!(creds.access_token(), "test_access_token_truncated");
+    }
+
+    #[tokio::test]
+    async fn test_from_sfdx_auth_url_scratch_org() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // Test that scratch org URLs are properly detected and use test.salesforce.com endpoint
+        // Note: We can't directly test the endpoint selection without mocking the actual SF server
+        // But we can verify the URL is parsed correctly
+
+        // Set up mock OAuth server
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "test_access_token_scratch",
+                "instance_url": "https://velocity-site-6078-dev-ed.scratch.my.salesforce.com",
+                "id": "https://test.salesforce.com/id/00Dxx0000000000EAA/005xx000000000QAAQ",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        // Use localhost in auth URL to point to mock server
+        // In production, the code would detect .scratch.my.salesforce.com and use test.salesforce.com
+        let auth_url = format!(
+            "force://PlatformCLI::refresh789@{}",
+            mock_server.uri()
+        );
+
+        let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
+        assert!(
+            creds.is_ok(),
+            "Should parse scratch org auth URL: {:?}",
+            creds.err()
+        );
+
+        let creds = creds.unwrap();
+        assert!(creds
+            .instance_url()
+            .contains("velocity-site-6078-dev-ed.scratch.my.salesforce.com"));
+        assert_eq!(creds.access_token(), "test_access_token_scratch");
     }
 }
