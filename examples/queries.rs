@@ -1,7 +1,7 @@
 //! SOQL query examples with security best practices
 //!
 //! This example demonstrates:
-//! - Basic SOQL queries
+//! - Type-safe SOQL queries
 //! - Query with pagination
 //! - Secure query building with user input
 //! - LIKE queries with wildcards
@@ -12,12 +12,52 @@
 use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_client::security::soql;
 use busbar_sf_rest::SalesforceRestClient;
+use serde::{Deserialize, Serialize};
 
-// We'll use serde_json::Value for simplicity in the examples
+/// Account record for type-safe queries
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct Account {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Industry", skip_serializing_if = "Option::is_none")]
+    industry: Option<String>,
+}
+
+/// Contact record with relationship query support
+#[derive(Debug, Deserialize)]
+struct Contact {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Email")]
+    email: Option<String>,
+    #[serde(rename = "Account")]
+    account: Option<AccountRef>,
+}
+
+/// Nested Account reference in Contact
+#[derive(Debug, Deserialize)]
+struct AccountRef {
+    #[serde(rename = "Name")]
+    name: String,
+}
+
+/// Aggregate query result
+#[derive(Debug, Deserialize)]
+struct IndustryCount {
+    #[serde(rename = "Industry")]
+    industry: String,
+    #[serde(rename = "total")]
+    total: i32,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing/logging if needed
+    // Initialize tracing for better observability
+    tracing_subscriber::fmt::init();
 
     println!("=== Salesforce SOQL Query Examples ===\n");
 
@@ -29,15 +69,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     example_query_with_limit(&client).await?;
     example_query_pagination(&client).await?;
 
-    // Secure queries with user input
+    // Secure queries with user input (CRITICAL for production)
     example_secure_query_user_input(&client).await?;
     example_secure_like_query(&client).await?;
     example_field_validation(&client).await?;
 
-    // Relationship queries
+    // Advanced queries
     example_relationship_query(&client).await?;
-
-    // Aggregate queries
     example_aggregate_query(&client).await?;
 
     println!("\n✓ All query examples completed successfully!");
@@ -45,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Example 1: Basic SOQL query
+/// Example 1: Basic type-safe SOQL query
 async fn example_basic_query(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -53,29 +91,27 @@ async fn example_basic_query(
     println!("----------------------------");
 
     let query = "SELECT Id, Name, Industry FROM Account LIMIT 5";
-    let result: busbar_sf_client::QueryResult<serde_json::Value> = client.query(query).await?;
+    let result: busbar_sf_client::QueryResult<Account> = client.query(query).await?;
 
     println!("✓ Found {} accounts (total: {})", result.records.len(), result.total_size);
     for account in &result.records {
-        let name = account.get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
-        let id = account.get("Id").and_then(|v| v.as_str()).unwrap_or("Unknown");
-        println!("  - {} ({})", name, id);
+        println!("  - {} ({})", account.name, account.id);
     }
     println!();
 
     Ok(())
 }
 
-/// Example 2: Query with LIMIT
+/// Example 2: Query with LIMIT and type safety
 async fn example_query_with_limit(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 2: Query with LIMIT");
     println!("---------------------------");
 
-    // Query up to 100 records
+    // Type-safe query that returns strongly-typed Account records
     let query = "SELECT Id, Name FROM Account WHERE Industry != null LIMIT 100";
-    let accounts: Vec<serde_json::Value> = client.query_all(query).await?;
+    let accounts: Vec<Account> = client.query_all(query).await?;
 
     println!("✓ Retrieved {} accounts with industry", accounts.len());
     println!();
@@ -83,16 +119,16 @@ async fn example_query_with_limit(
     Ok(())
 }
 
-/// Example 3: Automatic pagination
+/// Example 3: Automatic pagination with type safety
 async fn example_query_pagination(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 3: Automatic Pagination");
     println!("--------------------------------");
 
-    // query_all automatically handles pagination
+    // query_all automatically handles pagination and returns strongly-typed results
     let query = "SELECT Id, Name FROM Account";
-    let all_accounts: Vec<serde_json::Value> = client.query_all(query).await?;
+    let all_accounts: Vec<Account> = client.query_all(query).await?;
 
     println!("✓ Retrieved all {} accounts (with automatic pagination)", all_accounts.len());
     println!();
@@ -100,9 +136,10 @@ async fn example_query_pagination(
     Ok(())
 }
 
-/// Example 4: Secure query with user input
+/// Example 4: Secure query with user input - PRODUCTION PATTERN
 ///
-/// CRITICAL: Always escape user input to prevent SOQL injection!
+/// CRITICAL: This shows the correct way to handle user input in SOQL queries.
+/// Always escape user input to prevent SOQL injection attacks!
 async fn example_secure_query_user_input(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -113,15 +150,12 @@ async fn example_secure_query_user_input(
     let user_input = "O'Brien's Company"; // Contains single quote
     let malicious_input = "'; DELETE FROM Account--"; // SQL injection attempt
 
-    // WRONG: Never do this!
-    // let query = format!("SELECT Id, Name FROM Account WHERE Name = '{}'", user_input);
-
     // CORRECT: Always escape user input
     let safe_name = soql::escape_string(user_input);
     let query = format!("SELECT Id, Name FROM Account WHERE Name = '{}'", safe_name);
     println!("Safe query: {}", query);
 
-    let accounts: Vec<serde_json::Value> = client.query_all(&query).await?;
+    let accounts: Vec<Account> = client.query_all(&query).await?;
     println!("✓ Found {} accounts", accounts.len());
 
     // Show how injection attempt is prevented
@@ -129,12 +163,13 @@ async fn example_secure_query_user_input(
     println!("\nInjection prevention:");
     println!("  Input: {}", malicious_input);
     println!("  Escaped: {}", safe_malicious);
+    println!("  Result: The injection attempt is safely escaped");
     println!();
 
     Ok(())
 }
 
-/// Example 5: Secure LIKE query
+/// Example 5: Secure LIKE query with wildcard escaping
 async fn example_secure_like_query(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -144,7 +179,7 @@ async fn example_secure_like_query(
     // User input for pattern matching
     let user_pattern = "tech%"; // User might try to inject wildcards
 
-    // CORRECT: Escape LIKE patterns (escapes %, _ and other special chars)
+    // CORRECT: Use escape_like for LIKE patterns (escapes %, _ and other special chars)
     let safe_pattern = soql::escape_like(user_pattern);
     let query = format!(
         "SELECT Id, Name FROM Account WHERE Name LIKE '%{}%'",
@@ -153,7 +188,7 @@ async fn example_secure_like_query(
 
     println!("Query: {}", query);
 
-    let accounts: Vec<serde_json::Value> = client.query_all(&query).await?;
+    let accounts: Vec<Account> = client.query_all(&query).await?;
     println!("✓ Found {} accounts", accounts.len());
     println!();
 

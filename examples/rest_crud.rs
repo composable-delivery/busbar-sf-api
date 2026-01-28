@@ -1,19 +1,33 @@
 //! REST API CRUD operations example
 //!
-//! This example demonstrates basic Create, Read, Update, Delete operations
-//! using the Salesforce REST API.
+//! This example demonstrates best practices for Create, Read, Update, Delete operations
+//! using the Salesforce REST API with proper type safety.
 //!
 //! Run with: cargo run --example rest_crud
 
 use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_rest::SalesforceRestClient;
+use serde::{Deserialize, Serialize};
 
-// For examples, we'll use serde_json::Value for simplicity
-// In real code, you'd define your own structs with serde derives
+/// Account record with proper type safety
+#[derive(Debug, Serialize, Deserialize)]
+struct Account {
+    #[serde(rename = "Id", skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Industry", skip_serializing_if = "Option::is_none")]
+    industry: Option<String>,
+    #[serde(rename = "Phone", skip_serializing_if = "Option::is_none")]
+    phone: Option<String>,
+    #[serde(rename = "Website", skip_serializing_if = "Option::is_none")]
+    website: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing/logging if needed
+    // Initialize tracing for better logging and debugging
+    tracing_subscriber::fmt::init();
 
     println!("=== Salesforce REST API CRUD Examples ===\n");
 
@@ -23,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create REST client
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())?;
 
-    // Run CRUD examples
+    // Run CRUD examples with proper error handling
     let account_id = example_create(&client).await?;
     example_read(&client, &account_id).await?;
     example_update(&client, &account_id).await?;
@@ -38,17 +52,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Example 1: Create a record
+/// Example 1: Create a record with type-safe struct
 async fn example_create(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
     println!("Example 1: Create Record");
     println!("------------------------");
 
-    let account = serde_json::json!({
-        "Name": "Acme Corporation",
-        "Industry": "Technology",
-        "Phone": "+1-555-0100",
-        "Website": "https://acme.example.com"
-    });
+    let account = Account {
+        id: None,
+        name: "Acme Corporation".to_string(),
+        industry: Some("Technology".to_string()),
+        phone: Some("+1-555-0100".to_string()),
+        website: Some("https://acme.example.com".to_string()),
+    };
 
     let id = client.create("Account", &account).await?;
     println!("✓ Created account with ID: {}", id);
@@ -57,7 +72,7 @@ async fn example_create(client: &SalesforceRestClient) -> Result<String, Box<dyn
     Ok(id)
 }
 
-/// Example 2: Read a record
+/// Example 2: Read a record with type-safe deserialization
 async fn example_read(
     client: &SalesforceRestClient,
     account_id: &str,
@@ -65,23 +80,23 @@ async fn example_read(
     println!("Example 2: Read Record");
     println!("----------------------");
 
-    // Read with specific fields
-    let account: serde_json::Value = client
+    // Type-safe read with specific fields
+    let account: Account = client
         .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone", "Website"]))
         .await?;
 
     println!("✓ Retrieved account:");
-    println!("  ID: {:?}", account["Id"]);
-    println!("  Name: {}", account["Name"]);
-    println!("  Industry: {:?}", account["Industry"]);
-    println!("  Phone: {:?}", account["Phone"]);
-    println!("  Website: {:?}", account["Website"]);
+    println!("  ID: {:?}", account.id);
+    println!("  Name: {}", account.name);
+    println!("  Industry: {:?}", account.industry);
+    println!("  Phone: {:?}", account.phone);
+    println!("  Website: {:?}", account.website);
     println!();
 
     Ok(())
 }
 
-/// Example 3: Update a record
+/// Example 3: Update a record with partial updates
 async fn example_update(
     client: &SalesforceRestClient,
     account_id: &str,
@@ -152,7 +167,7 @@ async fn example_delete(
     Ok(())
 }
 
-/// Example 6: Create multiple records at once
+/// Example 6: Create multiple records at once with type safety
 async fn example_create_multiple(
     client: &SalesforceRestClient,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -160,20 +175,27 @@ async fn example_create_multiple(
     println!("-----------------------------------");
 
     let accounts = vec![
-        serde_json::json!({
-            "Name": "Tech Startup Inc",
-            "Industry": "Technology",
-            "Website": "https://techstartup.example"
-        }),
-        serde_json::json!({
-            "Name": "Retail Giant LLC",
-            "Industry": "Retail",
-            "Website": "https://retailgiant.example"
-        }),
-        serde_json::json!({
-            "Name": "Finance Corp",
-            "Industry": "Finance"
-        }),
+        Account {
+            id: None,
+            name: "Tech Startup Inc".to_string(),
+            industry: Some("Technology".to_string()),
+            phone: None,
+            website: Some("https://techstartup.example".to_string()),
+        },
+        Account {
+            id: None,
+            name: "Retail Giant LLC".to_string(),
+            industry: Some("Retail".to_string()),
+            phone: None,
+            website: Some("https://retailgiant.example".to_string()),
+        },
+        Account {
+            id: None,
+            name: "Finance Corp".to_string(),
+            industry: Some("Finance".to_string()),
+            phone: None,
+            website: None,
+        },
     ];
 
     // Create up to 200 records at once
@@ -183,15 +205,14 @@ async fn example_create_multiple(
     println!("✓ Created {} accounts", results.len());
     for (i, result) in results.iter().enumerate() {
         if result.success {
-            let name = accounts[i].get("Name").and_then(|v| v.as_str()).unwrap_or("Unknown");
-            let id = result.id.as_ref().map(|s| s.as_str()).unwrap_or("Unknown");
-            println!("  Account {}: {} - ID: {}", i + 1, name, id);
+            let id = result.id.as_deref().unwrap_or("Unknown");
+            println!("  Account {}: {} - ID: {}", i + 1, accounts[i].name, id);
         } else {
             println!("  Account {}: Failed - {:?}", i + 1, result.errors);
         }
     }
 
-    // Clean up
+    // Clean up test data
     let ids: Vec<&str> = results.iter().filter_map(|r| r.id.as_deref()).collect();
     if !ids.is_empty() {
         let _ = client.delete_multiple(&ids, false).await;
