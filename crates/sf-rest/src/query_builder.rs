@@ -13,7 +13,7 @@
 //!     .select(&["Id", "Name", "Industry"])
 //!     .where_eq("Name", user_input)  // Automatically escaped!
 //!     .limit(10)
-//!     .execute(&client)
+//!     .execute(client)
 //!     .await?;
 //! ```
 
