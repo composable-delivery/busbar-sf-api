@@ -89,6 +89,10 @@ pub enum ErrorKind {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    /// Invalid input provided.
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
     /// Other error.
     #[error("{0}")]
     Other(String),

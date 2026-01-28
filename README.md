@@ -6,18 +6,20 @@
 
 A comprehensive Salesforce API client library for Rust, providing type-safe access to Salesforce APIs with built-in authentication, retry logic, and error handling.
 
+This repository is undergoing rapid development and is not yet stable for production use. We're refactoring these API's out of other projects as reusable crates after realizing there is shockingly little coverage of Salesforce APIs in Rust, yet. More to come on that front. For now, if you're interested in providing feedback or even collaborating, let us know in [Discussions](https://github.com/composable-delivery/busbar-sf-api.
+
 ## Features
 
-- 🔐 **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
-- 🚀 **REST API** - CRUD operations, queries, composite requests, and collections
-- 🛡️ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
-- 📦 **Bulk API 2.0** - Large-scale data operations with efficient processing
-- 🛠️ **Tooling API** - Apex operations, debug logs, and code coverage
-- 📋 **Metadata API** - Deploy and retrieve Salesforce metadata
-- 🔄 **Async/Await** - Built on Tokio for high-performance async operations
-- 🔁 **Retry Logic** - Automatic retries with exponential backoff
-- 🔒 **Security** - Sensitive data redaction in debug output and logging
-- 📊 **Tracing** - Built-in tracing support for observability
+- **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
+- **REST API** - CRUD operations, queries, composite requests, and collections
+- **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
+- **Bulk API 2.0** - Large-scale data operations with efficient processing
+- **Tooling API** - Apex operations, debug logs, and code coverage
+- **Metadata API** - Deploy and retrieve Salesforce metadata
+- **Async/Await** - Built on Tokio for high-performance async operations
+- **Retry Logic** - Automatic retries with exponential backoff
+- **Security** - Sensitive data redaction in debug output and logging
+- **Tracing** - Built-in tracing support for observability
 
 ## Crates
 
@@ -284,6 +286,7 @@ For security vulnerabilities, see our [Security Policy](SECURITY.md)
 
 - 📖 [API Documentation](https://docs.rs/busbar-sf-api) - Complete API reference
 - 🔒 [Security Policy](SECURITY.md) - Security best practices and vulnerability reporting
+- 🧪 [Integration Testing Guide](INTEGRATION_TESTING.md) - How to run integration tests
 - 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.1.0 release
 - 📝 [Changelog](CHANGELOG.md) - Version history and release notes
 - 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
@@ -304,6 +307,11 @@ cargo build --workspace
 
 # Run tests
 cargo test --workspace
+
+# Run integration tests (requires SF_AUTH_URL or authenticated SF CLI)
+# See INTEGRATION_TESTING.md for details
+SF_AUTH_URL="force://..." cargo test --test integration_sf_auth_url -- --ignored
+SF_AUTH_URL="force://..." cargo test --test integration_examples -- --ignored
 
 # Run linter
 cargo clippy --workspace -- -D warnings
