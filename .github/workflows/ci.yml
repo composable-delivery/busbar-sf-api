@@ -192,7 +192,7 @@ jobs:
               run: |
                   echo "::group::Integration tests"
                   mkdir -p coverage
-                cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
+                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Integration tests summary
