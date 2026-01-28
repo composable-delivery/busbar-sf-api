@@ -365,9 +365,9 @@ impl BulkApiClient {
         T: serde::de::DeserializeOwned + Clone,
     {
         // Build the safe SOQL query
-        let soql = query_builder.build().map_err(|e| {
-            Error::new(ErrorKind::Api(format!("Failed to build query: {}", e)))
-        })?;
+        let soql = query_builder
+            .build()
+            .map_err(|e| Error::new(ErrorKind::Api(format!("Failed to build query: {}", e))))?;
 
         // Create job
         let request = CreateQueryJobRequest::new(soql);
