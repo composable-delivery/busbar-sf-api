@@ -207,7 +207,8 @@ impl SalesforceCredentials {
         let cred_parts: Vec<&str> = credentials_part.split(':').collect();
         if cred_parts.len() < 3 {
             return Err(Error::new(ErrorKind::InvalidInput(
-                "Invalid auth URL format: expected client_id:client_secret:refresh_token".to_string(),
+                "Invalid auth URL format: expected client_id:client_secret:refresh_token"
+                    .to_string(),
             )));
         }
 
@@ -228,11 +229,12 @@ impl SalesforceCredentials {
         let oauth_client = OAuthClient::new(config);
 
         // Build token endpoint URL from instance URL
-        let token_url = if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
-            "https://test.salesforce.com"
-        } else {
-            "https://login.salesforce.com"
-        };
+        let token_url =
+            if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
+                "https://test.salesforce.com"
+            } else {
+                "https://login.salesforce.com"
+            };
 
         // Use refresh token to get access token
         let token_response = oauth_client.refresh_token(refresh_token, token_url).await?;

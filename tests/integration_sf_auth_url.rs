@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 /// Helper to get authenticated credentials from SF_AUTH_URL.
 async fn get_test_credentials() -> SalesforceCredentials {
-    let auth_url = std::env::var("SF_AUTH_URL")
-        .expect("SF_AUTH_URL environment variable must be set");
+    let auth_url =
+        std::env::var("SF_AUTH_URL").expect("SF_AUTH_URL environment variable must be set");
 
     SalesforceCredentials::from_sfdx_auth_url(&auth_url)
         .await
@@ -53,7 +53,10 @@ async fn test_rest_composite_api() {
             },
             CompositeSubrequest {
                 method: "GET".to_string(),
-                url: format!("/services/data/v{}/sobjects/Account/@{{NewAccount.id}}", creds.api_version()),
+                url: format!(
+                    "/services/data/v{}/sobjects/Account/@{{NewAccount.id}}",
+                    creds.api_version()
+                ),
                 reference_id: "GetNewAccount".to_string(),
                 body: None,
             },
@@ -64,7 +67,7 @@ async fn test_rest_composite_api() {
     assert!(result.is_ok(), "Composite request should succeed");
 
     let response = result.unwrap();
-    
+
     assert_eq!(response.responses.len(), 2, "Should have 2 sub-responses");
 
     // Clean up: delete the created account
@@ -85,12 +88,15 @@ async fn test_rest_search_sosl() {
     // Perform a SOSL search
     let search_query = "FIND {test*} IN NAME FIELDS RETURNING Account(Id, Name), Contact(Id, Name)";
     let result = client.search::<serde_json::Value>(search_query).await;
-    
+
     assert!(result.is_ok(), "SOSL search should succeed");
-    
+
     let search_results = result.unwrap();
     // search_results is a SearchResult<T> which contains searchRecords
-    assert!(search_results.search_records.is_empty() || !search_results.search_records.is_empty(), "Search should return results");
+    assert!(
+        search_results.search_records.is_empty() || !search_results.search_records.is_empty(),
+        "Search should return results"
+    );
 }
 
 #[tokio::test]
@@ -121,10 +127,7 @@ async fn test_rest_batch_operations() {
     assert_eq!(create_results.len(), 3, "Should create 3 accounts");
 
     // Collect IDs for further operations
-    let ids: Vec<String> = create_results
-        .iter()
-        .filter_map(|r| r.id.clone())
-        .collect();
+    let ids: Vec<String> = create_results.iter().filter_map(|r| r.id.clone()).collect();
 
     assert_eq!(ids.len(), 3, "Should have 3 account IDs");
 
@@ -145,7 +148,7 @@ async fn test_rest_batch_operations() {
                 id.clone(),
                 serde_json::json!({
                     "Description": "Updated by batch test"
-                })
+                }),
             )
         })
         .collect();
@@ -202,7 +205,7 @@ async fn test_rest_upsert_operation() {
         .expect("Failed to create REST client");
 
     let unique_number = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
-    
+
     // First upsert - should create
     let account_data = serde_json::json!({
         "Name": format!("Upsert Test {}", unique_number),
@@ -228,7 +231,10 @@ async fn test_rest_upsert_operation() {
             .await;
 
         if let Ok(upsert_result2) = result2 {
-            assert!(!upsert_result2.created, "Second upsert should update record");
+            assert!(
+                !upsert_result2.created,
+                "Second upsert should update record"
+            );
             assert_eq!(upsert_result2.id, account_id, "Should be same account ID");
         }
 
@@ -254,7 +260,7 @@ async fn test_query_builder_injection_prevention() {
 
     // Test with potentially malicious input
     let malicious_input = "Test' OR '1'='1";
-    
+
     // QueryBuilder should escape this safely
     let result: Result<Vec<serde_json::Value>, _> = QueryBuilder::new("Account")
         .expect("QueryBuilder creation should succeed")
@@ -268,9 +274,13 @@ async fn test_query_builder_injection_prevention() {
     // Query should succeed without finding anything (because it's escaped)
     assert!(result.is_ok(), "Query should succeed with escaped input");
     let accounts = result.unwrap();
-    
+
     // Should not match anything due to proper escaping
-    assert_eq!(accounts.len(), 0, "Should not find any accounts with malicious input");
+    assert_eq!(
+        accounts.len(),
+        0,
+        "Should not find any accounts with malicious input"
+    );
 }
 
 #[tokio::test]
@@ -282,7 +292,7 @@ async fn test_query_builder_like_escaping() {
 
     // Test LIKE with wildcards
     let pattern = "test%";
-    
+
     let result: Result<Vec<serde_json::Value>, _> = QueryBuilder::new("Account")
         .expect("QueryBuilder creation should succeed")
         .select(&["Id", "Name"])
@@ -338,11 +348,9 @@ async fn test_bulk_insert_lifecycle() {
                 if let Some(id) = line.split(',').next() {
                     if id.starts_with("001") {
                         // Clean up - use REST client for deletion
-                        let rest_client = SalesforceRestClient::new(
-                            creds.instance_url(),
-                            creds.access_token(),
-                        )
-                        .expect("Failed to create REST client");
+                        let rest_client =
+                            SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+                                .expect("Failed to create REST client");
                         let _ = rest_client.delete("Account", id).await;
                     }
                 }
@@ -376,8 +384,14 @@ async fn test_bulk_query_operation() {
         assert!(!lines.is_empty(), "Should have at least header line");
         // First line should be header
         if let Some(header) = lines.first() {
-            assert!(header.to_lowercase().contains("id"), "Header should contain Id");
-            assert!(header.to_lowercase().contains("name"), "Header should contain Name");
+            assert!(
+                header.to_lowercase().contains("id"),
+                "Header should contain Id"
+            );
+            assert!(
+                header.to_lowercase().contains("name"),
+                "Header should contain Name"
+            );
         }
     }
 }
@@ -386,7 +400,7 @@ async fn test_bulk_query_operation() {
 #[ignore = "requires SF_AUTH_URL"]
 async fn test_bulk_update_operation() {
     let creds = get_test_credentials().await;
-    
+
     // First create an account using REST API
     let rest_client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -453,7 +467,7 @@ async fn test_tooling_query_apex_classes() {
         .await;
 
     assert!(result.is_ok(), "Tooling query should succeed");
-    
+
     let query_result = result.unwrap();
     assert!(
         query_result.done || query_result.next_records_url.is_some(),
@@ -577,7 +591,7 @@ async fn test_credentials_redaction() {
 
     // Test that Debug output doesn't expose tokens
     let debug_output = format!("{:?}", creds);
-    
+
     assert!(
         debug_output.contains("[REDACTED]") || !debug_output.contains(creds.access_token()),
         "Debug output should not contain actual token"
@@ -593,7 +607,7 @@ async fn test_client_debug_redaction() {
 
     // Test that Debug output doesn't expose tokens
     let debug_output = format!("{:?}", client);
-    
+
     assert!(
         !debug_output.contains(creds.access_token()),
         "Client debug output should not contain actual token"

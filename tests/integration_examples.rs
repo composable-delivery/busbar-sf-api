@@ -18,8 +18,8 @@ use std::collections::HashMap;
 
 /// Helper to get authenticated credentials from SF_AUTH_URL.
 async fn get_test_credentials() -> SalesforceCredentials {
-    let auth_url = std::env::var("SF_AUTH_URL")
-        .expect("SF_AUTH_URL environment variable must be set");
+    let auth_url =
+        std::env::var("SF_AUTH_URL").expect("SF_AUTH_URL environment variable must be set");
 
     SalesforceCredentials::from_sfdx_auth_url(&auth_url)
         .await
@@ -99,7 +99,10 @@ async fn test_example_rest_crud_typed() {
     // CREATE with type-safe struct
     let account = ExampleAccount {
         id: None,
-        name: format!("Example Test Corp {}", chrono::Utc::now().timestamp_millis()),
+        name: format!(
+            "Example Test Corp {}",
+            chrono::Utc::now().timestamp_millis()
+        ),
         industry: Some("Technology".to_string()),
         phone: Some("+1-555-0100".to_string()),
     };
@@ -168,10 +171,7 @@ async fn test_example_rest_crud_dynamic() {
         .await
         .expect("Get should succeed");
 
-    assert_eq!(
-        retrieved.get("Name"),
-        account.get("Name")
-    );
+    assert_eq!(retrieved.get("Name"), account.get("Name"));
 
     println!("✓ Retrieved account: {}", retrieved["Name"]);
 
@@ -250,7 +250,10 @@ async fn test_example_queries_query_builder() {
         .await
         .expect("Query should succeed");
 
-    println!("✓ QueryBuilder with escaped input: found {} accounts", accounts.len());
+    println!(
+        "✓ QueryBuilder with escaped input: found {} accounts",
+        accounts.len()
+    );
 
     // Test WHERE IN
     let industries = vec!["Technology", "Finance"];
@@ -264,7 +267,10 @@ async fn test_example_queries_query_builder() {
         .await
         .expect("Query should succeed");
 
-    println!("✓ QueryBuilder with WHERE IN: found {} accounts", accounts2.len());
+    println!(
+        "✓ QueryBuilder with WHERE IN: found {} accounts",
+        accounts2.len()
+    );
 }
 
 #[tokio::test]
@@ -301,7 +307,9 @@ async fn test_example_queries_relationship_query() {
         .expect("Failed to create REST client");
 
     let contacts: Vec<serde_json::Value> = client
-        .query_all("SELECT Id, Name, Email, Account.Name FROM Contact WHERE Account.Name != null LIMIT 10")
+        .query_all(
+            "SELECT Id, Name, Email, Account.Name FROM Contact WHERE Account.Name != null LIMIT 10",
+        )
         .await
         .expect("Relationship query should succeed");
 
@@ -372,7 +380,10 @@ async fn test_example_bulk_insert() {
 
     println!("✓ Bulk insert completed");
     println!("  Job ID: {}", result.job.id);
-    println!("  Records processed: {}", result.job.number_records_processed);
+    println!(
+        "  Records processed: {}",
+        result.job.number_records_processed
+    );
     println!("  Records failed: {}", result.job.number_records_failed);
 
     assert_eq!(result.job.number_records_processed, 2);
@@ -411,7 +422,10 @@ async fn test_example_bulk_query() {
 
     println!("✓ Bulk query completed");
     println!("  Job ID: {}", result.job.id);
-    println!("  Records processed: {}", result.job.number_records_processed);
+    println!(
+        "  Records processed: {}",
+        result.job.number_records_processed
+    );
 
     if let Some(csv_results) = result.results {
         let line_count = csv_results.lines().count();
@@ -455,10 +469,7 @@ async fn test_example_error_handling_limits() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let limits = client
-        .limits()
-        .await
-        .expect("Should retrieve limits");
+    let limits = client.limits().await.expect("Should retrieve limits");
 
     println!("✓ Retrieved org limits");
 
@@ -541,10 +552,16 @@ async fn test_all_examples_integration() {
 
     // 5. Bulk query (bulk_operations.rs)
     let bulk_result = bulk_client
-        .execute_query(&format!("SELECT Id, Name FROM Account WHERE Id = '{}'", account_id))
+        .execute_query(&format!(
+            "SELECT Id, Name FROM Account WHERE Id = '{}'",
+            account_id
+        ))
         .await
         .expect("Bulk query should succeed");
-    println!("✓ Bulk: Query completed, {} records", bulk_result.job.number_records_processed);
+    println!(
+        "✓ Bulk: Query completed, {} records",
+        bulk_result.job.number_records_processed
+    );
 
     // 6. Tooling API (error_handling.rs uses this)
     let tooling_result = tooling_client
@@ -555,10 +572,7 @@ async fn test_all_examples_integration() {
     println!("✓ Tooling: Executed anonymous Apex");
 
     // 7. Get limits (error_handling.rs)
-    let limits = rest_client
-        .limits()
-        .await
-        .expect("Should get limits");
+    let limits = rest_client.limits().await.expect("Should get limits");
     assert!(limits.is_object());
     println!("✓ Error Handling: Retrieved limits");
 
