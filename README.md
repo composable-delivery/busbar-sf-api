@@ -85,13 +85,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```rust
 use busbar_sf_auth::{OAuthConfig, OAuthFlow};
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load credentials from environment variables - NEVER hardcode credentials!
     let config = OAuthConfig {
-        client_id: "your_client_id".to_string(),
-        client_secret: Some("your_client_secret".to_string()),
-        redirect_uri: "http://localhost:8080/callback".to_string(),
+        client_id: env::var("SF_CLIENT_ID")?,
+        client_secret: Some(env::var("SF_CLIENT_SECRET")?),
+        redirect_uri: env::var("SF_REDIRECT_URI")
+            .unwrap_or_else(|_| "http://localhost:8080/callback".to_string()),
         ..Default::default()
     };
 
