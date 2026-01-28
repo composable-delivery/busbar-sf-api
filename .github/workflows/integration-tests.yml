@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if SF_AUTH_URL secret is available
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    environment: copilot  # Use the copilot environment which has SF_AUTH_URL
+    environment: scratch
     
     steps:
       - uses: actions/checkout@v6
