@@ -77,8 +77,9 @@ async fn example_retry_logic(client: &SalesforceRestClient) {
         println!("Attempt {}/{}", attempt, max_retries);
 
         // Try to query accounts
-        let result: Result<Vec<serde_json::Value>, _> =
-            client.query_all("SELECT Id, Name FROM Account LIMIT 10").await;
+        let result: Result<Vec<serde_json::Value>, _> = client
+            .query_all("SELECT Id, Name FROM Account LIMIT 10")
+            .await;
 
         match result {
             Ok(accounts) => {
@@ -121,7 +122,12 @@ async fn example_rate_limit_handling(client: &SalesforceRestClient) {
                     daily_api.get("Remaining").and_then(|v| v.as_i64()),
                 ) {
                     let usage_percent = ((max - remaining) as f64 / max as f64) * 100.0;
-                    println!("  Daily API Usage: {:.1}% ({}/{})", usage_percent, max - remaining, max);
+                    println!(
+                        "  Daily API Usage: {:.1}% ({}/{})",
+                        usage_percent,
+                        max - remaining,
+                        max
+                    );
 
                     if usage_percent > 80.0 {
                         println!("  ⚠ Warning: API usage is above 80%!");
@@ -171,21 +177,33 @@ async fn example_error_categorization() {
 
     // Create different error types for demonstration
     let errors = vec![
-        ("Rate Limited", ErrorKind::RateLimited { retry_after: Some(Duration::from_secs(30)) }),
+        (
+            "Rate Limited",
+            ErrorKind::RateLimited {
+                retry_after: Some(Duration::from_secs(30)),
+            },
+        ),
         ("Timeout", ErrorKind::Timeout),
-        ("Authentication", ErrorKind::Authentication("Invalid token".to_string())),
+        (
+            "Authentication",
+            ErrorKind::Authentication("Invalid token".to_string()),
+        ),
         ("Not Found", ErrorKind::NotFound("Account".to_string())),
-        ("Connection", ErrorKind::Connection("Network error".to_string())),
+        (
+            "Connection",
+            ErrorKind::Connection("Network error".to_string()),
+        ),
     ];
 
     for (name, error_kind) in errors {
         println!("\n{} Error:", name);
         println!("  Retryable: {}", error_kind.is_retryable());
 
-        if let ErrorKind::RateLimited { retry_after } = error_kind {
-            if let Some(duration) = retry_after {
-                println!("  Retry after: {:?}", duration);
-            }
+        if let ErrorKind::RateLimited {
+            retry_after: Some(duration),
+        } = error_kind
+        {
+            println!("  Retry after: {:?}", duration);
         }
     }
 
@@ -202,13 +220,10 @@ async fn create_account_with_context(
         "Name": name
     });
 
-    client
-        .create("Account", &account)
-        .await
-        .map_err(|e| {
-            // Add context to the error
-            format!("Failed to create account '{}': {}", name, e)
-        })
+    client.create("Account", &account).await.map_err(|e| {
+        // Add context to the error
+        format!("Failed to create account '{}': {}", name, e)
+    })
 }
 
 /// Example: Error recovery strategies
@@ -217,7 +232,9 @@ async fn query_with_fallback(
     client: &SalesforceRestClient,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     // Try primary query
-    let result = client.query_all("SELECT Id, Name, CustomField__c FROM Account").await;
+    let result = client
+        .query_all("SELECT Id, Name, CustomField__c FROM Account")
+        .await;
 
     match result {
         Ok(accounts) => Ok(accounts),
@@ -226,7 +243,10 @@ async fn query_with_fallback(
             if let busbar_sf_rest::ErrorKind::Salesforce { error_code, .. } = &e.kind {
                 if error_code == "INVALID_FIELD" {
                     println!("  CustomField__c doesn't exist, trying without it...");
-                    return client.query_all("SELECT Id, Name FROM Account").await.map_err(Into::into);
+                    return client
+                        .query_all("SELECT Id, Name FROM Account")
+                        .await
+                        .map_err(Into::into);
                 }
             }
             Err(e.into())
@@ -278,7 +298,10 @@ where
                 }
 
                 let backoff = Duration::from_millis(100 * 2u64.pow(attempt - 1));
-                println!("  Attempt {} failed, retrying after {:?}...", attempt, backoff);
+                println!(
+                    "  Attempt {} failed, retrying after {:?}...",
+                    attempt, backoff
+                );
                 sleep(backoff).await;
             }
         }
