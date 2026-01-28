@@ -74,6 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     println!("Retrieved {} accounts", accounts.len());
+    // Note: In production, be cautious about logging sensitive data
+    // For debugging: println!("Account: {}", account["Name"]);
 
     Ok(())
 }
