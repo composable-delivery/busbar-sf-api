@@ -243,16 +243,19 @@ impl SalesforceCredentials {
         let token_url = if instance_url.contains("localhost") || instance_url.contains("127.0.0.1")
         {
             instance_url
-        } else if instance_url.contains("test.salesforce.com") 
+        } else if instance_url.contains("test.salesforce.com")
             || instance_url.contains("sandbox")
-            || instance_url.contains(".scratch.") {
+            || instance_url.contains(".scratch.")
+        {
             "https://test.salesforce.com"
         } else {
             "https://login.salesforce.com"
         };
 
         // Use refresh token to get access token
-        let token_response = oauth_client.refresh_token(refresh_token, token_url).await
+        let token_response = oauth_client
+            .refresh_token(refresh_token, token_url)
+            .await
             .map_err(|e| {
                 // Enhance error message for expired refresh tokens
                 if matches!(&e.kind, ErrorKind::OAuth { error, .. } if error == "invalid_grant") {

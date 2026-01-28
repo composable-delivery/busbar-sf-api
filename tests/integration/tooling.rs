@@ -1,7 +1,7 @@
 //! Tooling API integration tests using SF_AUTH_URL.
 
-use busbar_sf_auth::Credentials;
 use super::common::require_credentials;
+use busbar_sf_auth::Credentials;
 use busbar_sf_tooling::ToolingClient;
 
 // ============================================================================
@@ -10,7 +10,9 @@ use busbar_sf_tooling::ToolingClient;
 
 #[tokio::test]
 async fn test_tooling_query_apex_classes() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -29,7 +31,9 @@ async fn test_tooling_query_apex_classes() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous_success() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -50,7 +54,9 @@ async fn test_tooling_execute_anonymous_success() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous_compile_error() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -63,7 +69,9 @@ async fn test_tooling_execute_anonymous_compile_error() {
 
 #[tokio::test]
 async fn test_tooling_query_all_pagination() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -81,7 +89,9 @@ async fn test_tooling_query_all_pagination() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_query() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -89,12 +99,17 @@ async fn test_tooling_error_invalid_query() {
         .query::<serde_json::Value>("SELECT Id, NotAField__c FROM ApexClass")
         .await;
 
-    assert!(result.is_err(), "Tooling query with invalid field should fail");
+    assert!(
+        result.is_err(),
+        "Tooling query with invalid field should fail"
+    );
 }
 
 #[tokio::test]
 async fn test_tooling_error_invalid_sobject_create_get_delete() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -102,7 +117,10 @@ async fn test_tooling_error_invalid_sobject_create_get_delete() {
         .create("ApexClass; DROP", &serde_json::json!({"Name": "Bad"}))
         .await;
 
-    assert!(create_result.is_err(), "Create with invalid SObject should fail");
+    assert!(
+        create_result.is_err(),
+        "Create with invalid SObject should fail"
+    );
 
     let get_result: Result<serde_json::Value, _> = client.get("ApexClass", "bad-id").await;
 
@@ -115,7 +133,9 @@ async fn test_tooling_error_invalid_sobject_create_get_delete() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_log_id() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 

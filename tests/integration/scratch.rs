@@ -180,7 +180,10 @@ async fn test_rest_describe_sobject() {
 
     let field_names: Vec<&str> = describe.fields.iter().map(|f| f.name.as_str()).collect();
     assert!(field_names.contains(&"Id"), "Account should have Id field");
-    assert!(field_names.contains(&"Name"), "Account should have Name field");
+    assert!(
+        field_names.contains(&"Name"),
+        "Account should have Name field"
+    );
 }
 
 #[tokio::test]

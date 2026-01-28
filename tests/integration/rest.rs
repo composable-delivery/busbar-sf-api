@@ -1,7 +1,7 @@
 //! REST API integration tests using SF_AUTH_URL.
 
-use busbar_sf_auth::Credentials;
 use super::common::require_credentials;
+use busbar_sf_auth::Credentials;
 use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, SalesforceRestClient};
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 
 #[tokio::test]
 async fn test_rest_composite_api() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -58,7 +60,9 @@ async fn test_rest_composite_api() {
 
 #[tokio::test]
 async fn test_rest_search_sosl() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -70,7 +74,9 @@ async fn test_rest_search_sosl() {
 
 #[tokio::test]
 async fn test_rest_batch_operations() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -133,7 +139,9 @@ async fn test_rest_batch_operations() {
 
 #[tokio::test]
 async fn test_rest_query_pagination() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -157,7 +165,9 @@ async fn test_rest_query_pagination() {
 
 #[tokio::test]
 async fn test_rest_upsert_operation() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -205,7 +215,9 @@ async fn test_rest_upsert_operation() {
 
 #[tokio::test]
 async fn test_query_builder_injection_prevention() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -232,7 +244,9 @@ async fn test_query_builder_injection_prevention() {
 
 #[tokio::test]
 async fn test_query_builder_like_escaping() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -256,7 +270,9 @@ async fn test_query_builder_like_escaping() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_field_query() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -269,18 +285,25 @@ async fn test_rest_error_invalid_field_query() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_sobject_describe() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
     let result = client.describe_sobject("NonExistentObject__c").await;
 
-    assert!(result.is_err(), "Describing non-existent object should fail");
+    assert!(
+        result.is_err(),
+        "Describing non-existent object should fail"
+    );
 }
 
 #[tokio::test]
 async fn test_rest_error_invalid_record_id_get() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -291,12 +314,17 @@ async fn test_rest_error_invalid_record_id_get() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_sobject_create() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
     let result = client
-        .create("Account'; DROP TABLE--", &serde_json::json!({"Name": "Bad"}))
+        .create(
+            "Account'; DROP TABLE--",
+            &serde_json::json!({"Name": "Bad"}),
+        )
         .await;
 
     assert!(result.is_err(), "Create with invalid SObject should fail");
@@ -304,7 +332,9 @@ async fn test_rest_error_invalid_sobject_create() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_id_update_delete() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -321,7 +351,9 @@ async fn test_rest_error_invalid_id_update_delete() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_upsert_field() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -339,18 +371,24 @@ async fn test_rest_error_invalid_upsert_field() {
 
 #[tokio::test]
 async fn test_rest_error_invalid_sosl() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.search::<serde_json::Value>("FIND {test} RETURNING").await;
+    let result = client
+        .search::<serde_json::Value>("FIND {test} RETURNING")
+        .await;
 
     assert!(result.is_err(), "Invalid SOSL should fail");
 }
 
 #[tokio::test]
 async fn test_rest_error_batch_invalid_input() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -358,7 +396,10 @@ async fn test_rest_error_batch_invalid_input() {
         .create_multiple("Account; DROP", &Vec::<serde_json::Value>::new(), false)
         .await;
 
-    assert!(create_result.is_err(), "create_multiple invalid sobject should fail");
+    assert!(
+        create_result.is_err(),
+        "create_multiple invalid sobject should fail"
+    );
 
     let update_result = client
         .update_multiple(
@@ -368,11 +409,17 @@ async fn test_rest_error_batch_invalid_input() {
         )
         .await;
 
-    assert!(update_result.is_err(), "update_multiple invalid ID should fail");
+    assert!(
+        update_result.is_err(),
+        "update_multiple invalid ID should fail"
+    );
 
     let delete_result = client.delete_multiple(&["bad-id"], false).await;
 
-    assert!(delete_result.is_err(), "delete_multiple invalid ID should fail");
+    assert!(
+        delete_result.is_err(),
+        "delete_multiple invalid ID should fail"
+    );
 
     let get_result: Result<Vec<serde_json::Value>, _> =
         client.get_multiple("Account", &["bad-id"], &["Id"]).await;
@@ -382,7 +429,9 @@ async fn test_rest_error_batch_invalid_input() {
 
 #[tokio::test]
 async fn test_rest_composite_error_subrequest() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -402,7 +451,10 @@ async fn test_rest_composite_error_subrequest() {
         .await
         .expect("Composite request should succeed at transport level");
 
-    let sub = response.responses.first().expect("Should have one response");
+    let sub = response
+        .responses
+        .first()
+        .expect("Should have one response");
     assert!(sub.http_status_code >= 400, "Subrequest should error");
 }
 
@@ -412,7 +464,9 @@ async fn test_rest_composite_error_subrequest() {
 
 #[tokio::test]
 async fn test_credentials_redaction() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
 
     let debug_output = format!("{:?}", creds);
 
@@ -424,7 +478,9 @@ async fn test_credentials_redaction() {
 
 #[tokio::test]
 async fn test_client_debug_redaction() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -452,7 +508,9 @@ struct TestAccount {
 
 #[tokio::test]
 async fn test_type_safe_crud() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -492,7 +550,9 @@ async fn test_type_safe_crud() {
 
 #[tokio::test]
 async fn test_type_safe_query() {
-    let Some(creds) = require_credentials().await else { return; };
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 

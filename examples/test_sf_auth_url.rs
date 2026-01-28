@@ -7,9 +7,9 @@ use busbar_sf_auth::{Credentials, SalesforceCredentials};
 #[tokio::main]
 async fn main() {
     let auth_url = std::env::var("SF_AUTH_URL").expect("SF_AUTH_URL must be set");
-    
+
     println!("Testing SF_AUTH_URL authentication...");
-    
+
     match SalesforceCredentials::from_sfdx_auth_url(&auth_url).await {
         Ok(creds) => {
             println!("✓ Successfully authenticated!");
