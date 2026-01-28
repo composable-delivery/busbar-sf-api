@@ -10,6 +10,7 @@ A comprehensive Salesforce API client library for Rust, providing type-safe acce
 
 - 🔐 **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
 - 🚀 **REST API** - CRUD operations, queries, composite requests, and collections
+- 🛡️ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
 - 📦 **Bulk API 2.0** - Large-scale data operations with efficient processing
 - 🛠️ **Tooling API** - Apex operations, debug logs, and code coverage
 - 📋 **Metadata API** - Deploy and retrieve Salesforce metadata
@@ -50,6 +51,49 @@ busbar-sf-rest = "0.1"
 ```
 
 ## Quick Start
+
+### Safe Query Builder (Recommended)
+
+The QueryBuilder provides a fluent API with automatic SOQL injection prevention:
+
+```rust
+use busbar_sf_auth::SalesforceCredentials;
+use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Account {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name")]
+    name: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let creds = SalesforceCredentials::from_sfdx_alias("my-org").await?;
+    let client = SalesforceRestClient::new(
+        creds.instance_url(),
+        creds.access_token(),
+    )?;
+
+    // User input is automatically escaped - safe by default!
+    let user_input = "O'Brien's Company";
+    
+    let accounts: Vec<Account> = QueryBuilder::new("Account")?
+        .select(&["Id", "Name", "Industry"])
+        .where_eq("Name", user_input)?  // Automatically escaped!
+        .limit(10)
+        .execute(&client)
+        .await?;
+
+    for account in accounts {
+        println!("{}: {}", account.id, account.name);
+    }
+
+    Ok(())
+}
+```
 
 ### Using Credentials from Salesforce CLI
 
@@ -179,27 +223,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Examples
 
-See the [examples](examples) directory for more comprehensive examples:
+See the [examples](examples) directory for comprehensive examples:
 
-- Basic authentication and queries
-- Bulk data operations
-- Metadata deployment
-- Error handling patterns
-- Retry logic configuration
+- **[basic_auth.rs](examples/basic_auth.rs)** - Authentication methods (OAuth, JWT, SFDX, environment variables)
+- **[rest_crud.rs](examples/rest_crud.rs)** - REST API CRUD operations
+- **[queries.rs](examples/queries.rs)** - SOQL queries with security best practices
+- **[error_handling.rs](examples/error_handling.rs)** - Error handling patterns and retry logic
+- **[bulk_operations.rs](examples/bulk_operations.rs)** - Bulk API 2.0 insert, update, and query operations
+
+Run any example with:
+```bash
+cargo run --example basic_auth
+cargo run --example rest_crud
+cargo run --example queries
+```
 
 ## Security
 
-This library is designed with security in mind:
+This library is designed with security in mind. See [SECURITY.md](SECURITY.md) for full details.
 
-- Sensitive data (tokens, secrets) are redacted in Debug output
-- Tracing/logging skips credential parameters
-- Error messages sanitize credential data
-- Secure credential storage options
+**Key Security Features:**
+- ✅ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (RECOMMENDED)
+- ✅ Automatic credential redaction in logs and debug output
+- ✅ SOQL injection prevention utilities (escape_string, field validation)
+- ✅ URL parameter encoding to prevent path traversal
+- ✅ Secure token storage with restrictive file permissions
+- ✅ Input validation for IDs, field names, and SObject names
+
+**Security Best Practices:**
+```rust
+use busbar_sf_rest::QueryBuilder;
+
+// RECOMMENDED - QueryBuilder is safe by default
+let accounts: Vec<Account> = QueryBuilder::new("Account")?
+    .select(&["Id", "Name"])
+    .where_eq("Name", user_input)?  // Automatically escaped!
+    .execute(&client)
+    .await?;
+
+// Alternative - Manual escaping (easy to forget!)
+use busbar_sf_client::security::soql;
+let safe_name = soql::escape_string(user_input);
+let query = format!("SELECT Id FROM Account WHERE Name = '{}'", safe_name);
+```
+
+For security vulnerabilities, see our [Security Policy](SECURITY.md)
 
 ## Requirements
 
-- Rust 1.75 or later
+- Rust 1.88 or later
 - Tokio runtime for async operations
+
+## Documentation
+
+- 📖 [API Documentation](https://docs.rs/busbar-sf-api) - Complete API reference
+- 🔒 [Security Policy](SECURITY.md) - Security best practices and vulnerability reporting
+- 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.1.0 release
+- 📝 [Changelog](CHANGELOG.md) - Version history and release notes
+- 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 
 ## Contributing
 
