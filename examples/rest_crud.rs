@@ -11,7 +11,7 @@ use busbar_sf_rest::SalesforceRestClient;
 use serde::{Deserialize, Serialize};
 
 /// Account record with proper type safety
-/// 
+///
 /// Use this approach when:
 /// - Building production applications
 /// - You know the schema ahead of time
@@ -48,11 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let account_id = example_create_typed(&client).await?;
     example_read_typed(&client, &account_id).await?;
     example_update_typed(&client, &account_id).await?;
-    
+
     println!("\n--- Dynamic JSON Pattern ---\n");
     let dynamic_id = example_create_dynamic(&client).await?;
     example_read_dynamic(&client, &dynamic_id).await?;
-    
+
     // Clean up
     example_delete(&client, &account_id).await?;
     example_delete(&client, &dynamic_id).await?;
@@ -67,7 +67,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Example 1a: Create with type-safe struct (RECOMMENDED)
-async fn example_create_typed(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
+async fn example_create_typed(
+    client: &SalesforceRestClient,
+) -> Result<String, Box<dyn std::error::Error>> {
     println!("Example 1a: Create with Type-Safe Struct");
     println!("------------------------------------------");
 
@@ -88,7 +90,9 @@ async fn example_create_typed(client: &SalesforceRestClient) -> Result<String, B
 }
 
 /// Example 1b: Create with dynamic JSON
-async fn example_create_dynamic(client: &SalesforceRestClient) -> Result<String, Box<dyn std::error::Error>> {
+async fn example_create_dynamic(
+    client: &SalesforceRestClient,
+) -> Result<String, Box<dyn std::error::Error>> {
     println!("Example 1b: Create with Dynamic JSON");
     println!("--------------------------------------");
 
@@ -115,7 +119,11 @@ async fn example_read_typed(
     println!("----------------------------------------");
 
     let account: Account = client
-        .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone", "Website"]))
+        .get(
+            "Account",
+            account_id,
+            Some(&["Id", "Name", "Industry", "Phone", "Website"]),
+        )
         .await?;
 
     println!("✓ Retrieved account:");
@@ -138,7 +146,11 @@ async fn example_read_dynamic(
     println!("------------------------------------");
 
     let account: serde_json::Value = client
-        .get("Account", account_id, Some(&["Id", "Name", "Industry", "Phone"]))
+        .get(
+            "Account",
+            account_id,
+            Some(&["Id", "Name", "Industry", "Phone"]),
+        )
         .await?;
 
     println!("✓ Retrieved account:");

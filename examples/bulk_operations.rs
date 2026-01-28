@@ -33,9 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Example 1: Bulk insert using high-level API
-async fn example_bulk_insert(
-    client: &BulkApiClient,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn example_bulk_insert(client: &BulkApiClient) -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 1: Bulk Insert (High-Level API)");
     println!("----------------------------------------");
 
@@ -57,13 +55,23 @@ Finance Corp,Finance,+1-555-0104"#;
     println!("\n✓ Bulk insert completed!");
     println!("  Job ID: {}", result.job.id);
     println!("  State: {:?}", result.job.state);
-    println!("  Records Processed: {}", result.job.number_records_processed);
+    println!(
+        "  Records Processed: {}",
+        result.job.number_records_processed
+    );
     println!("  Records Failed: {}", result.job.number_records_failed);
 
     if result.job.number_records_failed > 0 {
         if let Some(failed_results) = result.failed_results {
             println!("\nFailed records:");
-            println!("{}", failed_results.lines().take(5).collect::<Vec<_>>().join("\n"));
+            println!(
+                "{}",
+                failed_results
+                    .lines()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
         }
     }
 
@@ -87,7 +95,10 @@ async fn example_bulk_query(client: &BulkApiClient) -> Result<(), Box<dyn std::e
     println!("\n✓ Bulk query completed!");
     println!("  Job ID: {}", result.job.id);
     println!("  State: {:?}", result.job.state);
-    println!("  Records Processed: {}", result.job.number_records_processed);
+    println!(
+        "  Records Processed: {}",
+        result.job.number_records_processed
+    );
 
     if let Some(csv_results) = result.results {
         let line_count = csv_results.lines().count();
@@ -143,7 +154,10 @@ Manual Job Test 2,Manufacturing"#;
     let completed_job = client.wait_for_ingest_job(&job.id).await?;
     println!("✓ Job completed!");
     println!("  State: {:?}", completed_job.state);
-    println!("  Records Processed: {}", completed_job.number_records_processed);
+    println!(
+        "  Records Processed: {}",
+        completed_job.number_records_processed
+    );
     println!("  Records Failed: {}", completed_job.number_records_failed);
 
     // Step 5: Get results
@@ -186,7 +200,10 @@ EXT-003,New Account 3,Retail"#;
     let completed_job = client.wait_for_ingest_job(&job.id).await?;
 
     println!("✓ Upsert completed!");
-    println!("  Records Processed: {}", completed_job.number_records_processed);
+    println!(
+        "  Records Processed: {}",
+        completed_job.number_records_processed
+    );
     println!("  Records Failed: {}", completed_job.number_records_failed);
 
     println!();
@@ -216,7 +233,10 @@ async fn example_custom_polling(
         .await?;
 
     println!("✓ Job completed with custom polling");
-    println!("  Records Processed: {}", result.job.number_records_processed);
+    println!(
+        "  Records Processed: {}",
+        result.job.number_records_processed
+    );
 
     println!();
 

@@ -37,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Required environment variables:
 /// - SF_INSTANCE_URL or SALESFORCE_INSTANCE_URL
 /// - SF_ACCESS_TOKEN or SALESFORCE_ACCESS_TOKEN
+///
 /// Optional:
 /// - SF_API_VERSION or SALESFORCE_API_VERSION
 /// - SF_REFRESH_TOKEN or SALESFORCE_REFRESH_TOKEN
@@ -94,11 +95,11 @@ async fn example_oauth_refresh() -> Result<(), Box<dyn std::error::Error>> {
     println!("-----------------------------------");
 
     // Configuration from environment or hardcoded for example
-    let consumer_key = std::env::var("SF_CONSUMER_KEY")
-        .unwrap_or_else(|_| "your_consumer_key".to_string());
+    let consumer_key =
+        std::env::var("SF_CONSUMER_KEY").unwrap_or_else(|_| "your_consumer_key".to_string());
     let consumer_secret = std::env::var("SF_CONSUMER_SECRET").ok();
-    let refresh_token = std::env::var("SF_REFRESH_TOKEN")
-        .unwrap_or_else(|_| "your_refresh_token".to_string());
+    let refresh_token =
+        std::env::var("SF_REFRESH_TOKEN").unwrap_or_else(|_| "your_refresh_token".to_string());
 
     if consumer_key == "your_consumer_key" {
         println!("✗ OAuth not configured");
@@ -143,12 +144,12 @@ async fn example_jwt_auth() -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 4: JWT Bearer Flow");
     println!("---------------------------");
 
-    let consumer_key = std::env::var("SF_JWT_CONSUMER_KEY")
-        .unwrap_or_else(|_| "your_consumer_key".to_string());
-    let username = std::env::var("SF_JWT_USERNAME")
-        .unwrap_or_else(|_| "user@example.com".to_string());
-    let key_path = std::env::var("SF_JWT_KEY_PATH")
-        .unwrap_or_else(|_| "/path/to/server.key".to_string());
+    let consumer_key =
+        std::env::var("SF_JWT_CONSUMER_KEY").unwrap_or_else(|_| "your_consumer_key".to_string());
+    let username =
+        std::env::var("SF_JWT_USERNAME").unwrap_or_else(|_| "user@example.com".to_string());
+    let key_path =
+        std::env::var("SF_JWT_KEY_PATH").unwrap_or_else(|_| "/path/to/server.key".to_string());
 
     if consumer_key == "your_consumer_key" {
         println!("✗ JWT not configured");
@@ -191,7 +192,8 @@ fn generate_oauth_url() {
         .with_scopes(vec!["api".to_string(), "refresh_token".to_string()]);
 
     let web_flow = WebFlowAuth::new(config).unwrap();
-    let auth_url = web_flow.authorization_url("https://login.salesforce.com", Some("random_state_123"));
+    let auth_url =
+        web_flow.authorization_url("https://login.salesforce.com", Some("random_state_123"));
 
     println!("OAuth Authorization URL:");
     println!("{}", auth_url);
