@@ -721,9 +721,10 @@ mod tests {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        // Test that scratch org URLs are properly detected and use test.salesforce.com endpoint
-        // Note: We use localhost mock server here to avoid network calls, but the test
-        // verifies the parsing logic works correctly
+        // Test that scratch org URLs are properly parsed
+        // NOTE: This test uses a localhost mock server to avoid network calls.
+        // The token URL routing for scratch orgs is validated in test_scratch_org_token_url_detection.
+        // End-to-end behavior is validated by integration tests in CI.
 
         // Set up mock OAuth server
         let mock_server = MockServer::start().await;
@@ -741,7 +742,6 @@ mod tests {
             .await;
 
         // Use localhost in auth URL to point to mock server
-        // In production, the code would detect .scratch.my.salesforce.com and use test.salesforce.com
         let auth_url = format!("force://PlatformCLI::refresh789@{}", mock_server.uri());
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
