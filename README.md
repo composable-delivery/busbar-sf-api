@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load credentials from environment variables - NEVER hardcode credentials!
     let config = OAuthConfig {
         client_id: env::var("SF_CLIENT_ID")?,
-        client_secret: Some(env::var("SF_CLIENT_SECRET")?),
+        client_secret: env::var("SF_CLIENT_SECRET").ok(),
         redirect_uri: env::var("SF_REDIRECT_URI")
             .unwrap_or_else(|_| "http://localhost:8080/callback".to_string()),
         ..Default::default()
