@@ -710,10 +710,7 @@ mod tests {
 
         // Use localhost in auth URL to point to mock server
         // In production, the code would detect .scratch.my.salesforce.com and use test.salesforce.com
-        let auth_url = format!(
-            "force://PlatformCLI::refresh789@{}",
-            mock_server.uri()
-        );
+        let auth_url = format!("force://PlatformCLI::refresh789@{}", mock_server.uri());
 
         let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url).await;
         assert!(
