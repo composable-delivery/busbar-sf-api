@@ -363,10 +363,14 @@ async fn test_bulk_query_operation() {
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
-    // Execute bulk query
-    let soql = "SELECT Id, Name, Industry FROM Account LIMIT 100";
+    // Execute bulk query using QueryBuilder for SOQL injection protection
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(100);
+    
     let result = client
-        .execute_query(soql)
+        .execute_query(query_builder)
         .await
         .expect("Bulk query should succeed");
 

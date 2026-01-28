@@ -413,10 +413,13 @@ async fn test_example_bulk_query() {
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
-    let soql = "SELECT Id, Name, Industry FROM Account LIMIT 100";
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(100);
 
     let result = client
-        .execute_query(soql)
+        .execute_query(query_builder)
         .await
         .expect("Bulk query should succeed");
 
@@ -551,11 +554,13 @@ async fn test_all_examples_integration() {
     println!("✓ Queries: Found account with QueryBuilder");
 
     // 5. Bulk query (bulk_operations.rs)
+    let bulk_query: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .where_eq("Id", &account_id)
+        .expect("where_eq should succeed");
     let bulk_result = bulk_client
-        .execute_query(&format!(
-            "SELECT Id, Name FROM Account WHERE Id = '{}'",
-            account_id
-        ))
+        .execute_query(bulk_query)
         .await
         .expect("Bulk query should succeed");
     println!(

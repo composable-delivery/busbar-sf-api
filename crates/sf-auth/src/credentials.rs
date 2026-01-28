@@ -239,18 +239,36 @@ impl SalesforceCredentials {
 
         // Build token endpoint URL from instance URL
         // For localhost/test servers, use the instance_url directly
-        // For Salesforce production/sandbox, use the appropriate login URL
+        // For Salesforce production/sandbox/scratch orgs, use the appropriate login URL
         let token_url = if instance_url.contains("localhost") || instance_url.contains("127.0.0.1")
         {
             instance_url
-        } else if instance_url.contains("test.salesforce.com") || instance_url.contains("sandbox") {
+        } else if instance_url.contains("test.salesforce.com") 
+            || instance_url.contains("sandbox")
+            || instance_url.contains(".scratch.") {
             "https://test.salesforce.com"
         } else {
             "https://login.salesforce.com"
         };
 
         // Use refresh token to get access token
-        let token_response = oauth_client.refresh_token(refresh_token, token_url).await?;
+        let token_response = oauth_client.refresh_token(refresh_token, token_url).await
+            .map_err(|e| {
+                // Enhance error message for expired refresh tokens
+                if matches!(&e.kind, ErrorKind::OAuth { error, .. } if error == "invalid_grant") {
+                    Error::new(ErrorKind::OAuth {
+                        error: "invalid_grant".to_string(),
+                        description: format!(
+                            "Refresh token expired or invalid. Generate a fresh SF_AUTH_URL using: \
+                            `sf org display --verbose --json | jq -r '.result.sfdxAuthUrl'`. \
+                            Original error: {}",
+                            e
+                        ),
+                    })
+                } else {
+                    e
+                }
+            })?;
 
         // Create credentials from token response
         let api_version = busbar_sf_client::DEFAULT_API_VERSION.to_string();
