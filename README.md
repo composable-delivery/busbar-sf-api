@@ -6,18 +6,20 @@
 
 A comprehensive Salesforce API client library for Rust, providing type-safe access to Salesforce APIs with built-in authentication, retry logic, and error handling.
 
+This repository is undergoing rapid development and is not yet stable for production use. We're refactoring these API's out of other projects as reusable crates after realizing there is shockingly little coverage of Salesforce APIs in Rust, yet. More to come on that front. For now, if you're interested in providing feedback or even collaborating, let us know in [Discussions](https://github.com/composable-delivery/busbar-sf-api.
+
 ## Features
 
-- 🔐 **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
-- 🚀 **REST API** - CRUD operations, queries, composite requests, and collections
-- 🛡️ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
-- 📦 **Bulk API 2.0** - Large-scale data operations with efficient processing
-- 🛠️ **Tooling API** - Apex operations, debug logs, and code coverage
-- 📋 **Metadata API** - Deploy and retrieve Salesforce metadata
-- 🔄 **Async/Await** - Built on Tokio for high-performance async operations
-- 🔁 **Retry Logic** - Automatic retries with exponential backoff
-- 🔒 **Security** - Sensitive data redaction in debug output and logging
-- 📊 **Tracing** - Built-in tracing support for observability
+- **Authentication** - OAuth 2.0 flows, JWT Bearer, and credentials management
+- **REST API** - CRUD operations, queries, composite requests, and collections
+- **QueryBuilder** - Fluent API with automatic SOQL injection prevention (secure by default)
+- **Bulk API 2.0** - Large-scale data operations with efficient processing
+- **Tooling API** - Apex operations, debug logs, and code coverage
+- **Metadata API** - Deploy and retrieve Salesforce metadata
+- **Async/Await** - Built on Tokio for high-performance async operations
+- **Retry Logic** - Automatic retries with exponential backoff
+- **Security** - Sensitive data redaction in debug output and logging
+- **Tracing** - Built-in tracing support for observability
 
 ## Crates
 
