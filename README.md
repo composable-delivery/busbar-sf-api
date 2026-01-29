@@ -38,7 +38,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-busbar-sf-api = "0.0.1"
+busbar-sf-api = "0.0.2"
 tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -48,8 +48,8 @@ Or install individual crates as needed:
 
 ```toml
 [dependencies]
-busbar-sf-auth = "0.0.1"
-busbar-sf-rest = "0.0.1"
+busbar-sf-auth = "0.0.2"
+busbar-sf-rest = "0.0.2"
 ```
 
 ## Quick Start
@@ -293,7 +293,7 @@ For security vulnerabilities, see our [Security Policy](SECURITY.md)
 - 📖 [API Documentation](https://docs.rs/busbar-sf-api) - Complete API reference
 - 🔒 [Security Policy](SECURITY.md) - Security best practices and vulnerability reporting
 - 🧪 [Integration Testing Guide](INTEGRATION_TESTING.md) - How to run integration tests
-- 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.0.1 release
+- 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.0.2 release
 - 📝 [Changelog](CHANGELOG.md) - Version history and release notes
 - 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 
