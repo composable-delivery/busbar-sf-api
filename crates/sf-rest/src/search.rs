@@ -95,10 +95,10 @@ pub struct ParameterizedSearchResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRecordGroup {
-    /// SObject type.
+    /// Attributes containing SObject type information.
     pub attributes: SearchRecordAttributes,
 
-    /// List of matching records with their fields.
+    /// Additional fields returned in the search result (includes matched records and metadata).
     #[serde(flatten)]
     pub records: serde_json::Value,
 }
@@ -214,7 +214,7 @@ pub struct SearchLayoutResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchLayoutInfo {
-    /// SObject name.
+    /// Display label for the SObject (e.g., "Accounts", "Contacts").
     pub label: String,
 
     /// List of columns to display in search results.

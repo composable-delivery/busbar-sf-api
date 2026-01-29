@@ -426,6 +426,15 @@ impl SalesforceRestClient {
         &self,
         request: &ParameterizedSearchRequest,
     ) -> Result<ParameterizedSearchResponse> {
+        // Validate all SObject names in the request
+        for sobject_spec in &request.sobjects {
+            if !soql::is_safe_sobject_name(&sobject_spec.name) {
+                return Err(Error::new(ErrorKind::Salesforce {
+                    error_code: "INVALID_SOBJECT".to_string(),
+                    message: format!("Invalid SObject name: {}", sobject_spec.name),
+                }));
+            }
+        }
         self.client
             .rest_post("parameterizedSearch", request)
             .await
@@ -820,6 +829,35 @@ mod tests {
 
         // Test with invalid SObject name
         let result = rt.block_on(client.search_suggestions("test", "Bad'; DROP--"));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
+        }
+    }
+
+    #[test]
+    fn test_parameterized_search_validates_sobjects() {
+        use crate::search::*;
+        use tokio::runtime::Runtime;
+        let rt = Runtime::new().unwrap();
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+        // Test with invalid SObject name
+        let request = ParameterizedSearchRequest {
+            q: "test".to_string(),
+            sobjects: vec![
+                SearchSObjectSpec {
+                    name: "Account".to_string(),
+                    ..Default::default()
+                },
+                SearchSObjectSpec {
+                    name: "Bad'; DROP--".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let result = rt.block_on(client.parameterized_search(&request));
         assert!(result.is_err());
         if let Err(e) = result {
             assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
