@@ -461,6 +461,20 @@ impl ToolingClient {
     ///
     /// Available since API v40.0.
     ///
+    /// # Security
+    ///
+    /// **IMPORTANT**: If you are including user-provided values in the WHERE clause,
+    /// you MUST escape them to prevent SOQL injection attacks:
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_client::security::soql;
+    ///
+    /// // CORRECT - properly escaped:
+    /// let safe_type = soql::escape_string(user_input);
+    /// let filter = format!("MetadataComponentType = '{}'", safe_type);
+    /// let deps = client.get_metadata_component_dependencies(Some(&filter)).await?;
+    /// ```
+    ///
     /// # Example
     ///
     /// ```rust,ignore
