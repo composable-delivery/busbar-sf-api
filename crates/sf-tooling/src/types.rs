@@ -348,6 +348,7 @@ pub struct CompletionsResult {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PublicDeclarations {
     /// List of public declarations (classes, methods, etc.).
+    #[serde(rename = "publicDeclarations")]
     #[serde(default)]
     pub public_declarations: Vec<CompletionItem>,
 }
@@ -442,7 +443,7 @@ pub struct ApexManifestClass {
     #[serde(rename = "namespacePrefix")]
     pub namespace_prefix: Option<String>,
 
-    /// Whether this is an inner class.
+    /// Whether the class is valid (compiled successfully).
     #[serde(rename = "isValid")]
     pub is_valid: Option<bool>,
 
@@ -541,7 +542,7 @@ mod tests {
     fn test_completions_result_deser() {
         let json = r#"{
             "publicDeclarations": {
-                "public_declarations": [
+                "publicDeclarations": [
                     {
                         "name": "System",
                         "type": "Class",

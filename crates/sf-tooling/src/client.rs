@@ -1050,7 +1050,7 @@ mod tests {
 
         let mock_response = serde_json::json!({
             "publicDeclarations": {
-                "public_declarations": [
+                "publicDeclarations": [
                     {
                         "name": "System",
                         "type": "Class",
@@ -1090,7 +1090,7 @@ mod tests {
 
         let mock_response = serde_json::json!({
             "publicDeclarations": {
-                "public_declarations": [
+                "publicDeclarations": [
                     {
                         "name": "apex:page",
                         "type": "Component",
