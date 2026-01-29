@@ -13,7 +13,8 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
 use crate::retrieve::{PackageManifest, RetrieveMessage, RetrieveResult, RetrieveStatus};
 use crate::types::{
-    ComponentSuccess, FileProperties, SoapFault, TestFailure, TestLevel, DEFAULT_API_VERSION,
+    ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
+    SoapFault, TestFailure, TestLevel, UpsertResult, DEFAULT_API_VERSION,
 };
 
 /// SOAP Action header name.
@@ -596,6 +597,522 @@ impl MetadataClient {
     }
 
     // ========================================================================
+    // CRUD-Based Metadata Operations
+    // ========================================================================
+
+    /// Create one or more metadata components.
+    ///
+    /// This is a synchronous CRUD operation that creates new metadata components
+    /// without requiring zip packaging. Maximum 10 components per call.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Maximum 10 metadata components per call
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject", "CustomField")
+    /// * `metadata_objects` - Array of metadata objects as JSON values
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// let metadata = vec![json!({
+    ///     "fullName": "MyCustomObject__c",
+    ///     "label": "My Custom Object",
+    ///     "pluralLabel": "My Custom Objects",
+    ///     "nameField": {
+    ///         "type": "AutoNumber",
+    ///         "label": "Record Number"
+    ///     }
+    /// })];
+    ///
+    /// let results = client.create_metadata("CustomObject", &metadata).await?;
+    /// for result in results {
+    ///     if result.success {
+    ///         println!("Created: {}", result.full_name);
+    ///     } else {
+    ///         println!("Failed: {}", result.full_name);
+    ///     }
+    /// }
+    /// ```
+    pub async fn create_metadata(
+        &self,
+        metadata_type: &str,
+        metadata_objects: &[serde_json::Value],
+    ) -> Result<Vec<SaveResult>> {
+        if metadata_objects.is_empty() {
+            return Ok(Vec::new());
+        }
+        if metadata_objects.len() > 10 {
+            return Err(Error::new(ErrorKind::Other(
+                "Maximum 10 metadata components per call".to_string(),
+            )));
+        }
+
+        let metadata_elements: Vec<String> = metadata_objects
+            .iter()
+            .map(|obj| self.build_metadata_element(metadata_type, obj))
+            .collect();
+
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:createMetadata>
+{metadata_elements}
+    </met:createMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_elements = metadata_elements.join("\n"),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("createMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_save_results(&response_text)
+    }
+
+    /// Read metadata components by type and full names.
+    ///
+    /// This is a synchronous operation that retrieves metadata components.
+    /// The returned metadata objects are polymorphic and contain type-specific fields.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject")
+    /// * `full_names` - Array of full names to read
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.read_metadata(
+    ///     "CustomObject",
+    ///     &["Account", "Contact"]
+    /// ).await?;
+    ///
+    /// for record in result.records {
+    ///     println!("Retrieved: {:?}", record);
+    /// }
+    /// ```
+    pub async fn read_metadata(
+        &self,
+        metadata_type: &str,
+        full_names: &[&str],
+    ) -> Result<ReadResult> {
+        if full_names.is_empty() {
+            return Ok(ReadResult {
+                records: Vec::new(),
+            });
+        }
+
+        let full_name_elements: String = full_names
+            .iter()
+            .map(|name| format!("      <met:fullNames>{}</met:fullNames>", xml::escape(name)))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:readMetadata>
+      <met:type>{metadata_type}</met:type>
+{full_name_elements}
+    </met:readMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_type = xml::escape(metadata_type),
+            full_name_elements = full_name_elements,
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("readMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_read_result(&response_text)
+    }
+
+    /// Update one or more existing metadata components.
+    ///
+    /// This is a synchronous CRUD operation that updates existing metadata components
+    /// without requiring zip packaging. Maximum 10 components per call.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Maximum 10 metadata components per call
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject", "CustomField")
+    /// * `metadata_objects` - Array of metadata objects as JSON values
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// let metadata = vec![json!({
+    ///     "fullName": "MyCustomObject__c",
+    ///     "label": "Updated Label"
+    /// })];
+    ///
+    /// let results = client.update_metadata("CustomObject", &metadata).await?;
+    /// ```
+    pub async fn update_metadata(
+        &self,
+        metadata_type: &str,
+        metadata_objects: &[serde_json::Value],
+    ) -> Result<Vec<SaveResult>> {
+        if metadata_objects.is_empty() {
+            return Ok(Vec::new());
+        }
+        if metadata_objects.len() > 10 {
+            return Err(Error::new(ErrorKind::Other(
+                "Maximum 10 metadata components per call".to_string(),
+            )));
+        }
+
+        let metadata_elements: Vec<String> = metadata_objects
+            .iter()
+            .map(|obj| self.build_metadata_element(metadata_type, obj))
+            .collect();
+
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:updateMetadata>
+{metadata_elements}
+    </met:updateMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_elements = metadata_elements.join("\n"),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("updateMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_save_results(&response_text)
+    }
+
+    /// Create or update metadata components (upsert operation).
+    ///
+    /// This is a synchronous CRUD operation that creates new components if they don't exist,
+    /// or updates them if they already exist. Maximum 10 components per call.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Maximum 10 metadata components per call
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject", "CustomField")
+    /// * `metadata_objects` - Array of metadata objects as JSON values
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// let metadata = vec![json!({
+    ///     "fullName": "MyCustomObject__c",
+    ///     "label": "My Custom Object"
+    /// })];
+    ///
+    /// let results = client.upsert_metadata("CustomObject", &metadata).await?;
+    /// for result in results {
+    ///     if result.success {
+    ///         if result.created {
+    ///             println!("Created: {}", result.full_name);
+    ///         } else {
+    ///             println!("Updated: {}", result.full_name);
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    pub async fn upsert_metadata(
+        &self,
+        metadata_type: &str,
+        metadata_objects: &[serde_json::Value],
+    ) -> Result<Vec<UpsertResult>> {
+        if metadata_objects.is_empty() {
+            return Ok(Vec::new());
+        }
+        if metadata_objects.len() > 10 {
+            return Err(Error::new(ErrorKind::Other(
+                "Maximum 10 metadata components per call".to_string(),
+            )));
+        }
+
+        let metadata_elements: Vec<String> = metadata_objects
+            .iter()
+            .map(|obj| self.build_metadata_element(metadata_type, obj))
+            .collect();
+
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:upsertMetadata>
+{metadata_elements}
+    </met:upsertMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_elements = metadata_elements.join("\n"),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("upsertMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_upsert_results(&response_text)
+    }
+
+    /// Delete metadata components by type and full names.
+    ///
+    /// This is a synchronous CRUD operation that deletes metadata components.
+    /// Maximum 10 components per call.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Maximum 10 metadata components per call
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject")
+    /// * `full_names` - Array of full names to delete
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let results = client.delete_metadata(
+    ///     "CustomObject",
+    ///     &["MyObject__c", "AnotherObject__c"]
+    /// ).await?;
+    ///
+    /// for result in results {
+    ///     if result.success {
+    ///         println!("Deleted: {}", result.full_name);
+    ///     } else {
+    ///         println!("Failed to delete: {}", result.full_name);
+    ///     }
+    /// }
+    /// ```
+    pub async fn delete_metadata(
+        &self,
+        metadata_type: &str,
+        full_names: &[&str],
+    ) -> Result<Vec<DeleteResult>> {
+        if full_names.is_empty() {
+            return Ok(Vec::new());
+        }
+        if full_names.len() > 10 {
+            return Err(Error::new(ErrorKind::Other(
+                "Maximum 10 metadata components per call".to_string(),
+            )));
+        }
+
+        let full_name_elements: String = full_names
+            .iter()
+            .map(|name| format!("      <met:fullNames>{}</met:fullNames>", xml::escape(name)))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:deleteMetadata>
+      <met:type>{metadata_type}</met:type>
+{full_name_elements}
+    </met:deleteMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_type = xml::escape(metadata_type),
+            full_name_elements = full_name_elements,
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("deleteMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_delete_results(&response_text)
+    }
+
+    /// Rename a metadata component.
+    ///
+    /// This is a synchronous CRUD operation that renames a single metadata component.
+    /// Only one component can be renamed per call.
+    ///
+    /// # Limitations
+    ///
+    /// - Does NOT support ApexClass or ApexTrigger (use deploy/retrieve for those)
+    /// - Only one component can be renamed per call
+    /// - Available since API version 30.0
+    ///
+    /// # Arguments
+    ///
+    /// * `metadata_type` - The type of metadata component (e.g., "CustomObject")
+    /// * `old_full_name` - Current full name of the component
+    /// * `new_full_name` - New full name for the component
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.rename_metadata(
+    ///     "CustomObject",
+    ///     "OldName__c",
+    ///     "NewName__c"
+    /// ).await?;
+    ///
+    /// if result.success {
+    ///     println!("Renamed successfully");
+    /// }
+    /// ```
+    pub async fn rename_metadata(
+        &self,
+        metadata_type: &str,
+        old_full_name: &str,
+        new_full_name: &str,
+    ) -> Result<SaveResult> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:renameMetadata>
+      <met:type>{metadata_type}</met:type>
+      <met:oldFullName>{old_full_name}</met:oldFullName>
+      <met:newFullName>{new_full_name}</met:newFullName>
+    </met:renameMetadata>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = self.access_token,
+            metadata_type = xml::escape(metadata_type),
+            old_full_name = xml::escape(old_full_name),
+            new_full_name = xml::escape(new_full_name),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("renameMetadata"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_rename_result(&response_text)
+    }
+
+    // ========================================================================
     // Private Helper Methods
     // ========================================================================
 
@@ -1066,6 +1583,270 @@ impl MetadataClient {
             test_required,
         })
     }
+
+    /// Build a metadata element for SOAP body.
+    fn build_metadata_element(
+        &self,
+        metadata_type: &str,
+        metadata_obj: &serde_json::Value,
+    ) -> String {
+        let mut element = format!(
+            "      <met:metadata xsi:type=\"met:{}\">\n",
+            xml::escape(metadata_type)
+        );
+
+        if let Some(obj) = metadata_obj.as_object() {
+            for (key, value) in obj {
+                element.push_str(&self.build_xml_field(key, value, 8));
+            }
+        }
+
+        element.push_str("      </met:metadata>");
+        element
+    }
+
+    /// Build an XML field for a metadata object.
+    fn build_xml_field(&self, key: &str, value: &serde_json::Value, indent: usize) -> String {
+        let spaces = " ".repeat(indent);
+        let escaped_key = xml::escape(key);
+
+        match value {
+            serde_json::Value::String(s) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces,
+                    escaped_key,
+                    xml::escape(s),
+                    escaped_key
+                )
+            }
+            serde_json::Value::Number(n) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces, escaped_key, n, escaped_key
+                )
+            }
+            serde_json::Value::Bool(b) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces, escaped_key, b, escaped_key
+                )
+            }
+            serde_json::Value::Null => {
+                format!("{}<met:{} xsi:nil=\"true\"/>\n", spaces, escaped_key)
+            }
+            serde_json::Value::Object(obj) => {
+                let mut result = format!("{}<met:{}>\n", spaces, escaped_key);
+                for (nested_key, nested_value) in obj {
+                    result.push_str(&self.build_xml_field(nested_key, nested_value, indent + 2));
+                }
+                result.push_str(&format!("{}</met:{}>\n", spaces, escaped_key));
+                result
+            }
+            serde_json::Value::Array(arr) => {
+                let mut result = String::new();
+                for item in arr {
+                    result.push_str(&self.build_xml_field(key, item, indent));
+                }
+                result
+            }
+        }
+    }
+
+    /// Parse SaveResult elements from SOAP response.
+    fn parse_save_results(&self, xml: &str) -> Result<Vec<SaveResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(SaveResult {
+                    full_name,
+                    success,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse UpsertResult elements from SOAP response.
+    fn parse_upsert_results(&self, xml: &str) -> Result<Vec<UpsertResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let created = self
+                    .extract_element(block, "created")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(UpsertResult {
+                    full_name,
+                    success,
+                    created,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse DeleteResult elements from SOAP response.
+    fn parse_delete_results(&self, xml: &str) -> Result<Vec<DeleteResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(DeleteResult {
+                    full_name,
+                    success,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse ReadResult from SOAP response.
+    fn parse_read_result(&self, xml: &str) -> Result<ReadResult> {
+        let mut records = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                // Parse the metadata object as a JSON value for polymorphism
+                let mut metadata_obj = serde_json::Map::new();
+
+                // Extract fullName
+                if let Some(full_name) = self.extract_element(block, "fullName") {
+                    metadata_obj
+                        .insert("fullName".to_string(), serde_json::Value::String(full_name));
+                }
+
+                // Extract other common fields
+                if let Some(label) = self.extract_element(block, "label") {
+                    metadata_obj.insert("label".to_string(), serde_json::Value::String(label));
+                }
+
+                // For now, we'll store the raw XML in a special field
+                // This allows users to parse type-specific fields as needed
+                metadata_obj.insert(
+                    "_rawXml".to_string(),
+                    serde_json::Value::String(block.to_string()),
+                );
+
+                records.push(serde_json::Value::Object(metadata_obj));
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(ReadResult { records })
+    }
+
+    /// Parse single SaveResult from rename operation.
+    fn parse_rename_result(&self, xml: &str) -> Result<SaveResult> {
+        let full_name = self.extract_element(xml, "fullName").unwrap_or_default();
+        let success = self
+            .extract_element(xml, "success")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        let errors = self.parse_metadata_errors(xml);
+
+        Ok(SaveResult {
+            full_name,
+            success,
+            errors,
+        })
+    }
+
+    /// Parse MetadataError elements from a result block.
+    fn parse_metadata_errors(&self, xml: &str) -> Vec<MetadataError> {
+        let mut errors = Vec::new();
+        let pattern = "<errors>";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</errors>") {
+                let block = &remaining[..end + "</errors>".len()];
+
+                let status_code = self
+                    .extract_element(block, "statusCode")
+                    .unwrap_or_default();
+                let message = self.extract_element(block, "message").unwrap_or_default();
+                let fields = self.extract_elements(block, "fields");
+
+                errors.push(MetadataError {
+                    status_code,
+                    message,
+                    fields,
+                });
+
+                search_from = &remaining[end + "</errors>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        errors
+    }
 }
 
 #[cfg(test)]
@@ -1382,5 +2163,246 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].file_name, "classes/OldClass.cls");
         assert_eq!(result.messages[0].problem, "Entity is deleted");
+    }
+
+    #[test]
+    fn test_parse_save_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <createMetadataResponse>
+                <result>
+                    <fullName>MyObject__c</fullName>
+                    <success>true</success>
+                </result>
+                <result>
+                    <fullName>FailedObject__c</fullName>
+                    <success>false</success>
+                    <errors>
+                        <statusCode>INVALID_FIELD</statusCode>
+                        <message>Invalid field name</message>
+                        <fields>Name</fields>
+                    </errors>
+                </result>
+            </createMetadataResponse>
+        "#;
+
+        let results = client.parse_save_results(xml).unwrap();
+        assert_eq!(results.len(), 2);
+
+        // First result
+        assert_eq!(results[0].full_name, "MyObject__c");
+        assert!(results[0].success);
+        assert_eq!(results[0].errors.len(), 0);
+
+        // Second result with error
+        assert_eq!(results[1].full_name, "FailedObject__c");
+        assert!(!results[1].success);
+        assert_eq!(results[1].errors.len(), 1);
+        assert_eq!(results[1].errors[0].status_code, "INVALID_FIELD");
+        assert_eq!(results[1].errors[0].message, "Invalid field name");
+        assert_eq!(results[1].errors[0].fields, vec!["Name"]);
+    }
+
+    #[test]
+    fn test_parse_upsert_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <upsertMetadataResponse>
+                <result>
+                    <fullName>CreatedObject__c</fullName>
+                    <success>true</success>
+                    <created>true</created>
+                </result>
+                <result>
+                    <fullName>UpdatedObject__c</fullName>
+                    <success>true</success>
+                    <created>false</created>
+                </result>
+            </upsertMetadataResponse>
+        "#;
+
+        let results = client.parse_upsert_results(xml).unwrap();
+        assert_eq!(results.len(), 2);
+
+        // Created
+        assert_eq!(results[0].full_name, "CreatedObject__c");
+        assert!(results[0].success);
+        assert!(results[0].created);
+
+        // Updated
+        assert_eq!(results[1].full_name, "UpdatedObject__c");
+        assert!(results[1].success);
+        assert!(!results[1].created);
+    }
+
+    #[test]
+    fn test_parse_delete_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <deleteMetadataResponse>
+                <result>
+                    <fullName>DeletedObject__c</fullName>
+                    <success>true</success>
+                </result>
+            </deleteMetadataResponse>
+        "#;
+
+        let results = client.parse_delete_results(xml).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].full_name, "DeletedObject__c");
+        assert!(results[0].success);
+    }
+
+    #[test]
+    fn test_parse_read_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <readMetadataResponse>
+                <result>
+                    <fullName>Account</fullName>
+                    <label>Account</label>
+                </result>
+                <result>
+                    <fullName>Contact</fullName>
+                    <label>Contact</label>
+                </result>
+            </readMetadataResponse>
+        "#;
+
+        let result = client.parse_read_result(xml).unwrap();
+        assert_eq!(result.records.len(), 2);
+
+        // Check first record
+        if let Some(obj) = result.records[0].as_object() {
+            assert_eq!(
+                obj.get("fullName").and_then(|v| v.as_str()),
+                Some("Account")
+            );
+            assert_eq!(obj.get("label").and_then(|v| v.as_str()), Some("Account"));
+        } else {
+            panic!("Expected object");
+        }
+    }
+
+    #[test]
+    fn test_parse_rename_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <renameMetadataResponse>
+                <result>
+                    <fullName>NewName__c</fullName>
+                    <success>true</success>
+                </result>
+            </renameMetadataResponse>
+        "#;
+
+        let result = client.parse_rename_result(xml).unwrap();
+        assert_eq!(result.full_name, "NewName__c");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_parse_metadata_errors() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <result>
+                <errors>
+                    <statusCode>INVALID_FIELD</statusCode>
+                    <message>Invalid field</message>
+                    <fields>Name</fields>
+                    <fields>Type</fields>
+                </errors>
+                <errors>
+                    <statusCode>DUPLICATE_VALUE</statusCode>
+                    <message>Duplicate value found</message>
+                </errors>
+            </result>
+        "#;
+
+        let errors = client.parse_metadata_errors(xml);
+        assert_eq!(errors.len(), 2);
+
+        // First error
+        assert_eq!(errors[0].status_code, "INVALID_FIELD");
+        assert_eq!(errors[0].message, "Invalid field");
+        assert_eq!(errors[0].fields, vec!["Name", "Type"]);
+
+        // Second error
+        assert_eq!(errors[1].status_code, "DUPLICATE_VALUE");
+        assert_eq!(errors[1].message, "Duplicate value found");
+        assert_eq!(errors[1].fields.len(), 0);
+    }
+
+    #[test]
+    fn test_build_metadata_element() {
+        let client = MetadataClient::from_parts("url", "token");
+        let metadata = serde_json::json!({
+            "fullName": "MyObject__c",
+            "label": "My Object",
+            "pluralLabel": "My Objects"
+        });
+
+        let element = client.build_metadata_element("CustomObject", &metadata);
+        assert!(element.contains("xsi:type=\"met:CustomObject\""));
+        assert!(element.contains("<met:fullName>MyObject__c</met:fullName>"));
+        assert!(element.contains("<met:label>My Object</met:label>"));
+        assert!(element.contains("<met:pluralLabel>My Objects</met:pluralLabel>"));
+    }
+
+    #[test]
+    fn test_build_metadata_element_with_escaping() {
+        let client = MetadataClient::from_parts("url", "token");
+        let metadata = serde_json::json!({
+            "fullName": "Test<Object>",
+            "label": "Test & Label"
+        });
+
+        let element = client.build_metadata_element("CustomObject", &metadata);
+        assert!(element.contains("<met:fullName>Test&lt;Object&gt;</met:fullName>"));
+        assert!(element.contains("<met:label>Test &amp; Label</met:label>"));
+    }
+
+    #[test]
+    fn test_build_xml_field_string() {
+        let client = MetadataClient::from_parts("url", "token");
+        let value = serde_json::Value::String("test value".to_string());
+        let field = client.build_xml_field("name", &value, 4);
+        assert_eq!(field, "    <met:name>test value</met:name>\n");
+    }
+
+    #[test]
+    fn test_build_xml_field_number() {
+        let client = MetadataClient::from_parts("url", "token");
+        let value = serde_json::Value::Number(42.into());
+        let field = client.build_xml_field("count", &value, 4);
+        assert_eq!(field, "    <met:count>42</met:count>\n");
+    }
+
+    #[test]
+    fn test_build_xml_field_bool() {
+        let client = MetadataClient::from_parts("url", "token");
+        let value = serde_json::Value::Bool(true);
+        let field = client.build_xml_field("enabled", &value, 4);
+        assert_eq!(field, "    <met:enabled>true</met:enabled>\n");
+    }
+
+    #[test]
+    fn test_build_xml_field_null() {
+        let client = MetadataClient::from_parts("url", "token");
+        let value = serde_json::Value::Null;
+        let field = client.build_xml_field("optional", &value, 4);
+        assert_eq!(field, "    <met:optional xsi:nil=\"true\"/>\n");
+    }
+
+    #[test]
+    fn test_build_xml_field_nested() {
+        let client = MetadataClient::from_parts("url", "token");
+        let value = serde_json::json!({
+            "inner": "value"
+        });
+        let field = client.build_xml_field("outer", &value, 4);
+        assert!(field.contains("    <met:outer>\n"));
+        assert!(field.contains("      <met:inner>value</met:inner>\n"));
+        assert!(field.contains("    </met:outer>\n"));
     }
 }
