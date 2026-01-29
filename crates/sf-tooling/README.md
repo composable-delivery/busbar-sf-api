@@ -11,3 +11,9 @@ This crate is part of the **busbar-sf-api** workspace.
 ## When to use this crate directly
 
 Use `busbar-sf-tooling` if you only need Tooling endpoints without the broader API surface.
+
+## Optional Features
+
+- **`dependencies`** - Enables support for MetadataComponentDependency (Beta) queries. Limited to 2000 records per query.
+  - Enable with: `busbar-sf-tooling = { version = "0.0.2", features = ["dependencies"] }`
+  - For larger queries (up to 100,000 records), use the Bulk API instead.

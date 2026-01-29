@@ -11,3 +11,9 @@ This crate is part of the **busbar-sf-api** workspace.
 ## When to use this crate directly
 
 Use `busbar-sf-bulk` if you only need Bulk operations and don’t want the full REST/Metadata/Tooling surface.
+
+## Optional Features
+
+- **`query-builder`** (default) - Enables safe SOQL query builder with automatic escaping
+- **`dependencies`** - Enables support for MetadataComponentDependency (Beta) queries. Supports up to 100,000 records per query.
+  - Enable with: `busbar-sf-bulk = { version = "0.0.2", features = ["dependencies"] }`
