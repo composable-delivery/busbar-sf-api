@@ -46,15 +46,21 @@
 //! }
 //! ```
 
+pub mod actions;
 mod client;
 mod collections;
 mod composite;
+pub mod consent;
 mod describe;
+pub mod embedded_service;
 mod error;
+pub mod knowledge;
 mod query;
 mod query_builder;
+pub mod scheduler;
 mod sobject;
 mod types;
+pub mod user_password;
 
 // Main client
 pub use client::{ApiVersion, SalesforceRestClient, SearchResult};
