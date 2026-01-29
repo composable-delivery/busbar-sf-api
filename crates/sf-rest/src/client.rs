@@ -10,6 +10,10 @@ use tracing::instrument;
 use busbar_sf_client::security::{soql, url as url_security};
 use busbar_sf_client::{ClientConfig, SalesforceClient};
 
+use crate::actions::{
+    InvocableActionCollection, InvocableActionDescribe, InvocableActionRequest,
+    InvocableActionResult,
+};
 use crate::collections::{CollectionRequest, CollectionResult};
 use crate::composite::{
     CompositeBatchRequest, CompositeBatchResponse, CompositeRequest, CompositeResponse,
@@ -17,7 +21,13 @@ use crate::composite::{
 };
 use crate::describe::{DescribeGlobalResult, DescribeSObjectResult};
 use crate::error::{Error, ErrorKind, Result};
+use crate::list_views::{ListView, ListViewCollection, ListViewDescribe, ListViewResult};
+use crate::process::{
+    ApprovalRequest, ApprovalResult, PendingApprovalCollection, ProcessRuleCollection,
+    ProcessRuleRequest, ProcessRuleResult,
+};
 use crate::query::QueryResult;
+use crate::quick_actions::{QuickAction, QuickActionDescribe, QuickActionResult};
 use crate::sobject::{CreateResult, UpsertResult};
 
 /// Salesforce REST API client.
@@ -619,6 +629,512 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Quick Actions
+    // =========================================================================
+
+    /// List all quick actions available for a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let actions = client.list_quick_actions("Account").await?;
+    /// for action in actions {
+    ///     println!("{}: {}", action.name, action.label);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_quick_actions(&self, sobject: &str) -> Result<Vec<QuickAction>> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/quickActions", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get detailed metadata for a specific quick action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let action = client.describe_quick_action("Account", "SendEmail").await?;
+    /// println!("Action type: {}", action.action_type);
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn describe_quick_action(
+        &self,
+        sobject: &str,
+        action_name: &str,
+    ) -> Result<QuickActionDescribe> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/quickActions/{}", sobject, action_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Invoke a quick action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// let result = client.invoke_quick_action(
+    ///     "Account",
+    ///     "SendEmail",
+    ///     &json!({"Subject": "Hello", "Body": "Test email"})
+    /// ).await?;
+    /// if result.success {
+    ///     println!("Action invoked successfully");
+    /// }
+    /// ```
+    #[instrument(skip(self, body))]
+    pub async fn invoke_quick_action<T: Serialize>(
+        &self,
+        sobject: &str,
+        action_name: &str,
+        body: &T,
+    ) -> Result<QuickActionResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/quickActions/{}", sobject, action_name);
+        self.client.rest_post(&path, body).await.map_err(Into::into)
+    }
+
+    // =========================================================================
+    // List Views
+    // =========================================================================
+
+    /// List all list views for a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let list_views = client.list_views("Account").await?;
+    /// for view in list_views.listviews {
+    ///     println!("{}: {}", view.developer_name, view.label);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_views(&self, sobject: &str) -> Result<ListViewCollection> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/listviews", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a specific list view by ID.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let view = client.get_list_view("Account", "00B5e000001234567").await?;
+    /// println!("View: {}", view.label);
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_list_view(&self, sobject: &str, list_view_id: &str) -> Result<ListView> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(list_view_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/listviews/{}", sobject, list_view_id);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get detailed metadata for a list view, including columns and filters.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let describe = client.describe_list_view("Account", "00B5e000001234567").await?;
+    /// println!("Query: {}", describe.query);
+    /// for column in describe.columns {
+    ///     println!("Column: {}", column.field_name_or_path);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn describe_list_view(
+        &self,
+        sobject: &str,
+        list_view_id: &str,
+    ) -> Result<ListViewDescribe> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(list_view_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/listviews/{}/describe", sobject, list_view_id);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Execute a list view and retrieve results.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let results: ListViewResult<serde_json::Value> =
+    ///     client.execute_list_view("Account", "00B5e000001234567").await?;
+    /// println!("Found {} records", results.size);
+    /// for record in results.records {
+    ///     println!("{:?}", record);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn execute_list_view<T: DeserializeOwned>(
+        &self,
+        sobject: &str,
+        list_view_id: &str,
+    ) -> Result<ListViewResult<T>> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(list_view_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/listviews/{}/results", sobject, list_view_id);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
+    // Process Rules & Approvals
+    // =========================================================================
+
+    /// List all process rules available in the org.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let rules = client.list_process_rules().await?;
+    /// for rule in rules.rules {
+    ///     println!("{}: {}", rule.id, rule.name);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_process_rules(&self) -> Result<ProcessRuleCollection> {
+        self.client
+            .rest_get("process/rules")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// List process rules for a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let rules = client.list_process_rules_for_sobject("Account").await?;
+    /// for rule in rules.rules {
+    ///     println!("{}: {}", rule.id, rule.name);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_process_rules_for_sobject(
+        &self,
+        sobject: &str,
+    ) -> Result<ProcessRuleCollection> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("process/rules/{}", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Trigger process rules for a specific record.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_rest::process::ProcessRuleRequest;
+    ///
+    /// let request = ProcessRuleRequest {
+    ///     context_id: "0015e000001234567".to_string(),
+    /// };
+    /// let result = client.trigger_process_rules(&request).await?;
+    /// if result.success {
+    ///     println!("Process rules triggered successfully");
+    /// }
+    /// ```
+    #[instrument(skip(self, request))]
+    pub async fn trigger_process_rules(
+        &self,
+        request: &ProcessRuleRequest,
+    ) -> Result<ProcessRuleResult> {
+        if !url_security::is_valid_salesforce_id(&request.context_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        self.client
+            .rest_post("process/rules", request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// List pending approval requests.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let approvals = client.list_pending_approvals().await?;
+    /// for approval in approvals.approvals {
+    ///     println!("Approval {}: Entity {}", approval.id, approval.entity_id);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_pending_approvals(&self) -> Result<PendingApprovalCollection> {
+        self.client
+            .rest_get("process/approvals")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Submit, approve, or reject an approval request.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_rest::process::{ApprovalRequest, ApprovalActionType};
+    ///
+    /// let request = ApprovalRequest {
+    ///     action_type: ApprovalActionType::Approve,
+    ///     context_id: "0015e000001234567".to_string(),
+    ///     context_actor_id: None,
+    ///     comments: Some("Approved".to_string()),
+    ///     next_approver_ids: None,
+    ///     process_definition_name_or_id: None,
+    ///     skip_entry_criteria: None,
+    /// };
+    /// let result = client.submit_approval(&request).await?;
+    /// if result.success {
+    ///     println!("Approval processed: {}", result.instance_status);
+    /// }
+    /// ```
+    #[instrument(skip(self, request))]
+    pub async fn submit_approval(&self, request: &ApprovalRequest) -> Result<ApprovalResult> {
+        if !url_security::is_valid_salesforce_id(&request.context_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        self.client
+            .rest_post("process/approvals", request)
+            .await
+            .map_err(Into::into)
+    }
+
+    // =========================================================================
+    // Invocable Actions
+    // =========================================================================
+
+    /// List all standard invocable actions available in the org.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let actions = client.list_standard_actions().await?;
+    /// for action in actions.actions {
+    ///     println!("{}: {}", action.name, action.label);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_standard_actions(&self) -> Result<InvocableActionCollection> {
+        self.client
+            .rest_get("actions/standard")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get detailed metadata for a standard invocable action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let action = client.describe_standard_action("emailSimple").await?;
+    /// println!("Inputs: {:?}", action.inputs);
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn describe_standard_action(
+        &self,
+        action_name: &str,
+    ) -> Result<InvocableActionDescribe> {
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("actions/standard/{}", action_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Invoke a standard invocable action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_rest::actions::InvocableActionRequest;
+    /// use serde_json::json;
+    ///
+    /// let request = InvocableActionRequest {
+    ///     inputs: vec![json!({
+    ///         "emailAddresses": "test@example.com",
+    ///         "emailSubject": "Hello",
+    ///         "emailBody": "Test"
+    ///     })],
+    /// };
+    /// let result = client.invoke_standard_action("emailSimple", &request).await?;
+    /// if result.is_success {
+    ///     println!("Action invoked successfully");
+    /// }
+    /// ```
+    #[instrument(skip(self, request))]
+    pub async fn invoke_standard_action(
+        &self,
+        action_name: &str,
+        request: &InvocableActionRequest,
+    ) -> Result<InvocableActionResult> {
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("actions/standard/{}", action_name);
+        self.client
+            .rest_post(&path, request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// List all custom invocable actions (Apex @InvocableMethod) available in the org.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let actions = client.list_custom_actions().await?;
+    /// for action in actions.actions {
+    ///     println!("{}: {}", action.name, action.label);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_custom_actions(&self) -> Result<InvocableActionCollection> {
+        self.client
+            .rest_get("actions/custom")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get detailed metadata for a custom invocable action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let action = client.describe_custom_action("MyCustomAction").await?;
+    /// println!("Inputs: {:?}", action.inputs);
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn describe_custom_action(
+        &self,
+        action_name: &str,
+    ) -> Result<InvocableActionDescribe> {
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("actions/custom/{}", action_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Invoke a custom invocable action.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_rest::actions::InvocableActionRequest;
+    /// use serde_json::json;
+    ///
+    /// let request = InvocableActionRequest {
+    ///     inputs: vec![json!({"recordId": "0015e000001234567"})],
+    /// };
+    /// let result = client.invoke_custom_action("MyCustomAction", &request).await?;
+    /// if result.is_success {
+    ///     println!("Action invoked successfully");
+    /// }
+    /// ```
+    #[instrument(skip(self, request))]
+    pub async fn invoke_custom_action(
+        &self,
+        action_name: &str,
+        request: &InvocableActionRequest,
+    ) -> Result<InvocableActionResult> {
+        if !soql::is_safe_sobject_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION_NAME".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("actions/custom/{}", action_name);
+        self.client
+            .rest_post(&path, request)
+            .await
+            .map_err(Into::into)
+    }
+
+    // =========================================================================
     // Limits
     // =========================================================================
 
@@ -674,5 +1190,249 @@ mod tests {
             .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
+    }
+
+    // Quick Actions tests
+    mod quick_actions {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_list_quick_actions_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_quick_actions("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_describe_quick_action_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_quick_action("Invalid;Name", "Action").await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_describe_quick_action_rejects_invalid_action_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .describe_quick_action("Account", "Invalid;Action")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_invoke_quick_action_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .invoke_quick_action("Invalid;Name", "Action", &serde_json::json!({}))
+                .await;
+            assert!(result.is_err());
+        }
+    }
+
+    // List Views tests
+    mod list_views {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_list_views_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_views("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_get_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .get_list_view("Invalid;Name", "00B5e000001234567")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_get_list_view_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.get_list_view("Account", "invalid_id").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_describe_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .describe_list_view("Invalid;Name", "00B5e000001234567")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_execute_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result: Result<crate::list_views::ListViewResult<serde_json::Value>> = client
+                .execute_list_view("Invalid;Name", "00B5e000001234567")
+                .await;
+            assert!(result.is_err());
+        }
+    }
+
+    // Process Rules & Approvals tests
+    mod process {
+        use super::*;
+        use crate::process::{ApprovalActionType, ApprovalRequest, ProcessRuleRequest};
+
+        #[tokio::test]
+        async fn test_list_process_rules_for_sobject_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_process_rules_for_sobject("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_trigger_process_rules_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = ProcessRuleRequest {
+                context_id: "invalid_id".to_string(),
+            };
+            let result = client.trigger_process_rules(&request).await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_submit_approval_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = ApprovalRequest {
+                action_type: ApprovalActionType::Submit,
+                context_id: "invalid_id".to_string(),
+                context_actor_id: None,
+                comments: None,
+                next_approver_ids: None,
+                process_definition_name_or_id: None,
+                skip_entry_criteria: None,
+            };
+            let result = client.submit_approval(&request).await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+    }
+
+    // Invocable Actions tests
+    mod invocable_actions {
+        use super::*;
+        use crate::actions::InvocableActionRequest;
+
+        #[tokio::test]
+        async fn test_describe_standard_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_standard_action("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ACTION_NAME");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_invoke_standard_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
+            let result = client
+                .invoke_standard_action("Invalid;Name", &request)
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_describe_custom_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_custom_action("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ACTION_NAME");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_invoke_custom_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
+            let result = client.invoke_custom_action("Invalid;Name", &request).await;
+            assert!(result.is_err());
+        }
     }
 }

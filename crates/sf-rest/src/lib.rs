@@ -46,18 +46,43 @@
 //! }
 //! ```
 
+mod actions;
 mod client;
 mod collections;
 mod composite;
 mod describe;
 mod error;
+mod list_views;
+mod process;
 mod query;
 mod query_builder;
+mod quick_actions;
 mod sobject;
 mod types;
 
 // Main client
 pub use client::{ApiVersion, SalesforceRestClient, SearchResult};
+
+// Quick Actions
+pub use quick_actions::{QuickAction, QuickActionDescribe, QuickActionIcon, QuickActionResult};
+
+// List Views
+pub use list_views::{
+    ListView, ListViewCollection, ListViewColumn, ListViewDescribe, ListViewOrderBy, ListViewResult,
+};
+
+// Process Rules & Approvals
+pub use process::{
+    ApprovalActionType, ApprovalRequest, ApprovalResult, PendingApproval,
+    PendingApprovalCollection, ProcessRule, ProcessRuleCollection, ProcessRuleRequest,
+    ProcessRuleResult,
+};
+
+// Invocable Actions
+pub use actions::{
+    InvocableAction, InvocableActionCollection, InvocableActionDescribe, InvocableActionParameter,
+    InvocableActionRequest, InvocableActionResult,
+};
 
 // Collection operations
 pub use collections::{CollectionRequest, CollectionResult};
