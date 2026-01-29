@@ -42,9 +42,6 @@ rand = { version = "0.9", optional = true }
 # For sanitizing error messages (lightweight regex)
 regex-lite = "0.1"
 
-# For conditional async/sync compilation
-maybe-async = "0.2"
-
 [dev-dependencies]
 wiremock.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

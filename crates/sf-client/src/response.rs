@@ -26,7 +26,17 @@ pub struct ExtismResponse {
 #[cfg(feature = "wasm")]
 impl ExtismResponse {
     pub fn new(status: u16, headers: std::collections::HashMap<String, String>, body: Vec<u8>) -> Self {
-        Self { status, headers, body }
+        // Normalize header names to lowercase for case-insensitive lookups
+        let normalized_headers = headers
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+        
+        Self {
+            status,
+            headers: normalized_headers,
+            body,
+        }
     }
 
     pub fn status(&self) -> u16 {
@@ -34,7 +44,8 @@ impl ExtismResponse {
     }
 
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.get(name).map(|s| s.as_str())
+        // Lookup with lowercase key for case-insensitive matching
+        self.headers.get(&name.to_lowercase()).map(|s| s.as_str())
     }
 
     pub fn body(self) -> Vec<u8> {
@@ -256,6 +267,51 @@ pub trait ResponseExt {
     fn check_salesforce_error(self) -> Result<Response>;
 }
 
+/// Parse error response body and convert to appropriate error kind.
+/// This is shared logic between native and WASM implementations.
+fn parse_error_response(status: u16, body: &str) -> Error {
+    // Check for rate limiting
+    if status == 429 {
+        return Error::new(ErrorKind::RateLimited { retry_after: None });
+    }
+
+    // Try to parse as Salesforce error JSON (array format)
+    if let Ok(errors) = serde_json::from_str::<Vec<SalesforceErrorResponse>>(body) {
+        if let Some(err) = errors.into_iter().next() {
+            return Error::new(ErrorKind::SalesforceApi {
+                error_code: err.error_code,
+                message: sanitize_error_message(&err.message),
+                fields: err.fields.unwrap_or_default(),
+            });
+        }
+    }
+
+    // Try to parse as single error object
+    if let Ok(err) = serde_json::from_str::<SalesforceErrorResponse>(body) {
+        return Error::new(ErrorKind::SalesforceApi {
+            error_code: err.error_code,
+            message: sanitize_error_message(&err.message),
+            fields: err.fields.unwrap_or_default(),
+        });
+    }
+
+    // Map status codes to error kinds - use sanitized messages to avoid
+    // potentially exposing sensitive data from response bodies
+    let sanitized = sanitize_error_message(body);
+    let kind = match status {
+        401 => ErrorKind::Authentication(sanitized),
+        403 => ErrorKind::Authorization(sanitized),
+        404 => ErrorKind::NotFound(sanitized),
+        412 => ErrorKind::PreconditionFailed(sanitized),
+        _ => ErrorKind::Http {
+            status,
+            message: sanitized,
+        },
+    };
+
+    Error::new(kind)
+}
+
 #[cfg(feature = "native")]
 impl ResponseExt for Response {
     async fn check_salesforce_error(self) -> Result<Response> {
@@ -267,49 +323,7 @@ impl ResponseExt for Response {
 
         // Try to parse Salesforce error response
         let body = self.text().await.unwrap_or_default();
-
-        // Check for rate limiting
-        if status == 429 {
-            // Try to extract retry-after from the response we already consumed
-            // In practice, we should check this before consuming the body
-            return Err(Error::new(ErrorKind::RateLimited { retry_after: None }));
-        }
-
-        // Try to parse as Salesforce error JSON
-        if let Ok(errors) = serde_json::from_str::<Vec<SalesforceErrorResponse>>(&body) {
-            if let Some(err) = errors.into_iter().next() {
-                return Err(Error::new(ErrorKind::SalesforceApi {
-                    error_code: err.error_code,
-                    message: sanitize_error_message(&err.message),
-                    fields: err.fields.unwrap_or_default(),
-                }));
-            }
-        }
-
-        // Try to parse as single error object
-        if let Ok(err) = serde_json::from_str::<SalesforceErrorResponse>(&body) {
-            return Err(Error::new(ErrorKind::SalesforceApi {
-                error_code: err.error_code,
-                message: sanitize_error_message(&err.message),
-                fields: err.fields.unwrap_or_default(),
-            }));
-        }
-
-        // Map status codes to error kinds - use sanitized messages to avoid
-        // potentially exposing sensitive data from response bodies
-        let sanitized = sanitize_error_message(&body);
-        let kind = match status {
-            401 => ErrorKind::Authentication(sanitized),
-            403 => ErrorKind::Authorization(sanitized),
-            404 => ErrorKind::NotFound(sanitized),
-            412 => ErrorKind::PreconditionFailed(sanitized),
-            _ => ErrorKind::Http {
-                status,
-                message: sanitized,
-            },
-        };
-
-        Err(Error::new(kind))
+        Err(parse_error_response(status, &body))
     }
 }
 
@@ -324,46 +338,7 @@ impl ResponseExt for Response {
 
         // Try to parse Salesforce error response
         let body = self.text().unwrap_or_default();
-
-        // Check for rate limiting
-        if status == 429 {
-            return Err(Error::new(ErrorKind::RateLimited { retry_after: None }));
-        }
-
-        // Try to parse as Salesforce error JSON
-        if let Ok(errors) = serde_json::from_str::<Vec<SalesforceErrorResponse>>(&body) {
-            if let Some(err) = errors.into_iter().next() {
-                return Err(Error::new(ErrorKind::SalesforceApi {
-                    error_code: err.error_code,
-                    message: sanitize_error_message(&err.message),
-                    fields: err.fields.unwrap_or_default(),
-                }));
-            }
-        }
-
-        // Try to parse as single error object
-        if let Ok(err) = serde_json::from_str::<SalesforceErrorResponse>(&body) {
-            return Err(Error::new(ErrorKind::SalesforceApi {
-                error_code: err.error_code,
-                message: sanitize_error_message(&err.message),
-                fields: err.fields.unwrap_or_default(),
-            }));
-        }
-
-        // Map status codes to error kinds
-        let sanitized = sanitize_error_message(&body);
-        let kind = match status {
-            401 => ErrorKind::Authentication(sanitized),
-            403 => ErrorKind::Authorization(sanitized),
-            404 => ErrorKind::NotFound(sanitized),
-            412 => ErrorKind::PreconditionFailed(sanitized),
-            _ => ErrorKind::Http {
-                status,
-                message: sanitized,
-            },
-        };
-
-        Err(Error::new(kind))
+        Err(parse_error_response(status, &body))
     }
 }
 
