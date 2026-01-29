@@ -12,10 +12,20 @@ rust-version.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = ["native"]
+native = ["dep:reqwest", "dep:tokio", "dep:futures", "dep:rand"]
+wasm = ["dep:extism-pdk", "dep:extism-manifest"]
+
 [dependencies]
-reqwest.workspace = true
-tokio.workspace = true
-futures.workspace = true
+# HTTP clients - conditionally compiled
+reqwest = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+extism-pdk = { version = "1.0", optional = true }
+extism-manifest = { version = "1.0", optional = true }
+
+# Core dependencies (always needed)
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded.workspace = true
@@ -26,8 +36,8 @@ bytes.workspace = true
 chrono.workspace = true
 urlencoding.workspace = true
 
-# For retry with jitter
-rand = "0.9"
+# For retry with jitter (native only - needs random)
+rand = { version = "0.9", optional = true }
 
 # For sanitizing error messages (lightweight regex)
 regex-lite = "0.1"

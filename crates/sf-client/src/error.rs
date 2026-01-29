@@ -143,6 +143,7 @@ fn is_retryable_status(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
 }
 
+#[cfg(feature = "native")]
 impl From<reqwest::Error> for Error {
     fn from(err: reqwest::Error) -> Self {
         let kind = if err.is_timeout() {
@@ -159,6 +160,14 @@ impl From<reqwest::Error> for Error {
         };
 
         Error::with_source(kind, err)
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl From<extism_pdk::Error> for Error {
+    fn from(err: extism_pdk::Error) -> Self {
+        // extism_pdk::Error doesn't implement std::error::Error, so we can't use with_source
+        Error::new(ErrorKind::Other(err.to_string()))
     }
 }
 

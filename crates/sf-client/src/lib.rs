@@ -75,7 +75,10 @@ pub use error::{Error, ErrorKind, Result};
 pub use request::{RequestBuilder, RequestMethod};
 pub use response::{ApiUsage, Response, ResponseExt};
 pub use retry::{BackoffStrategy, RetryConfig, RetryPolicy};
-pub use salesforce_client::{QueryResult, SalesforceClient};
+pub use salesforce_client::QueryResult;
+
+#[cfg(feature = "native")]
+pub use salesforce_client::SalesforceClient;
 
 /// Default Salesforce API version
 pub const DEFAULT_API_VERSION: &str = "62.0";
