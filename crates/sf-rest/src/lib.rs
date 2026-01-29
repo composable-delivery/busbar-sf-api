@@ -53,6 +53,7 @@ mod describe;
 mod error;
 mod query;
 mod query_builder;
+mod search;
 mod sobject;
 mod types;
 
@@ -85,6 +86,14 @@ pub use query::{QueryOptions, QueryResult};
 
 // Query builder (safe by default)
 pub use query_builder::QueryBuilder;
+
+// Search types
+pub use search::{
+    ParameterizedSearchRequest, ParameterizedSearchResponse, ScopeEntity, SearchLayoutColumn,
+    SearchLayoutInfo, SearchLayoutResult, SearchMetadata, SearchRecordAttributes,
+    SearchRecordGroup, SearchSObjectSpec, SearchScopeResult, SearchSuggestionResult, Suggestion,
+    SuggestionAttributes,
+};
 
 // SObject CRUD types
 pub use sobject::{CreateResult, DeleteResult, SalesforceError, UpdateResult, UpsertResult};

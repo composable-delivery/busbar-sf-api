@@ -18,6 +18,10 @@ use crate::composite::{
 use crate::describe::{DescribeGlobalResult, DescribeSObjectResult};
 use crate::error::{Error, ErrorKind, Result};
 use crate::query::QueryResult;
+use crate::search::{
+    ParameterizedSearchRequest, ParameterizedSearchResponse, SearchLayoutResult, SearchScopeResult,
+    SearchSuggestionResult,
+};
 use crate::sobject::{CreateResult, UpsertResult};
 
 /// Salesforce REST API client.
@@ -390,6 +394,138 @@ impl SalesforceRestClient {
         self.client.get_json(&url).await.map_err(Into::into)
     }
 
+    /// Execute a parameterized search with structured filters.
+    ///
+    /// Parameterized search provides more control than basic SOSL search,
+    /// allowing field selection, object-specific filters, and pagination.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_rest::search::*;
+    ///
+    /// let request = ParameterizedSearchRequest {
+    ///     q: "test account".to_string(),
+    ///     sobjects: vec![SearchSObjectSpec {
+    ///         name: "Account".to_string(),
+    ///         fields: Some(vec!["Id".to_string(), "Name".to_string()]),
+    ///         where_clause: Some("Industry = 'Technology'".to_string()),
+    ///         limit: Some(10),
+    ///     }],
+    ///     ..Default::default()
+    /// };
+    /// let result = client.parameterized_search(&request).await?;
+    /// ```
+    ///
+    /// # Security
+    ///
+    /// **IMPORTANT**: If you are including user-provided values in the search query
+    /// or WHERE clauses, you MUST escape them using `busbar_sf_client::security::soql::escape_string()`.
+    #[instrument(skip(self, request))]
+    pub async fn parameterized_search(
+        &self,
+        request: &ParameterizedSearchRequest,
+    ) -> Result<ParameterizedSearchResponse> {
+        self.client
+            .rest_post("parameterizedSearch", request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get search suggestions for type-ahead/auto-complete.
+    ///
+    /// Returns suggested records matching the query for a specific SObject type.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let suggestions = client
+    ///     .search_suggestions("Acme", "Account")
+    ///     .await?;
+    /// ```
+    ///
+    /// # Security
+    ///
+    /// **IMPORTANT**: The query parameter should be escaped if it comes from user input.
+    /// Use `busbar_sf_client::security::url::encode_param()`.
+    #[instrument(skip(self))]
+    pub async fn search_suggestions(
+        &self,
+        query: &str,
+        sobject: &str,
+    ) -> Result<SearchSuggestionResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let encoded_query = url_security::encode_param(query);
+        let url = format!(
+            "{}/services/data/v{}/search/suggestions?q={}&sobject={}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            encoded_query,
+            sobject
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Get the user's search scope order.
+    ///
+    /// Returns an ordered list of SObjects the user most frequently searches,
+    /// which can be used to optimize search UI and behavior.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let scope = client.search_scope_order().await?;
+    /// for entity in scope.scope_entities {
+    ///     println!("{}: {}", entity.label, entity.search_scope_order);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn search_scope_order(&self) -> Result<SearchScopeResult> {
+        let url = format!(
+            "{}/services/data/v{}/search/scopeOrder",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Get search result layout metadata.
+    ///
+    /// Returns layout information for displaying search results for the specified SObjects.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client
+    ///     .search_result_layouts(&["Account", "Contact"])
+    ///     .await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn search_result_layouts(&self, sobjects: &[&str]) -> Result<SearchLayoutResult> {
+        // Validate all SObject names
+        for sobject in sobjects {
+            if !soql::is_safe_sobject_name(sobject) {
+                return Err(Error::new(ErrorKind::Salesforce {
+                    error_code: "INVALID_SOBJECT".to_string(),
+                    message: "Invalid SObject name".to_string(),
+                }));
+            }
+        }
+        let object_list = sobjects.join(",");
+        let url = format!(
+            "{}/services/data/v{}/search/layout?q={}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            object_list
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
     // =========================================================================
     // Composite API
     // =========================================================================
@@ -674,5 +810,75 @@ mod tests {
             .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
+    }
+
+    #[test]
+    fn test_search_suggestions_validates_sobject() {
+        use tokio::runtime::Runtime;
+        let rt = Runtime::new().unwrap();
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+        // Test with invalid SObject name
+        let result = rt.block_on(client.search_suggestions("test", "Bad'; DROP--"));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
+        }
+    }
+
+    #[test]
+    fn test_search_result_layouts_validates_sobjects() {
+        use tokio::runtime::Runtime;
+        let rt = Runtime::new().unwrap();
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+        // Test with invalid SObject name
+        let result = rt.block_on(client.search_result_layouts(&["Account", "Bad'; DROP--"]));
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
+        }
+    }
+
+    #[test]
+    fn test_parameterized_search_request_serialization() {
+        use crate::search::*;
+
+        let request = ParameterizedSearchRequest {
+            q: "test".to_string(),
+            fields: vec!["Id".to_string(), "Name".to_string()],
+            sobjects: vec![SearchSObjectSpec {
+                name: "Account".to_string(),
+                fields: Some(vec!["Industry".to_string()]),
+                where_clause: Some("CreatedDate = THIS_YEAR".to_string()),
+                limit: Some(10),
+            }],
+            overall_limit: Some(100),
+            offset: Some(0),
+            spell_correction: Some(true),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"q\":\"test\""));
+        assert!(json.contains("\"fields\":[\"Id\",\"Name\"]"));
+        assert!(json.contains("\"sobjects\""));
+        assert!(json.contains("\"overallLimit\":100"));
+    }
+
+    #[test]
+    fn test_parameterized_search_request_default() {
+        use crate::search::*;
+
+        let request = ParameterizedSearchRequest {
+            q: "search term".to_string(),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"q\":\"search term\""));
+        // Default/empty fields should not be serialized
+        assert!(!json.contains("\"fields\""));
+        assert!(!json.contains("\"sobjects\""));
+        assert!(!json.contains("\"overallLimit\""));
     }
 }
