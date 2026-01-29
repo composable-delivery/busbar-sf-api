@@ -99,12 +99,12 @@ mockito = "1.5"
 tokio-test = "0.4"
 
 # Internal crates (busbar-sf-* naming, directory names stay as sf-*)
-busbar-sf-client = { path = "crates/sf-client" }
-busbar-sf-auth = { path = "crates/sf-auth" }
-busbar-sf-rest = { path = "crates/sf-rest" }
-busbar-sf-bulk = { path = "crates/sf-bulk" }
-busbar-sf-metadata = { path = "crates/sf-metadata" }
-busbar-sf-tooling = { path = "crates/sf-tooling" }
+busbar-sf-client = { version = "0.0.1", path = "crates/sf-client" }
+busbar-sf-auth = { version = "0.0.1", path = "crates/sf-auth" }
+busbar-sf-rest = { version = "0.0.1", path = "crates/sf-rest" }
+busbar-sf-bulk = { version = "0.0.1", path = "crates/sf-bulk" }
+busbar-sf-metadata = { version = "0.0.1", path = "crates/sf-metadata" }
+busbar-sf-tooling = { version = "0.0.1", path = "crates/sf-tooling" }
 
 [profile.release]
 lto = true
