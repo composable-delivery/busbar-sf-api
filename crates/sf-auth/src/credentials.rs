@@ -78,6 +78,75 @@ impl SalesforceCredentials {
         self.access_token = token.into();
     }
 
+    /// Revoke the current session by invalidating the access token or refresh token.
+    ///
+    /// This convenience method creates an `OAuthClient` and calls `revoke_token()` with
+    /// the current credentials. You can choose to revoke either the access token or the
+    /// refresh token (if available).
+    ///
+    /// # Token Type Behavior
+    ///
+    /// - **Revoking refresh token** (`revoke_refresh: true`): Invalidates the refresh token
+    ///   AND all associated access tokens. Use this for complete session termination.
+    ///   Requires a refresh token to be present in the credentials.
+    /// - **Revoking access token** (`revoke_refresh: false`): Invalidates only the current
+    ///   access token. The refresh token remains valid and can be used to obtain a new
+    ///   access token.
+    ///
+    /// # Arguments
+    ///
+    /// * `revoke_refresh` - If true, revokes the refresh token (and all access tokens).
+    ///   If false, revokes only the access token.
+    /// * `login_url` - The Salesforce login URL (e.g., "https://login.salesforce.com"
+    ///   for production or "https://test.salesforce.com" for sandbox).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - `revoke_refresh` is true but no refresh token is available
+    /// - The HTTP request to the revocation endpoint fails
+    /// - The Salesforce server returns an error response
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use busbar_sf_auth::{SalesforceCredentials, PRODUCTION_LOGIN_URL};
+    /// # async fn example() -> Result<(), busbar_sf_auth::Error> {
+    /// let creds = SalesforceCredentials::new(
+    ///     "https://na1.salesforce.com",
+    ///     "access_token",
+    ///     "62.0"
+    /// ).with_refresh_token("refresh_token");
+    ///
+    /// // Revoke the entire session (refresh token + all access tokens)
+    /// creds.revoke_session(true, PRODUCTION_LOGIN_URL).await?;
+    ///
+    /// // Or revoke just the access token
+    /// creds.revoke_session(false, PRODUCTION_LOGIN_URL).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn revoke_session(&self, revoke_refresh: bool, login_url: &str) -> Result<()> {
+        use crate::oauth::{OAuthClient, OAuthConfig};
+
+        // Determine which token to revoke
+        let token = if revoke_refresh {
+            self.refresh_token.as_ref().ok_or_else(|| {
+                Error::new(ErrorKind::InvalidInput(
+                    "Cannot revoke refresh token: no refresh token available".to_string(),
+                ))
+            })?
+        } else {
+            &self.access_token
+        };
+
+        // Create a minimal OAuth client just for revocation
+        let config = OAuthConfig::new("revoke_client");
+        let client = OAuthClient::new(config);
+
+        client.revoke_token(token, login_url).await
+    }
+
     /// Load credentials from environment variables.
     ///
     /// Required environment variables:
@@ -647,5 +716,72 @@ mod tests {
         assert!(err
             .to_string()
             .contains("expected client_id:client_secret:refresh_token"));
+    }
+
+    #[tokio::test]
+    async fn test_revoke_session_access_token() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock the revoke endpoint
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .and(body_string_contains("token=test_access_token"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let creds =
+            SalesforceCredentials::new("https://na1.salesforce.com", "test_access_token", "62.0");
+
+        let result = creds.revoke_session(false, &mock_server.uri()).await;
+        assert!(result.is_ok(), "Revoking access token should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_revoke_session_refresh_token() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock the revoke endpoint
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .and(body_string_contains("token=test_refresh_token"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let creds =
+            SalesforceCredentials::new("https://na1.salesforce.com", "test_access_token", "62.0")
+                .with_refresh_token("test_refresh_token");
+
+        let result = creds.revoke_session(true, &mock_server.uri()).await;
+        assert!(
+            result.is_ok(),
+            "Revoking refresh token should succeed: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_revoke_session_no_refresh_token() {
+        let creds =
+            SalesforceCredentials::new("https://na1.salesforce.com", "test_access_token", "62.0");
+
+        // Try to revoke refresh token when none exists
+        let result = creds
+            .revoke_session(true, "https://login.salesforce.com")
+            .await;
+
+        assert!(result.is_err(), "Should fail when no refresh token exists");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::InvalidInput(_)),
+            "Should return InvalidInput error"
+        );
     }
 }
