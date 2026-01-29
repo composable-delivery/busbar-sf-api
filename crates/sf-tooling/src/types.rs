@@ -3,6 +3,39 @@
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Search Types
+// ============================================================================
+
+/// Result of a SOSL search query.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SearchResult<T> {
+    /// The search results.
+    #[serde(rename = "searchRecords")]
+    pub search_records: Vec<T>,
+}
+
+// ============================================================================
+// Describe Types (re-exported from common patterns)
+// ============================================================================
+
+// These types are shared between REST and Tooling APIs.
+// Rather than duplicating the type definitions, we provide type aliases
+// that can be used with the Tooling API describe methods.
+
+/// Result of the describeGlobal operation for Tooling API.
+///
+/// This is structurally identical to the REST API's DescribeGlobalResult.
+/// Contains a list of all Tooling SObjects accessible to the user.
+pub use busbar_sf_rest::DescribeGlobalResult;
+
+/// Complete SObject describe result from Tooling API.
+///
+/// This is structurally identical to the REST API's DescribeSObjectResult.
+/// Contains all metadata about a Tooling SObject including fields,
+/// relationships, and capabilities.
+pub use busbar_sf_rest::DescribeSObjectResult;
+
+// ============================================================================
 // Execute Anonymous Types
 // ============================================================================
 

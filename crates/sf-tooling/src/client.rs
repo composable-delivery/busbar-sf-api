@@ -414,6 +414,58 @@ impl ToolingClient {
         }
     }
 
+    /// Update a Tooling API SObject (partial update).
+    ///
+    /// Uses the PATCH method to update specific fields of a record.
+    /// Only the fields included in the `record` parameter will be updated.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// // Update a TraceFlag's expiration date
+    /// client.update(
+    ///     "TraceFlag",
+    ///     "7tf...",
+    ///     &json!({
+    ///         "ExpirationDate": "2026-12-31T23:59:59.000Z"
+    ///     })
+    /// ).await?;
+    /// ```
+    #[instrument(skip(self, record))]
+    pub async fn update<T: serde::Serialize>(
+        &self,
+        sobject: &str,
+        id: &str,
+        record: &T,
+    ) -> Result<()> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        let url = format!(
+            "{}/services/data/v{}/tooling/sobjects/{}/{}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            sobject,
+            id
+        );
+
+        self.client
+            .patch_json(&url, record)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Delete a Tooling API SObject.
     #[instrument(skip(self))]
     pub async fn delete(&self, sobject: &str, id: &str) -> Result<()> {
