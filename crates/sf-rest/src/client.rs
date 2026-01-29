@@ -638,6 +638,281 @@ impl SalesforceRestClient {
         let url = format!("{}/services/data", self.client.instance_url());
         self.client.get_json(&url).await.map_err(Into::into)
     }
+
+    // =========================================================================
+    // Standalone REST Resources
+    // =========================================================================
+
+    /// Get all available tabs for the user.
+    ///
+    /// Returns information about all tabs available in the org, including
+    /// standard and custom tabs.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let tabs = client.tabs().await?;
+    /// for tab in tabs {
+    ///     println!("Tab: {}", tab["label"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_tabs.htm>
+    #[instrument(skip(self))]
+    pub async fn tabs(&self) -> Result<Vec<serde_json::Value>> {
+        self.client.rest_get("tabs").await.map_err(Into::into)
+    }
+
+    /// Get the theme information for the org.
+    ///
+    /// Returns theme colors, logo URLs, and custom branding information.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let theme = client.theme().await?;
+    /// println!("Theme: {:?}", theme);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_themes.htm>
+    #[instrument(skip(self))]
+    pub async fn theme(&self) -> Result<serde_json::Value> {
+        self.client.rest_get("theme").await.map_err(Into::into)
+    }
+
+    /// Get the app menu items.
+    ///
+    /// Returns a list of applications available to the user.
+    ///
+    /// # Parameters
+    ///
+    /// * `app_menu_type` - Type of app menu: `AppSwitcher`, `Salesforce1`, or `NetworkTabs`
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let apps = client.app_menu("AppSwitcher").await?;
+    /// for app in apps {
+    ///     println!("App: {}", app["label"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_appmenu.htm>
+    #[instrument(skip(self))]
+    pub async fn app_menu(&self, app_menu_type: &str) -> Result<serde_json::Value> {
+        let path = format!("appMenu/{}", app_menu_type);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get recently viewed items.
+    ///
+    /// Returns a list of recently viewed records across all objects.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let recent = client.recent_items().await?;
+    /// for item in recent {
+    ///     println!("Recently viewed: {} ({})", item["Name"], item["attributes"]["type"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_recent_items.htm>
+    #[instrument(skip(self))]
+    pub async fn recent_items(&self) -> Result<Vec<serde_json::Value>> {
+        self.client.rest_get("recent").await.map_err(Into::into)
+    }
+
+    /// Get relevant items.
+    ///
+    /// Returns a contextual list of objects relevant to the user.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let relevant = client.relevant_items().await?;
+    /// println!("Relevant items: {:?}", relevant);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_relevant_items.htm>
+    #[instrument(skip(self))]
+    pub async fn relevant_items(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("relevantItems")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get global compact layouts for multiple objects.
+    ///
+    /// Returns compact layouts for the specified objects.
+    ///
+    /// # Parameters
+    ///
+    /// * `sobject_list` - Comma-separated list of object names
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.compact_layouts("Account,Contact").await?;
+    /// println!("Compact layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_compact_layouts.htm>
+    #[instrument(skip(self))]
+    pub async fn compact_layouts(&self, sobject_list: &str) -> Result<serde_json::Value> {
+        // Validate sobject names for safety
+        let objects: Vec<&str> = sobject_list.split(',').map(|s| s.trim()).collect();
+        for obj in &objects {
+            if !soql::is_safe_sobject_name(obj) {
+                return Err(Error::new(ErrorKind::Salesforce {
+                    error_code: "INVALID_SOBJECT".to_string(),
+                    message: format!("Invalid SObject name: {}", obj),
+                }));
+            }
+        }
+        let encoded = url_security::encode_param(sobject_list);
+        let path = format!("compactLayouts?q={}", encoded);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get the schema for a platform event.
+    ///
+    /// Returns the Avro-style schema definition for a specific platform event.
+    ///
+    /// # Parameters
+    ///
+    /// * `event_name` - Name of the platform event (e.g., "Order_Event__e")
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let schema = client.platform_event_schema("Order_Event__e").await?;
+    /// println!("Event schema: {:?}", schema);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_event_eventschema.htm>
+    #[instrument(skip(self))]
+    pub async fn platform_event_schema(&self, event_name: &str) -> Result<serde_json::Value> {
+        // Validate event name for safety
+        if !soql::is_safe_sobject_name(event_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_EVENT_NAME".to_string(),
+                message: "Invalid event name".to_string(),
+            }));
+        }
+        let path = format!("event/eventSchema/{}", event_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get Lightning toggle metrics.
+    ///
+    /// Returns metrics about Lightning Experience feature toggles.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let metrics = client.lightning_toggle_metrics().await?;
+    /// println!("Toggle metrics: {:?}", metrics);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_lightning_togglemetrics.htm>
+    #[instrument(skip(self))]
+    pub async fn lightning_toggle_metrics(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("lightning/toggleMetrics")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get Lightning usage statistics.
+    ///
+    /// Returns Lightning Experience usage statistics for the org.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let usage = client.lightning_usage().await?;
+    /// println!("Lightning usage: {:?}", usage);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_lightning_usage.htm>
+    #[instrument(skip(self))]
+    pub async fn lightning_usage(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("lightning/usage")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Deploy metadata via REST API (multipart form data).
+    ///
+    /// This is an alternative to the SOAP-based metadata deploy operation.
+    /// It accepts a zip file containing metadata and deployment options.
+    ///
+    /// **Note**: This endpoint requires multipart/form-data support. The current
+    /// implementation may need extension of the HTTP client to fully support this.
+    /// For now, use the SOAP-based metadata deploy in the `sf-metadata` crate.
+    ///
+    /// # Parameters
+    ///
+    /// * `zip_data` - Zip file contents as bytes
+    /// * `options` - Deployment options (JSON serializable struct)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use serde_json::json;
+    ///
+    /// let zip_data = std::fs::read("metadata.zip")?;
+    /// let options = json!({
+    ///     "singlePackage": true,
+    ///     "checkOnly": false,
+    ///     "rollbackOnError": true
+    /// });
+    /// let result = client.rest_deploy(&zip_data, &options).await?;
+    /// println!("Deploy ID: {}", result["id"]);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_deploy_metadata.htm>
+    #[instrument(skip(self, zip_data, _options))]
+    pub async fn rest_deploy<T: Serialize>(
+        &self,
+        zip_data: &[u8],
+        _options: &T,
+    ) -> Result<serde_json::Value> {
+        // This is a placeholder implementation that demonstrates the endpoint.
+        // Full multipart/form-data support would require extending the HTTP client.
+        let _url = self.client.rest_url("metadata/deployRequest");
+        let _zip_len = zip_data.len();
+
+        // For now, return an error indicating this needs to be implemented
+        Err(Error::new(ErrorKind::Other(
+            "REST Deploy endpoint requires multipart/form-data support. \
+             Please use the SOAP-based metadata deploy in sf-metadata crate for now."
+                .to_string(),
+        )))
+    }
 }
 
 /// Result of a SOSL search.
@@ -674,5 +949,98 @@ mod tests {
             .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
+    }
+
+    // Tests for standalone REST resources
+
+    #[test]
+    fn test_tabs_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("tabs");
+        assert_eq!(url, "https://na1.salesforce.com/services/data/v62.0/tabs");
+    }
+
+    #[test]
+    fn test_theme_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("theme");
+        assert_eq!(url, "https://na1.salesforce.com/services/data/v62.0/theme");
+    }
+
+    #[test]
+    fn test_app_menu_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("appMenu/AppSwitcher");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/appMenu/AppSwitcher"
+        );
+    }
+
+    #[test]
+    fn test_recent_items_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("recent");
+        assert_eq!(url, "https://na1.salesforce.com/services/data/v62.0/recent");
+    }
+
+    #[test]
+    fn test_relevant_items_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("relevantItems");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/relevantItems"
+        );
+    }
+
+    #[test]
+    fn test_platform_event_schema_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("event/eventSchema/Order_Event__e");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/event/eventSchema/Order_Event__e"
+        );
+    }
+
+    #[test]
+    fn test_lightning_toggle_metrics_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("lightning/toggleMetrics");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/lightning/toggleMetrics"
+        );
+    }
+
+    #[test]
+    fn test_lightning_usage_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("lightning/usage");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/lightning/usage"
+        );
+    }
+
+    #[test]
+    fn test_compact_layouts_valid_sobjects() {
+        // Test that valid sobject names are accepted
+        let valid_list = "Account,Contact,Lead";
+        let objects: Vec<&str> = valid_list.split(',').map(|s| s.trim()).collect();
+        for obj in &objects {
+            assert!(soql::is_safe_sobject_name(obj), "Should be valid: {}", obj);
+        }
+    }
+
+    #[test]
+    fn test_rest_deploy_url_construction() {
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+        let url = client.client.rest_url("metadata/deployRequest");
+        assert_eq!(
+            url,
+            "https://na1.salesforce.com/services/data/v62.0/metadata/deployRequest"
+        );
     }
 }
