@@ -330,6 +330,302 @@ pub struct ApexCodeCoverageAggregate {
     pub coverage: Option<CoverageDetail>,
 }
 
+// ============================================================================
+// Test Execution Types
+// ============================================================================
+
+/// Request for running tests asynchronously.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RunTestsAsyncRequest {
+    /// Test class IDs to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "classids")]
+    pub class_ids: Option<Vec<String>>,
+
+    /// Test class names to run (alternative to class_ids).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "classNames")]
+    pub class_names: Option<Vec<String>>,
+
+    /// Test suite IDs to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "suiteids")]
+    pub suite_ids: Option<Vec<String>>,
+
+    /// Test suite names to run (alternative to suite_ids).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "suiteNames")]
+    pub suite_names: Option<Vec<String>>,
+
+    /// Maximum number of failed tests before stopping (-1 for no limit).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "maxFailedTests")]
+    pub max_failed_tests: Option<i32>,
+
+    /// Test level: RunSpecifiedTests, RunLocalTests, RunAllTestsInOrg, etc.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "testLevel")]
+    pub test_level: Option<String>,
+
+    /// Whether to skip code coverage calculation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "skipCodeCoverage")]
+    pub skip_code_coverage: Option<bool>,
+}
+
+/// Response from running tests asynchronously (just the job ID).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RunTestsAsyncResponse {
+    /// The AsyncApexJob ID.
+    #[serde(rename = "jobId")]
+    pub job_id: String,
+}
+
+/// Request for running tests synchronously.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RunTestsSyncRequest {
+    /// Apex class names or test methods to run.
+    /// Format: "ClassName" or "ClassName.methodName"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tests: Option<Vec<String>>,
+
+    /// Whether to skip code coverage calculation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "skipCodeCoverage")]
+    pub skip_code_coverage: Option<bool>,
+}
+
+/// Result from running tests synchronously.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RunTestsSyncResult {
+    /// Number of tests run.
+    #[serde(rename = "numTestsRun")]
+    pub num_tests_run: u32,
+
+    /// Number of test failures.
+    #[serde(rename = "numFailures")]
+    pub num_failures: u32,
+
+    /// Total execution time in milliseconds.
+    #[serde(rename = "totalTime")]
+    pub total_time: f64,
+
+    /// Successful test results.
+    #[serde(default)]
+    pub successes: Vec<TestSuccess>,
+
+    /// Failed test results.
+    #[serde(default)]
+    pub failures: Vec<TestFailure>,
+
+    /// Code coverage results.
+    #[serde(rename = "codeCoverage", default)]
+    pub code_coverage: Vec<CodeCoverageResult>,
+
+    /// Code coverage warnings.
+    #[serde(rename = "codeCoverageWarnings", default)]
+    pub code_coverage_warnings: Vec<CodeCoverageWarning>,
+}
+
+/// Successful test result.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestSuccess {
+    /// Test class ID.
+    #[serde(rename = "Id")]
+    pub id: String,
+
+    /// Test method name.
+    #[serde(rename = "MethodName")]
+    pub method_name: String,
+
+    /// Test class name.
+    #[serde(rename = "Name")]
+    pub name: String,
+
+    /// Namespace prefix.
+    #[serde(rename = "NamespacePrefix")]
+    pub namespace_prefix: Option<String>,
+
+    /// Execution time in milliseconds.
+    #[serde(rename = "Time")]
+    pub time: f64,
+}
+
+/// Failed test result.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestFailure {
+    /// Test class ID.
+    #[serde(rename = "Id")]
+    pub id: String,
+
+    /// Test method name.
+    #[serde(rename = "MethodName")]
+    pub method_name: String,
+
+    /// Test class name.
+    #[serde(rename = "Name")]
+    pub name: String,
+
+    /// Namespace prefix.
+    #[serde(rename = "NamespacePrefix")]
+    pub namespace_prefix: Option<String>,
+
+    /// Execution time in milliseconds.
+    #[serde(rename = "Time")]
+    pub time: f64,
+
+    /// Error message.
+    #[serde(rename = "Message")]
+    pub message: String,
+
+    /// Stack trace.
+    #[serde(rename = "StackTrace")]
+    pub stack_trace: Option<String>,
+
+    /// Type of failure (e.g., "Class", "Method").
+    #[serde(rename = "Type")]
+    pub failure_type: Option<String>,
+}
+
+/// Code coverage result for a single class or trigger.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CodeCoverageResult {
+    /// ID of the class or trigger.
+    #[serde(rename = "id")]
+    pub id: String,
+
+    /// Name of the class or trigger.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Namespace prefix.
+    #[serde(rename = "namespace")]
+    pub namespace: Option<String>,
+
+    /// Number of lines covered.
+    #[serde(rename = "numLocations")]
+    pub num_locations: u32,
+
+    /// Number of lines not covered.
+    #[serde(rename = "numLocationsNotCovered")]
+    pub num_locations_not_covered: u32,
+
+    /// Type: "Class" or "Trigger".
+    #[serde(rename = "type")]
+    pub coverage_type: String,
+
+    /// Covered lines.
+    #[serde(rename = "locationsNotCovered", default)]
+    pub locations_not_covered: Vec<CodeLocation>,
+}
+
+/// Code location (line number and column).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CodeLocation {
+    /// Line number.
+    pub line: u32,
+
+    /// Column number.
+    pub column: u32,
+
+    /// Number of times executed (0 for not covered).
+    #[serde(rename = "numExecutions")]
+    pub num_executions: u32,
+
+    /// Execution time in nanoseconds.
+    pub time: f64,
+}
+
+/// Code coverage warning.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CodeCoverageWarning {
+    /// Warning message.
+    pub message: String,
+
+    /// Name of the class or trigger.
+    pub name: Option<String>,
+
+    /// Namespace prefix.
+    pub namespace: Option<String>,
+}
+
+// ============================================================================
+// Test Discovery Types (v65.0+)
+// ============================================================================
+
+/// Result from Test Discovery API.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestDiscoveryResult {
+    /// List of available tests.
+    pub tests: Vec<TestItem>,
+}
+
+/// A single test item (Apex test or Flow test).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestItem {
+    /// Test ID.
+    pub id: String,
+
+    /// Test method or flow name.
+    pub name: String,
+
+    /// Class name (for Apex tests).
+    #[serde(rename = "className")]
+    pub class_name: Option<String>,
+
+    /// Namespace prefix.
+    pub namespace: Option<String>,
+
+    /// Test category: "apex" or "flow".
+    pub category: String,
+}
+
+// ============================================================================
+// Test Runner Types (v65.0+)
+// ============================================================================
+
+/// Request for the unified Test Runner API (v65.0+).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RunTestsRequest {
+    /// Test class IDs to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "classIds")]
+    pub class_ids: Option<Vec<String>>,
+
+    /// Suite IDs to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "suiteIds")]
+    pub suite_ids: Option<Vec<String>>,
+
+    /// Test IDs to run (from Test Discovery).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "testIds")]
+    pub test_ids: Option<Vec<String>>,
+
+    /// Test level: "RunSpecifiedTests", "RunLocalTests", "RunAllTestsInOrg".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "testLevel")]
+    pub test_level: Option<String>,
+
+    /// Whether to skip code coverage calculation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "skipCodeCoverage")]
+    pub skip_code_coverage: Option<bool>,
+
+    /// Maximum number of failed tests before stopping.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "maxFailedTests")]
+    pub max_failed_tests: Option<i32>,
+}
+
+/// Response from the unified Test Runner API.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RunTestsResponse {
+    /// Test run ID.
+    #[serde(rename = "testRunId")]
+    pub test_run_id: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +678,91 @@ mod tests {
     fn test_log_level_display() {
         assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
         assert_eq!(LogLevel::Finest.to_string(), "FINEST");
+    }
+
+    #[test]
+    fn test_run_tests_async_request_ser() {
+        let req = RunTestsAsyncRequest {
+            class_names: Some(vec!["TestClass1".to_string(), "TestClass2".to_string()]),
+            test_level: Some("RunSpecifiedTests".to_string()),
+            skip_code_coverage: Some(false),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("classNames"));
+        assert!(json.contains("TestClass1"));
+    }
+
+    #[test]
+    fn test_run_tests_async_response_deser() {
+        let json = r#"{"jobId": "707xx00000000001AAA"}"#;
+        let resp: RunTestsAsyncResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.job_id, "707xx00000000001AAA");
+    }
+
+    #[test]
+    fn test_run_tests_sync_result_deser() {
+        let json = r#"{
+            "numTestsRun": 5,
+            "numFailures": 1,
+            "totalTime": 1234.5,
+            "successes": [],
+            "failures": [{
+                "Id": "01pxx00000000001",
+                "MethodName": "testMethod1",
+                "Name": "TestClass",
+                "Time": 100.0,
+                "Message": "Assertion failed"
+            }],
+            "codeCoverage": [],
+            "codeCoverageWarnings": []
+        }"#;
+
+        let result: RunTestsSyncResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.num_tests_run, 5);
+        assert_eq!(result.num_failures, 1);
+        assert_eq!(result.failures.len(), 1);
+        assert_eq!(result.failures[0].method_name, "testMethod1");
+    }
+
+    #[test]
+    fn test_test_discovery_result_deser() {
+        let json = r#"{
+            "tests": [
+                {
+                    "id": "01pxx00000000001",
+                    "name": "testMethod1",
+                    "className": "TestClass",
+                    "namespace": null,
+                    "category": "apex"
+                },
+                {
+                    "id": "300xx00000000001",
+                    "name": "MyFlowTest",
+                    "namespace": null,
+                    "category": "flow"
+                }
+            ]
+        }"#;
+
+        let result: TestDiscoveryResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.tests.len(), 2);
+        assert_eq!(result.tests[0].category, "apex");
+        assert_eq!(result.tests[1].category, "flow");
+    }
+
+    #[test]
+    fn test_run_tests_request_ser() {
+        let req = RunTestsRequest {
+            test_ids: Some(vec!["01pxx00000000001".to_string()]),
+            test_level: Some("RunSpecifiedTests".to_string()),
+            skip_code_coverage: Some(true),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("testIds"));
+        assert!(json.contains("skipCodeCoverage"));
     }
 }
