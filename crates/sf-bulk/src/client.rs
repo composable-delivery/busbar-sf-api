@@ -522,6 +522,175 @@ impl BulkApiClient {
         Ok(all_results)
     }
 
+    /// Get a batch of parallel result URLs for concurrent download (GA since API v62.0+).
+    ///
+    /// Returns up to 5 result URLs per call that can be downloaded concurrently,
+    /// dramatically reducing download time for large datasets.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The query job ID
+    /// * `max_records` - Optional maximum number of result URLs to return (up to 5)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::BulkApiClient;
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // Get first batch of result URLs
+    /// let batch = client.get_parallel_query_results(job_id, None).await?;
+    ///
+    /// // Download each result URL concurrently
+    /// for url in &batch.result_url {
+    ///     let csv_data = client.inner().get(url).execute().await?.text().await?;
+    ///     // Process CSV data...
+    /// }
+    ///
+    /// // Get next batch if available
+    /// if let Some(next_url) = batch.next_records_url {
+    ///     // Parse job_id and maxRecords from next_url or use it directly
+    /// }
+    /// ```
+    ///
+    /// # API Version
+    ///
+    /// This endpoint requires API version 62.0 or higher (Winter '25+).
+    #[instrument(skip(self))]
+    pub async fn get_parallel_query_results(
+        &self,
+        job_id: &str,
+        max_records: Option<u32>,
+    ) -> Result<ParallelResultsBatch> {
+        let mut url = format!(
+            "{}/{}/parallelResults",
+            self.client.bulk_url("query"),
+            job_id
+        );
+
+        if let Some(max) = max_records {
+            url = format!("{}?maxRecords={}", url, max);
+        }
+
+        let batch: ParallelResultsBatch = self.client.get_json(&url).await?;
+        Ok(batch)
+    }
+
+    /// Get all query results using parallel download (high-level convenience).
+    ///
+    /// This method fetches all result pages concurrently using the parallel results
+    /// endpoint (GA since API v62.0+), which can dramatically reduce download time
+    /// for large datasets compared to serial pagination.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::{BulkApiClient, QueryBuilder};
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // Execute query
+    /// let result = client.execute_query(
+    ///     QueryBuilder::new("Account")?
+    ///         .select(&["Id", "Name"])
+    ///         .limit(100000)
+    /// ).await?;
+    ///
+    /// // Get all results in parallel
+    /// let csv_data = client.get_all_query_results_parallel(&result.job.id).await?;
+    /// ```
+    ///
+    /// # API Version
+    ///
+    /// This method requires API version 62.0 or higher (Winter '25+).
+    #[instrument(skip(self))]
+    pub async fn get_all_query_results_parallel(&self, job_id: &str) -> Result<String> {
+        use futures::future::join_all;
+
+        let mut all_results = String::new();
+        let mut first_batch = true;
+
+        // Fetch all batches of result URLs
+        let mut next_batch_url: Option<String> = None;
+        loop {
+            // Get batch of result URLs
+            let batch = if let Some(url) = next_batch_url.take() {
+                // Parse the relative URL to get just the query params
+                let url = if url.starts_with('/') {
+                    format!("{}{}", self.client.instance_url(), url)
+                } else if url.starts_with("http") {
+                    url
+                } else {
+                    format!("{}/{}", self.client.instance_url(), url)
+                };
+                self.client.get_json(&url).await?
+            } else {
+                self.get_parallel_query_results(job_id, None).await?
+            };
+
+            // Download all URLs in this batch concurrently
+            let download_tasks: Vec<_> = batch
+                .result_url
+                .into_iter()
+                .map(|url| {
+                    let client = &self.client;
+                    async move {
+                        let full_url = if url.starts_with('/') {
+                            format!("{}{}", client.instance_url(), &url)
+                        } else if url.starts_with("http") {
+                            url
+                        } else {
+                            format!("{}/{}", client.instance_url(), &url)
+                        };
+
+                        let request = client.get(&full_url).header("Accept", "text/csv");
+                        let response = client.execute(request).await?;
+
+                        if !response.is_success() {
+                            return Err(Error::new(ErrorKind::Api(format!(
+                                "Failed to get parallel result: status {}",
+                                response.status()
+                            ))));
+                        }
+
+                        response.text().await.map_err(Into::into)
+                    }
+                })
+                .collect();
+
+            let results: Vec<Result<String>> = join_all(download_tasks).await;
+
+            // Combine results
+            for (i, result) in results.into_iter().enumerate() {
+                let csv_data = result?;
+
+                if first_batch && i == 0 {
+                    // First chunk includes header
+                    all_results = csv_data;
+                    first_batch = false;
+                } else {
+                    // Skip header row for subsequent chunks
+                    let data_without_header =
+                        csv_data.lines().skip(1).collect::<Vec<_>>().join("\n");
+                    if !data_without_header.is_empty() {
+                        all_results.push('\n');
+                        all_results.push_str(&data_without_header);
+                    }
+                }
+            }
+
+            // Check if there are more batches
+            if let Some(next_url) = batch.next_records_url {
+                next_batch_url = Some(next_url);
+            } else {
+                break;
+            }
+        }
+
+        Ok(all_results)
+    }
+
     /// Delete a query job.
     #[instrument(skip(self))]
     pub async fn delete_query_job(&self, job_id: &str) -> Result<()> {

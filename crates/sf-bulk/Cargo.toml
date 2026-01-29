@@ -18,6 +18,7 @@ busbar-sf-auth.workspace = true
 busbar-sf-rest = { workspace = true, optional = true }
 reqwest.workspace = true
 tokio.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 csv.workspace = true

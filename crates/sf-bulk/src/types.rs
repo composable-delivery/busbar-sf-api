@@ -396,6 +396,19 @@ pub struct QueryResults {
     pub locator: Option<String>,
 }
 
+/// Batch of parallel query result URLs (GA since API v62.0+).
+///
+/// Returned by the parallel results endpoint, contains up to 5 result URLs
+/// that can be downloaded concurrently.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParallelResultsBatch {
+    /// Result URLs (up to 5 per batch)
+    pub result_url: Vec<String>,
+    /// URL for next batch of results
+    pub next_records_url: Option<String>,
+}
+
 // =============================================================================
 // Result Types
 // =============================================================================
@@ -791,5 +804,38 @@ mod tests {
 
         assert_eq!(json["operation"], "upsert");
         assert_eq!(json["externalIdFieldName"], "External_Id__c");
+    }
+
+    #[test]
+    fn test_parallel_results_batch_deserialization() {
+        let json = r#"{
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx00000000001/results/1",
+                "/services/data/v62.0/jobs/query/750xx00000000001/results/2",
+                "/services/data/v62.0/jobs/query/750xx00000000001/results/3"
+            ],
+            "nextRecordsUrl": "/services/data/v62.0/jobs/query/750xx00000000001/parallelResults?maxRecords=5"
+        }"#;
+
+        let batch: ParallelResultsBatch = serde_json::from_str(json).unwrap();
+        assert_eq!(batch.result_url.len(), 3);
+        assert_eq!(
+            batch.result_url[0],
+            "/services/data/v62.0/jobs/query/750xx00000000001/results/1"
+        );
+        assert!(batch.next_records_url.is_some());
+    }
+
+    #[test]
+    fn test_parallel_results_batch_deserialization_no_next() {
+        let json = r#"{
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx00000000001/results/1"
+            ]
+        }"#;
+
+        let batch: ParallelResultsBatch = serde_json::from_str(json).unwrap();
+        assert_eq!(batch.result_url.len(), 1);
+        assert!(batch.next_records_url.is_none());
     }
 }
