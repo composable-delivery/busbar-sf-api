@@ -335,6 +335,12 @@ pub struct ApexCodeCoverageAggregate {
 // ============================================================================
 
 /// Request for running tests asynchronously.
+///
+/// # Note on Field Naming
+///
+/// The field names use inconsistent casing (`classids`, `suiteids` vs `classNames`, `suiteNames`)
+/// because this matches the exact field names expected by the Salesforce Tooling API.
+/// This is intentional and required for compatibility with Salesforce.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RunTestsAsyncRequest {
     /// Test class IDs to run.
@@ -514,7 +520,7 @@ pub struct CodeCoverageResult {
     #[serde(rename = "type")]
     pub coverage_type: String,
 
-    /// Covered lines.
+    /// Lines not covered (uncovered locations).
     #[serde(rename = "locationsNotCovered", default)]
     pub locations_not_covered: Vec<CodeLocation>,
 }
