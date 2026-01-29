@@ -542,16 +542,8 @@ impl BulkApiClient {
     /// // Get first batch of result URLs
     /// let batch = client.get_parallel_query_results(job_id, None).await?;
     ///
-    /// // Download each result URL concurrently
-    /// for url in &batch.result_url {
-    ///     let csv_data = client.inner().get(url).execute().await?.text().await?;
-    ///     // Process CSV data...
-    /// }
-    ///
-    /// // Get next batch if available
-    /// if let Some(next_url) = batch.next_records_url {
-    ///     // Parse job_id and maxRecords from next_url or use it directly
-    /// }
+    /// // For simple use cases, prefer the high-level method:
+    /// let csv_data = client.get_all_query_results_parallel(job_id).await?;
     /// ```
     ///
     /// # API Version
@@ -575,6 +567,17 @@ impl BulkApiClient {
 
         let batch: ParallelResultsBatch = self.client.get_json(&url).await?;
         Ok(batch)
+    }
+
+    /// Normalize a URL that may be relative or absolute.
+    fn normalize_url(&self, url: &str) -> String {
+        if url.starts_with('/') {
+            format!("{}{}", self.client.instance_url(), url)
+        } else if url.starts_with("http") {
+            url.to_string()
+        } else {
+            format!("{}/{}", self.client.instance_url(), url)
+        }
     }
 
     /// Get all query results using parallel download (high-level convenience).
@@ -616,15 +619,8 @@ impl BulkApiClient {
         loop {
             // Get batch of result URLs
             let batch = if let Some(url) = next_batch_url.take() {
-                // Parse the relative URL to get just the query params
-                let url = if url.starts_with('/') {
-                    format!("{}{}", self.client.instance_url(), url)
-                } else if url.starts_with("http") {
-                    url
-                } else {
-                    format!("{}/{}", self.client.instance_url(), url)
-                };
-                self.client.get_json(&url).await?
+                let normalized_url = self.normalize_url(&url);
+                self.client.get_json(&normalized_url).await?
             } else {
                 self.get_parallel_query_results(job_id, None).await?
             };
@@ -635,15 +631,8 @@ impl BulkApiClient {
                 .into_iter()
                 .map(|url| {
                     let client = &self.client;
+                    let full_url = self.normalize_url(&url);
                     async move {
-                        let full_url = if url.starts_with('/') {
-                            format!("{}{}", client.instance_url(), &url)
-                        } else if url.starts_with("http") {
-                            url
-                        } else {
-                            format!("{}/{}", client.instance_url(), &url)
-                        };
-
                         let request = client.get(&full_url).header("Accept", "text/csv");
                         let response = client.execute(request).await?;
 
@@ -669,14 +658,12 @@ impl BulkApiClient {
                     // First chunk includes header
                     all_results = csv_data;
                     first_batch = false;
-                } else {
-                    // Skip header row for subsequent chunks
-                    let data_without_header =
-                        csv_data.lines().skip(1).collect::<Vec<_>>().join("\n");
-                    if !data_without_header.is_empty() {
+                } else if let Some(newline_pos) = csv_data.find('\n') {
+                    // Skip header row for subsequent chunks (more efficient than lines().skip(1))
+                    if !all_results.is_empty() {
                         all_results.push('\n');
-                        all_results.push_str(&data_without_header);
                     }
+                    all_results.push_str(&csv_data[newline_pos + 1..]);
                 }
             }
 
