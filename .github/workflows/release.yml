@@ -10,11 +10,6 @@ on:
                 description: "Release version (e.g. 0.0.1)"
                 required: true
                 type: string
-            dry_run:
-                description: "Dry run (do not publish)"
-                required: false
-                type: boolean
-                default: true
 
 # Explicit permissions for security
 permissions:
@@ -48,7 +43,7 @@ jobs:
                   fi
 
             - name: Create and push tag (manual release)
-              if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'
+              if: github.event_name == 'workflow_dispatch'
               env:
                   RELEASE_VERSION: ${{ steps.get_version.outputs.version }}
               run: |
@@ -126,80 +121,42 @@ jobs:
               run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
             - name: Publish busbar-sf-client
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-client
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-client to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-auth
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-auth
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-auth to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-rest
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-rest
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-rest to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-bulk
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-bulk
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-bulk to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-metadata
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-metadata
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-metadata to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-tooling
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-tooling
               continue-on-error: true
 
-            # - name: Wait for busbar-sf-tooling to be available
-            #   if: github.event.inputs.dry_run != 'true'
-            #   run: sleep 30
-
             - name: Publish busbar-sf-api (root crate)
-              if: github.event.inputs.dry_run != 'true'
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
               run: cargo publish -p busbar-sf-api
-
-            - name: Dry run summary
-              if: github.event.inputs.dry_run == 'true'
-              run: |
-                  echo "Dry run completed successfully!"
-                  echo "All checks passed. Ready to publish to crates.io."
-                  echo "To publish for real, create a git tag matching the version in Cargo.toml"
