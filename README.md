@@ -6,7 +6,7 @@
 
 A comprehensive Salesforce API client library for Rust, providing type-safe access to Salesforce APIs with built-in authentication, retry logic, and error handling.
 
-This repository is undergoing rapid development and is not yet stable for production use. We're refactoring these API's out of other projects as reusable crates after realizing there is shockingly little coverage of Salesforce APIs in Rust, yet. More to come on that front. For now, if you're interested in providing feedback or even collaborating, let us know in [Discussions](https://github.com/composable-delivery/busbar-sf-api.
+This repository is undergoing rapid development and is not yet stable for production use. We're refactoring these API's out of other projects as reusable crates after realizing there is shockingly little coverage of Salesforce APIs in Rust, yet. More to come on that front. For now, if you're interested in providing feedback or even collaborating, let us know in [Discussions](<https://github.com/composable-delivery/busbar-sf-api>i>.
 
 ## Features
 
@@ -38,7 +38,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-busbar-sf-api = "0.1"
+busbar-sf-api = "0.0.1"
 tokio = { version = "1.40", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -48,8 +48,8 @@ Or install individual crates as needed:
 
 ```toml
 [dependencies]
-busbar-sf-auth = "0.1"
-busbar-sf-rest = "0.1"
+busbar-sf-auth = "0.0.1"
+busbar-sf-rest = "0.0.1"
 ```
 
 ## Quick Start
@@ -240,6 +240,8 @@ See the [examples](examples) directory for comprehensive examples:
 - **[bulk_operations.rs](examples/bulk_operations.rs)** - Bulk API 2.0 insert, update, and query operations
 
 Run any example with:
+
+
 ```bash
 cargo run --example basic_auth
 cargo run --example rest_crud
@@ -250,7 +252,9 @@ cargo run --example queries
 
 This library is designed with security in mind. See [SECURITY.md](SECURITY.md) for full details.
 
+
 **Key Security Features:**
+
 - ✅ **QueryBuilder** - Fluent API with automatic SOQL injection prevention (RECOMMENDED)
 - ✅ Automatic credential redaction in logs and debug output
 - ✅ SOQL injection prevention utilities (escape_string, field validation)
@@ -258,7 +262,9 @@ This library is designed with security in mind. See [SECURITY.md](SECURITY.md) f
 - ✅ Secure token storage with restrictive file permissions
 - ✅ Input validation for IDs, field names, and SObject names
 
+
 **Security Best Practices:**
+
 ```rust
 use busbar_sf_rest::QueryBuilder;
 
@@ -287,7 +293,7 @@ For security vulnerabilities, see our [Security Policy](SECURITY.md)
 - 📖 [API Documentation](https://docs.rs/busbar-sf-api) - Complete API reference
 - 🔒 [Security Policy](SECURITY.md) - Security best practices and vulnerability reporting
 - 🧪 [Integration Testing Guide](INTEGRATION_TESTING.md) - How to run integration tests
-- 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.1.0 release
+- 📋 [Code Review](CODE_REVIEW.md) - Comprehensive code review for v0.0.1 release
 - 📝 [Changelog](CHANGELOG.md) - Version history and release notes
 - 🤝 [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
 
@@ -327,11 +333,11 @@ cargo fmt --workspace
 - 📖 [Documentation](https://docs.rs/busbar-sf-api) - API documentation
 
 ## License
+<http://www.apache.org/licenses/LICENSE-2.0>
+Licensed under either of:<http://opensource.org/licenses/MIT>
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
 
 at your option.
 
