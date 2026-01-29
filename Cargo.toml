@@ -18,19 +18,33 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Salesforce API client library for Rust"
+readme = "README.md"
 autotests = false
+
+[features]
+# Preserve current behavior: depending on busbar-sf-api includes all API surfaces.
+default = ["full"]
+
+full = ["auth", "rest", "bulk", "metadata", "tooling"]
+
+client = ["dep:busbar-sf-client"]
+auth = ["client", "dep:busbar-sf-auth"]
+rest = ["auth", "dep:busbar-sf-rest"]
+bulk = ["auth", "dep:busbar-sf-bulk"]
+metadata = ["auth", "dep:busbar-sf-metadata"]
+tooling = ["auth", "dep:busbar-sf-tooling"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-busbar-sf-client.workspace = true
-busbar-sf-auth.workspace = true
-busbar-sf-rest.workspace = true
-busbar-sf-bulk.workspace = true
-busbar-sf-metadata.workspace = true
-busbar-sf-tooling.workspace = true
+busbar-sf-client = { workspace = true, optional = true }
+busbar-sf-auth = { workspace = true, optional = true }
+busbar-sf-rest = { workspace = true, optional = true }
+busbar-sf-bulk = { workspace = true, optional = true }
+busbar-sf-metadata = { workspace = true, optional = true }
+busbar-sf-tooling = { workspace = true, optional = true }
 tokio.workspace = true
 chrono.workspace = true
 serde.workspace = true
@@ -45,7 +59,7 @@ path = "tests/integration.rs"
 version = "0.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/busbar-io/busbar-sf-api"
+repository = "https://github.com/composable-delivery/busbar-sf-api"
 rust-version = "1.88"
 
 [workspace.dependencies]

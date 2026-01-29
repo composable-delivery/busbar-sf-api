@@ -1,9 +1,11 @@
-# devcontainer.json
+// devcontainer.json
 {
     "version": "2",
     "build": {
-        "dockerfile": "Dockerfile"
+        "dockerfile": "Dockerfile",
+        "context": ".."
     },
+    "workspaceFolder": "/workspaces/busbar-sf-api",
     "settings": {
         "rust-analyzer.cargo.runBuildScripts": true,
         "rust-analyzer.checkOnSave.command": "clippy"
@@ -12,5 +14,5 @@
         "rust-lang.rust-analyzer",
         "esbenp.prettier-vscode"
     ],
-    "postCreateCommand": "cargo install clippy rustfmt"
+    "postCreateCommand": "rustup component add clippy rustfmt"
 }

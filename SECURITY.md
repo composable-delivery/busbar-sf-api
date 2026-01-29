@@ -25,7 +25,7 @@ Instead, please report them via:
    - Fill out the form with details
 
 2. **Email** (Alternative)
-   - Send an email to: security@composable-delivery.com
+   - Send an email to: security@muselab.com
    - Include "busbar-sf-api Security" in the subject line
    - Provide detailed information about the vulnerability
 
