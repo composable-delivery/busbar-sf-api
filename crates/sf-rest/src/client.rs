@@ -128,6 +128,148 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Layout Operations
+    // =========================================================================
+
+    /// Get all page layouts for a specific SObject.
+    ///
+    /// This returns metadata about all page layouts configured for the SObject,
+    /// including sections, rows, items, and field metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.describe_layouts("Account").await?;
+    /// println!("Account layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::DescribeLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/layouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a specific named layout for an SObject.
+    ///
+    /// This returns the layout metadata for a specific named layout.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layout = client.describe_named_layout("Account", "MyCustomLayout").await?;
+    /// println!("Layout metadata: {:?}", layout);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/namedLayouts/{layoutName}`.
+    #[instrument(skip(self))]
+    pub async fn describe_named_layout(
+        &self,
+        sobject: &str,
+        layout_name: &str,
+    ) -> Result<crate::layout::NamedLayoutResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        // URL-encode the layout name to handle special characters
+        let encoded_name = url_security::encode_param(layout_name);
+        let path = format!(
+            "sobjects/{}/describe/namedLayouts/{}",
+            sobject, encoded_name
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get approval process layouts for a specific SObject.
+    ///
+    /// This returns the approval process layout information including
+    /// approval steps, actions, and field mappings.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let approval_layouts = client.describe_approval_layouts("Account").await?;
+    /// println!("Approval layouts: {:?}", approval_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/approvalLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_approval_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::ApprovalLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/approvalLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get compact layouts for a specific SObject.
+    ///
+    /// Compact layouts are used in the Salesforce mobile app and Lightning Experience
+    /// to show a preview of a record in a compact space.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let compact_layouts = client.describe_compact_layouts("Account").await?;
+    /// println!("Compact layouts: {:?}", compact_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/compactLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_compact_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::CompactLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/compactLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get global publisher layouts (global quick actions).
+    ///
+    /// This returns global quick actions and publisher layouts that are
+    /// available across the entire organization, not tied to a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let global_layouts = client.describe_global_publisher_layouts().await?;
+    /// println!("Global layouts: {:?}", global_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/Global/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_global_publisher_layouts(
+        &self,
+    ) -> Result<crate::layout::GlobalPublisherLayoutsResult> {
+        let path = "sobjects/Global/describe/layouts";
+        self.client.rest_get(path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // CRUD Operations
     // =========================================================================
 
@@ -674,5 +816,19 @@ mod tests {
             .with_api_version("60.0");
 
         assert_eq!(client.api_version(), "60.0");
+    }
+
+    #[test]
+    fn test_layout_method_signatures() {
+        // Just verify that the methods exist and have correct signatures
+        // Actual functionality requires integration tests with a real SF org
+        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+        // Verify the client has the methods by checking that they compile
+        let _ = &client.describe_layouts("Account");
+        let _ = &client.describe_named_layout("Account", "MyLayout");
+        let _ = &client.describe_approval_layouts("Account");
+        let _ = &client.describe_compact_layouts("Account");
+        let _ = &client.describe_global_publisher_layouts();
     }
 }
