@@ -1,6 +1,7 @@
 [package]
 name = "busbar-sf-auth"
 description = "Salesforce authentication: OAuth 2.0 flows, JWT Bearer, credentials management"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

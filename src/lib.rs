@@ -52,15 +52,33 @@
 //! ```
 
 // Re-export all crates for convenient access
+#[cfg(feature = "auth")]
 pub use busbar_sf_auth as auth;
+
+#[cfg(feature = "bulk")]
 pub use busbar_sf_bulk as bulk;
+
+#[cfg(feature = "client")]
 pub use busbar_sf_client as client;
+
+#[cfg(feature = "metadata")]
 pub use busbar_sf_metadata as metadata;
+
+#[cfg(feature = "rest")]
 pub use busbar_sf_rest as rest;
+
+#[cfg(feature = "tooling")]
 pub use busbar_sf_tooling as tooling;
 
 // Re-export commonly used types at the top level
+#[cfg(feature = "auth")]
 pub use busbar_sf_auth::{Credentials, SalesforceCredentials};
+
+#[cfg(feature = "client")]
 pub use busbar_sf_client::{ClientConfig, SalesforceClient};
+
+#[cfg(feature = "rest")]
 pub use busbar_sf_rest::SalesforceRestClient;
+
+#[cfg(feature = "tooling")]
 pub use busbar_sf_tooling::ToolingClient;

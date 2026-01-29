@@ -7,7 +7,7 @@ We provide security updates for the following versions:
 | Version | Supported          |
 | ------- | ------------------ |
 | 0.0.x   | :white_check_mark: |
-| < 0.0.1 | :x:                |
+| < 0.0.2 | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -25,7 +25,7 @@ Instead, please report them via:
    - Fill out the form with details
 
 2. **Email** (Alternative)
-   - Send an email to: security@composable-delivery.com
+   - Send an email to: security@muselab.com
    - Include "busbar-sf-api Security" in the subject line
    - Provide detailed information about the vulnerability
 

@@ -18,19 +18,33 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Salesforce API client library for Rust"
+readme = "README.md"
 autotests = false
+
+[features]
+# Preserve current behavior: depending on busbar-sf-api includes all API surfaces.
+default = ["full"]
+
+full = ["auth", "rest", "bulk", "metadata", "tooling"]
+
+client = ["dep:busbar-sf-client"]
+auth = ["client", "dep:busbar-sf-auth"]
+rest = ["auth", "dep:busbar-sf-rest"]
+bulk = ["auth", "dep:busbar-sf-bulk"]
+metadata = ["auth", "dep:busbar-sf-metadata"]
+tooling = ["auth", "dep:busbar-sf-tooling"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-busbar-sf-client.workspace = true
-busbar-sf-auth.workspace = true
-busbar-sf-rest.workspace = true
-busbar-sf-bulk.workspace = true
-busbar-sf-metadata.workspace = true
-busbar-sf-tooling.workspace = true
+busbar-sf-client = { workspace = true, optional = true }
+busbar-sf-auth = { workspace = true, optional = true }
+busbar-sf-rest = { workspace = true, optional = true }
+busbar-sf-bulk = { workspace = true, optional = true }
+busbar-sf-metadata = { workspace = true, optional = true }
+busbar-sf-tooling = { workspace = true, optional = true }
 tokio.workspace = true
 chrono.workspace = true
 serde.workspace = true
@@ -42,10 +56,10 @@ name = "integration"
 path = "tests/integration.rs"
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/busbar-io/busbar-sf-api"
+repository = "https://github.com/composable-delivery/busbar-sf-api"
 rust-version = "1.88"
 
 [workspace.dependencies]
@@ -99,12 +113,12 @@ mockito = "1.5"
 tokio-test = "0.4"
 
 # Internal crates (busbar-sf-* naming, directory names stay as sf-*)
-busbar-sf-client = { version = "0.0.1", path = "crates/sf-client" }
-busbar-sf-auth = { version = "0.0.1", path = "crates/sf-auth" }
-busbar-sf-rest = { version = "0.0.1", path = "crates/sf-rest" }
-busbar-sf-bulk = { version = "0.0.1", path = "crates/sf-bulk" }
-busbar-sf-metadata = { version = "0.0.1", path = "crates/sf-metadata" }
-busbar-sf-tooling = { version = "0.0.1", path = "crates/sf-tooling" }
+busbar-sf-client = { version = "0.0.2", path = "crates/sf-client" }
+busbar-sf-auth = { version = "0.0.2", path = "crates/sf-auth" }
+busbar-sf-rest = { version = "0.0.2", path = "crates/sf-rest" }
+busbar-sf-bulk = { version = "0.0.2", path = "crates/sf-bulk" }
+busbar-sf-metadata = { version = "0.0.2", path = "crates/sf-metadata" }
+busbar-sf-tooling = { version = "0.0.2", path = "crates/sf-tooling" }
 
 [profile.release]
 lto = true

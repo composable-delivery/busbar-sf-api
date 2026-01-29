@@ -1,6 +1,7 @@
 [package]
 name = "busbar-sf-client"
 description = "Core HTTP client infrastructure for Salesforce APIs with retry, compression, and rate limiting"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
