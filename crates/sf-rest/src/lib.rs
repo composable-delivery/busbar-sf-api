@@ -57,7 +57,10 @@ mod sobject;
 mod types;
 
 // Main client
-pub use client::{ApiVersion, SalesforceRestClient, SearchResult};
+pub use client::{
+    ApiVersion, DeletedRecord, GetDeletedResult, GetUpdatedResult, SObjectInfo,
+    SObjectInfoDescribe, SalesforceRestClient, SearchResult,
+};
 
 // Collection operations
 pub use collections::{CollectionRequest, CollectionResult};
