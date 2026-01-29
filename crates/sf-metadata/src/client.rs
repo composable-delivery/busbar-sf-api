@@ -612,6 +612,11 @@ impl MetadataClient {
     /// }
     /// ```
     ///
+    /// # Limitations
+    ///
+    /// The current implementation does not parse deeply nested field structures.
+    /// The `fields` property of `ValueTypeField` will be empty in this version.
+    ///
     /// Available since API v30.0.
     pub async fn describe_value_type(
         &self,
@@ -1223,10 +1228,10 @@ impl MetadataClient {
         // Parse picklist values
         let picklist_values = self.parse_picklist_entries(block);
 
-        // For nested fields, we need to be careful not to recurse infinitely
-        // Only parse nested fields if this block has actual nested valueTypeFields elements
-        // after the basic fields (name, soapType, etc.)
-        let fields = Vec::new(); // TODO: Implement nested field parsing safely
+        // Nested field parsing is not implemented in this version to avoid complexity
+        // and potential infinite recursion. The fields property will always be empty.
+        // Future enhancement: parse nested valueTypeFields with proper depth tracking
+        let fields = Vec::new();
 
         Some(crate::describe::ValueTypeField {
             name,
