@@ -516,7 +516,7 @@ impl ToolingClient {
     /// Creates parent records with nested child records in a single request.
     /// Supports up to 200 records total across all levels of the hierarchy.
     ///
-    /// Available since API v40.0.
+    /// Available since API v42.0.
     ///
     /// # Arguments
     /// * `sobject` - The parent SObject type (e.g., "ApexClass", "CustomField")

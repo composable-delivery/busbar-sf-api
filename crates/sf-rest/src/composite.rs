@@ -111,8 +111,6 @@ pub struct CompositeTreeRecord {
 pub struct CompositeTreeAttributes {
     #[serde(rename = "type")]
     pub sobject_type: String,
-    #[serde(rename = "referenceId")]
-    pub reference_id: String,
 }
 
 /// Response from a composite tree request.
