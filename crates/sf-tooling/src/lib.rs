@@ -53,3 +53,11 @@ pub use types::*;
 
 // Re-export busbar-sf-client types that users might need
 pub use busbar_sf_client::{ClientConfig, ClientConfigBuilder, QueryResult};
+
+// Re-export composite and collection types from sf-rest for Tooling API usage
+pub use busbar_sf_rest::{
+    CollectionRequest, CollectionResult, CompositeBatchRequest, CompositeBatchResponse,
+    CompositeBatchSubrequest, CompositeBatchSubresponse, CompositeRequest, CompositeResponse,
+    CompositeSubrequest, CompositeSubresponse, CompositeTreeAttributes, CompositeTreeError,
+    CompositeTreeRecord, CompositeTreeRequest, CompositeTreeResponse, CompositeTreeResult,
+};

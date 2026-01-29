@@ -15,6 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 busbar-sf-client.workspace = true
 busbar-sf-auth.workspace = true
+busbar-sf-rest.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 serde.workspace = true
