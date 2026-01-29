@@ -330,6 +330,13 @@ pub struct ApexCodeCoverageAggregate {
     pub coverage: Option<CoverageDetail>,
 }
 
+// ============================================================================
+// Metadata Component Dependency (Beta)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+pub use busbar_sf_client::MetadataComponentDependency;
+
 #[cfg(test)]
 mod tests {
     use super::*;
