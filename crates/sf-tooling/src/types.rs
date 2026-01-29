@@ -330,6 +330,159 @@ pub struct ApexCodeCoverageAggregate {
     pub coverage: Option<CoverageDetail>,
 }
 
+// ============================================================================
+// Code Intelligence Types
+// ============================================================================
+
+/// Result from the completions endpoint.
+///
+/// Contains code completion suggestions for Apex or Visualforce.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompletionsResult {
+    /// List of completion items.
+    #[serde(rename = "publicDeclarations")]
+    pub public_declarations: PublicDeclarations,
+}
+
+/// Public declarations structure containing completion suggestions.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PublicDeclarations {
+    /// List of public declarations (classes, methods, etc.).
+    #[serde(default)]
+    pub public_declarations: Vec<CompletionItem>,
+}
+
+/// A single completion item (class, method, property, etc.).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CompletionItem {
+    /// Name of the symbol.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Type of the symbol (e.g., "Class", "Method", "Property").
+    #[serde(rename = "type")]
+    pub symbol_type: Option<String>,
+
+    /// Namespace of the symbol.
+    #[serde(rename = "namespace")]
+    pub namespace: Option<String>,
+
+    /// Signature or documentation.
+    #[serde(rename = "signature")]
+    pub signature: Option<String>,
+
+    /// Return type for methods.
+    #[serde(rename = "returnType")]
+    pub return_type: Option<String>,
+
+    /// Parameters for methods.
+    #[serde(rename = "parameters")]
+    #[serde(default)]
+    pub parameters: Vec<Parameter>,
+
+    /// References to related types or documentation.
+    #[serde(rename = "references")]
+    #[serde(default)]
+    pub references: Vec<Reference>,
+}
+
+/// Method parameter information.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Parameter {
+    /// Parameter name.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Parameter type.
+    #[serde(rename = "type")]
+    pub param_type: String,
+}
+
+/// Reference to documentation or related types.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Reference {
+    /// Name of the reference.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Type of reference.
+    #[serde(rename = "type")]
+    pub ref_type: Option<String>,
+}
+
+/// Result from the apex manifest endpoint.
+///
+/// Contains a complete listing of all Apex classes and triggers in the org,
+/// including inner classes and global classes from managed packages.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApexManifestResult {
+    /// List of Apex classes.
+    #[serde(rename = "classes")]
+    #[serde(default)]
+    pub classes: Vec<ApexManifestClass>,
+
+    /// List of Apex triggers.
+    #[serde(rename = "triggers")]
+    #[serde(default)]
+    pub triggers: Vec<ApexManifestTrigger>,
+}
+
+/// Apex class information from the manifest.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApexManifestClass {
+    /// Salesforce ID of the class.
+    #[serde(rename = "id")]
+    pub id: String,
+
+    /// Name of the class.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Namespace prefix (if any).
+    #[serde(rename = "namespacePrefix")]
+    pub namespace_prefix: Option<String>,
+
+    /// Whether this is an inner class.
+    #[serde(rename = "isValid")]
+    pub is_valid: Option<bool>,
+
+    /// Length of the class without comments.
+    #[serde(rename = "lengthWithoutComments")]
+    pub length_without_comments: Option<i32>,
+
+    /// API version.
+    #[serde(rename = "apiVersion")]
+    pub api_version: Option<f64>,
+}
+
+/// Apex trigger information from the manifest.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ApexManifestTrigger {
+    /// Salesforce ID of the trigger.
+    #[serde(rename = "id")]
+    pub id: String,
+
+    /// Name of the trigger.
+    #[serde(rename = "name")]
+    pub name: String,
+
+    /// Namespace prefix (if any).
+    #[serde(rename = "namespacePrefix")]
+    pub namespace_prefix: Option<String>,
+
+    /// Whether the trigger is valid.
+    #[serde(rename = "isValid")]
+    pub is_valid: Option<bool>,
+
+    /// Entity on which the trigger operates.
+    #[serde(rename = "tableEnumOrId")]
+    pub table_enum_or_id: Option<String>,
+
+    /// API version.
+    #[serde(rename = "apiVersion")]
+    pub api_version: Option<f64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +535,107 @@ mod tests {
     fn test_log_level_display() {
         assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
         assert_eq!(LogLevel::Finest.to_string(), "FINEST");
+    }
+
+    #[test]
+    fn test_completions_result_deser() {
+        let json = r#"{
+            "publicDeclarations": {
+                "public_declarations": [
+                    {
+                        "name": "System",
+                        "type": "Class",
+                        "namespace": null
+                    },
+                    {
+                        "name": "debug",
+                        "type": "Method",
+                        "namespace": "System",
+                        "returnType": "void",
+                        "parameters": [
+                            {
+                                "name": "message",
+                                "type": "Object"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+
+        let result: CompletionsResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.public_declarations.public_declarations.len(), 2);
+        assert_eq!(
+            result.public_declarations.public_declarations[0].name,
+            "System"
+        );
+        assert_eq!(
+            result.public_declarations.public_declarations[0].symbol_type,
+            Some("Class".to_string())
+        );
+        assert_eq!(
+            result.public_declarations.public_declarations[1].name,
+            "debug"
+        );
+        assert_eq!(
+            result.public_declarations.public_declarations[1].return_type,
+            Some("void".to_string())
+        );
+        assert_eq!(
+            result.public_declarations.public_declarations[1]
+                .parameters
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_apex_manifest_result_deser() {
+        let json = r#"{
+            "classes": [
+                {
+                    "id": "01pxx00000000001AAA",
+                    "name": "TestClass",
+                    "namespacePrefix": null,
+                    "isValid": true,
+                    "lengthWithoutComments": 150,
+                    "apiVersion": 62.0
+                },
+                {
+                    "id": "01pxx00000000002AAA",
+                    "name": "AnotherClass",
+                    "namespacePrefix": "myns",
+                    "isValid": true,
+                    "apiVersion": 61.0
+                }
+            ],
+            "triggers": [
+                {
+                    "id": "01qxx00000000001AAA",
+                    "name": "AccountTrigger",
+                    "namespacePrefix": null,
+                    "isValid": true,
+                    "tableEnumOrId": "Account",
+                    "apiVersion": 62.0
+                }
+            ]
+        }"#;
+
+        let result: ApexManifestResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.classes.len(), 2);
+        assert_eq!(result.classes[0].name, "TestClass");
+        assert_eq!(result.classes[0].id, "01pxx00000000001AAA");
+        assert_eq!(result.classes[0].is_valid, Some(true));
+        assert_eq!(result.classes[0].length_without_comments, Some(150));
+        assert_eq!(result.classes[1].name, "AnotherClass");
+        assert_eq!(result.classes[1].namespace_prefix, Some("myns".to_string()));
+
+        assert_eq!(result.triggers.len(), 1);
+        assert_eq!(result.triggers[0].name, "AccountTrigger");
+        assert_eq!(result.triggers[0].id, "01qxx00000000001AAA");
+        assert_eq!(
+            result.triggers[0].table_enum_or_id,
+            Some("Account".to_string())
+        );
     }
 }

@@ -365,6 +365,72 @@ impl ToolingClient {
     }
 
     // =========================================================================
+    // Code Intelligence Operations
+    // =========================================================================
+
+    /// Get code completions for Apex system symbols.
+    ///
+    /// Returns completion suggestions for Apex system methods, classes, and namespaces.
+    /// Available since API v28.0.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let completions = client.completions_apex().await?;
+    /// for item in &completions.public_declarations.public_declarations {
+    ///     println!("Symbol: {} (type: {:?})", item.name, item.symbol_type);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn completions_apex(&self) -> Result<CompletionsResult> {
+        let url = self.client.tooling_url("completions?type=apex");
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Get code completions for Visualforce components.
+    ///
+    /// Returns completion suggestions for Visualforce components and attributes.
+    /// Available since API v38.0.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let completions = client.completions_visualforce().await?;
+    /// for item in &completions.public_declarations.public_declarations {
+    ///     println!("Component: {} (type: {:?})", item.name, item.symbol_type);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn completions_visualforce(&self) -> Result<CompletionsResult> {
+        let url = self.client.tooling_url("completions?type=visualforce");
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Get the Apex manifest (all classes and triggers in the org).
+    ///
+    /// Returns a complete listing of all Apex classes and triggers, including inner classes
+    /// and global classes from managed packages. Available since API v36.0.
+    ///
+    /// This is a single-call alternative to separately querying ApexClass and ApexTrigger.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let manifest = client.apex_manifest().await?;
+    /// println!("Total classes: {}", manifest.classes.len());
+    /// println!("Total triggers: {}", manifest.triggers.len());
+    ///
+    /// for class in &manifest.classes {
+    ///     println!("Class: {} (ID: {})", class.name, class.id);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn apex_manifest(&self) -> Result<ApexManifestResult> {
+        let url = self.client.tooling_url("apexManifest");
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // Generic SObject Operations (Tooling)
     // =========================================================================
 
@@ -969,5 +1035,137 @@ mod tests {
             soql,
             "SELECT Id, Name, Body FROM ApexClass WHERE Id IN ('01p000000000001AAA', '01p000000000002AAA', '01p000000000003AAA')"
         );
+    }
+
+    // =========================================================================
+    // Code intelligence endpoint tests (wiremock)
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_completions_apex_url() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let mock_response = serde_json::json!({
+            "publicDeclarations": {
+                "public_declarations": [
+                    {
+                        "name": "System",
+                        "type": "Class",
+                        "namespace": null,
+                        "signature": "System class"
+                    }
+                ]
+            }
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/services/data/v62.0/tooling/completions"))
+            .and(query_param("type", "apex"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.completions_apex().await;
+
+        assert!(result.is_ok());
+        let completions = result.unwrap();
+        assert_eq!(completions.public_declarations.public_declarations.len(), 1);
+        assert_eq!(
+            completions.public_declarations.public_declarations[0].name,
+            "System"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_completions_visualforce_url() {
+        use wiremock::matchers::{header, method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let mock_response = serde_json::json!({
+            "publicDeclarations": {
+                "public_declarations": [
+                    {
+                        "name": "apex:page",
+                        "type": "Component",
+                        "namespace": "apex"
+                    }
+                ]
+            }
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/services/data/v62.0/tooling/completions"))
+            .and(query_param("type", "visualforce"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.completions_visualforce().await;
+
+        assert!(result.is_ok());
+        let completions = result.unwrap();
+        assert_eq!(completions.public_declarations.public_declarations.len(), 1);
+        assert_eq!(
+            completions.public_declarations.public_declarations[0].name,
+            "apex:page"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_apex_manifest_url() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let mock_response = serde_json::json!({
+            "classes": [
+                {
+                    "id": "01pxx00000000001AAA",
+                    "name": "TestClass",
+                    "namespacePrefix": null,
+                    "isValid": true,
+                    "apiVersion": 62.0
+                }
+            ],
+            "triggers": [
+                {
+                    "id": "01qxx00000000001AAA",
+                    "name": "TestTrigger",
+                    "namespacePrefix": null,
+                    "isValid": true,
+                    "tableEnumOrId": "Account",
+                    "apiVersion": 62.0
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/services/data/v62.0/tooling/apexManifest"))
+            .and(header("Authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(mock_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.apex_manifest().await;
+
+        assert!(result.is_ok());
+        let manifest = result.unwrap();
+        assert_eq!(manifest.classes.len(), 1);
+        assert_eq!(manifest.classes[0].name, "TestClass");
+        assert_eq!(manifest.classes[0].id, "01pxx00000000001AAA");
+        assert_eq!(manifest.triggers.len(), 1);
+        assert_eq!(manifest.triggers[0].name, "TestTrigger");
+        assert_eq!(manifest.triggers[0].id, "01qxx00000000001AAA");
     }
 }
