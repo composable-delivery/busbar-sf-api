@@ -5,36 +5,95 @@ use std::time::Duration;
 
 use crate::error::{Error, ErrorKind, Result};
 
-/// Wrapper around reqwest::Response with additional functionality.
+/// Internal response wrapper that can hold either backend.
+#[derive(Debug)]
+enum InnerResponse {
+    #[cfg(feature = "native")]
+    Native(reqwest::Response),
+    #[cfg(feature = "wasm")]
+    Wasm(ExtismResponse),
+}
+
+/// Custom response type for WASM backend using Extism.
+#[cfg(feature = "wasm")]
+#[derive(Debug)]
+pub struct ExtismResponse {
+    status: u16,
+    headers: std::collections::HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+#[cfg(feature = "wasm")]
+impl ExtismResponse {
+    pub fn new(status: u16, headers: std::collections::HashMap<String, String>, body: Vec<u8>) -> Self {
+        Self { status, headers, body }
+    }
+
+    pub fn status(&self) -> u16 {
+        self.status
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers.get(name).map(|s| s.as_str())
+    }
+
+    pub fn body(self) -> Vec<u8> {
+        self.body
+    }
+}
+
+/// Wrapper around HTTP response with additional functionality.
 #[derive(Debug)]
 pub struct Response {
-    inner: reqwest::Response,
+    inner: InnerResponse,
 }
 
 impl Response {
-    /// Create a new Response from a reqwest::Response.
+    /// Create a new Response from a reqwest::Response (native).
+    #[cfg(feature = "native")]
     pub(crate) fn new(inner: reqwest::Response) -> Self {
-        Self { inner }
+        Self {
+            inner: InnerResponse::Native(inner),
+        }
+    }
+
+    /// Create a new Response from an ExtismResponse (wasm).
+    #[cfg(feature = "wasm")]
+    pub(crate) fn new_extism(inner: ExtismResponse) -> Self {
+        Self {
+            inner: InnerResponse::Wasm(inner),
+        }
     }
 
     /// Get the HTTP status code.
     pub fn status(&self) -> u16 {
-        self.inner.status().as_u16()
+        match &self.inner {
+            #[cfg(feature = "native")]
+            InnerResponse::Native(resp) => resp.status().as_u16(),
+            #[cfg(feature = "wasm")]
+            InnerResponse::Wasm(resp) => resp.status(),
+        }
     }
 
     /// Returns true if the response status is successful (2xx).
     pub fn is_success(&self) -> bool {
-        self.inner.status().is_success()
+        let status = self.status();
+        (200..300).contains(&status)
     }
 
     /// Returns true if this is a 304 Not Modified response.
     pub fn is_not_modified(&self) -> bool {
-        self.inner.status().as_u16() == 304
+        self.status() == 304
     }
 
     /// Get a header value.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.inner.headers().get(name)?.to_str().ok()
+        match &self.inner {
+            #[cfg(feature = "native")]
+            InnerResponse::Native(resp) => resp.headers().get(name)?.to_str().ok(),
+            #[cfg(feature = "wasm")]
+            InnerResponse::Wasm(resp) => resp.header(name),
+        }
     }
 
     /// Get the ETag header value.
@@ -72,23 +131,65 @@ impl Response {
     }
 
     /// Get the response body as text.
+    #[cfg(feature = "native")]
     pub async fn text(self) -> Result<String> {
-        self.inner.text().await.map_err(Into::into)
+        match self.inner {
+            InnerResponse::Native(resp) => resp.text().await.map_err(Into::into),
+        }
+    }
+
+    /// Get the response body as text (synchronous for WASM).
+    #[cfg(feature = "wasm")]
+    pub fn text(self) -> Result<String> {
+        match self.inner {
+            InnerResponse::Wasm(resp) => {
+                String::from_utf8(resp.body()).map_err(|e| {
+                    Error::with_source(ErrorKind::Other("Failed to decode response as UTF-8".to_string()), e)
+                })
+            }
+        }
     }
 
     /// Get the response body as bytes.
+    #[cfg(feature = "native")]
     pub async fn bytes(self) -> Result<bytes::Bytes> {
-        self.inner.bytes().await.map_err(Into::into)
+        match self.inner {
+            InnerResponse::Native(resp) => resp.bytes().await.map_err(Into::into),
+        }
+    }
+
+    /// Get the response body as bytes (synchronous for WASM).
+    #[cfg(feature = "wasm")]
+    pub fn bytes(self) -> Result<bytes::Bytes> {
+        match self.inner {
+            InnerResponse::Wasm(resp) => Ok(bytes::Bytes::from(resp.body())),
+        }
     }
 
     /// Deserialize the response body as JSON.
+    #[cfg(feature = "native")]
     pub async fn json<T: DeserializeOwned>(self) -> Result<T> {
-        self.inner.json().await.map_err(Into::into)
+        match self.inner {
+            InnerResponse::Native(resp) => resp.json().await.map_err(Into::into),
+        }
     }
 
-    /// Get access to the inner reqwest::Response.
+    /// Deserialize the response body as JSON (synchronous for WASM).
+    #[cfg(feature = "wasm")]
+    pub fn json<T: DeserializeOwned>(self) -> Result<T> {
+        match self.inner {
+            InnerResponse::Wasm(resp) => {
+                serde_json::from_slice(&resp.body()).map_err(Into::into)
+            }
+        }
+    }
+
+    /// Get access to the inner reqwest::Response (native only).
+    #[cfg(feature = "native")]
     pub fn into_inner(self) -> reqwest::Response {
-        self.inner
+        match self.inner {
+            InnerResponse::Native(resp) => resp,
+        }
     }
 
     /// Get API usage limits from response headers.
@@ -147,9 +248,15 @@ impl ApiUsage {
 /// Extension trait for processing Salesforce API responses.
 pub trait ResponseExt {
     /// Check for Salesforce API errors and convert to appropriate error type.
+    #[cfg(feature = "native")]
     fn check_salesforce_error(self) -> impl std::future::Future<Output = Result<Response>> + Send;
+    
+    /// Check for Salesforce API errors and convert to appropriate error type (sync for WASM).
+    #[cfg(feature = "wasm")]
+    fn check_salesforce_error(self) -> Result<Response>;
 }
 
+#[cfg(feature = "native")]
 impl ResponseExt for Response {
     async fn check_salesforce_error(self) -> Result<Response> {
         let status = self.status();
@@ -190,6 +297,60 @@ impl ResponseExt for Response {
 
         // Map status codes to error kinds - use sanitized messages to avoid
         // potentially exposing sensitive data from response bodies
+        let sanitized = sanitize_error_message(&body);
+        let kind = match status {
+            401 => ErrorKind::Authentication(sanitized),
+            403 => ErrorKind::Authorization(sanitized),
+            404 => ErrorKind::NotFound(sanitized),
+            412 => ErrorKind::PreconditionFailed(sanitized),
+            _ => ErrorKind::Http {
+                status,
+                message: sanitized,
+            },
+        };
+
+        Err(Error::new(kind))
+    }
+}
+
+#[cfg(feature = "wasm")]
+impl ResponseExt for Response {
+    fn check_salesforce_error(self) -> Result<Response> {
+        let status = self.status();
+
+        if self.is_success() || self.is_not_modified() {
+            return Ok(self);
+        }
+
+        // Try to parse Salesforce error response
+        let body = self.text().unwrap_or_default();
+
+        // Check for rate limiting
+        if status == 429 {
+            return Err(Error::new(ErrorKind::RateLimited { retry_after: None }));
+        }
+
+        // Try to parse as Salesforce error JSON
+        if let Ok(errors) = serde_json::from_str::<Vec<SalesforceErrorResponse>>(&body) {
+            if let Some(err) = errors.into_iter().next() {
+                return Err(Error::new(ErrorKind::SalesforceApi {
+                    error_code: err.error_code,
+                    message: sanitize_error_message(&err.message),
+                    fields: err.fields.unwrap_or_default(),
+                }));
+            }
+        }
+
+        // Try to parse as single error object
+        if let Ok(err) = serde_json::from_str::<SalesforceErrorResponse>(&body) {
+            return Err(Error::new(ErrorKind::SalesforceApi {
+                error_code: err.error_code,
+                message: sanitize_error_message(&err.message),
+                fields: err.fields.unwrap_or_default(),
+            }));
+        }
+
+        // Map status codes to error kinds
         let sanitized = sanitize_error_message(&body);
         let kind = match status {
             401 => ErrorKind::Authentication(sanitized),

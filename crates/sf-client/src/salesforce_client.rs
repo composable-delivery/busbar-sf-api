@@ -8,14 +8,37 @@
 //! - Access tokens are redacted in Debug output
 //! - Sensitive parameters are skipped in tracing spans
 
-use serde::{de::DeserializeOwned, Serialize};
-use tracing::instrument;
+/// Result of a SOQL query.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct QueryResult<T> {
+    /// Total number of records matching the query.
+    #[serde(rename = "totalSize")]
+    pub total_size: u64,
 
-use crate::client::SfHttpClient;
-use crate::config::ClientConfig;
-use crate::error::{Error, ErrorKind, Result};
-use crate::request::RequestBuilder;
-use crate::DEFAULT_API_VERSION;
+    /// Whether all records are returned (no more pages).
+    pub done: bool,
+
+    /// URL to fetch next batch of results.
+    #[serde(rename = "nextRecordsUrl")]
+    pub next_records_url: Option<String>,
+
+    /// The records.
+    pub records: Vec<T>,
+}
+
+// Note: SalesforceClient is currently only available for native builds.
+// WASM builds should use SfHttpClient directly with synchronous methods.
+#[cfg(feature = "native")]
+mod native_impl {
+    use serde::{de::DeserializeOwned, Serialize};
+    use tracing::instrument;
+
+    use crate::client::SfHttpClient;
+    use crate::config::ClientConfig;
+    use crate::error::{Error, ErrorKind, Result};
+    use crate::request::RequestBuilder;
+    use crate::DEFAULT_API_VERSION;
+    use super::QueryResult;
 
 /// High-level Salesforce API client.
 ///
@@ -391,25 +414,12 @@ impl SalesforceClient {
     }
 }
 
-/// Result of a SOQL query.
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct QueryResult<T> {
-    /// Total number of records matching the query.
-    #[serde(rename = "totalSize")]
-    pub total_size: u64,
+} // end of native_impl module
 
-    /// Whether all records are returned (no more pages).
-    pub done: bool,
+#[cfg(feature = "native")]
+pub use native_impl::SalesforceClient;
 
-    /// URL to fetch next batch of results.
-    #[serde(rename = "nextRecordsUrl")]
-    pub next_records_url: Option<String>,
-
-    /// The records.
-    pub records: Vec<T>,
-}
-
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests {
     use super::*;
 
@@ -482,3 +492,4 @@ mod tests {
         );
     }
 }
+

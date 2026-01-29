@@ -1,5 +1,6 @@
 //! Retry policy with exponential backoff and jitter.
 
+#[cfg(feature = "native")]
 use rand::Rng;
 use std::time::Duration;
 
@@ -106,11 +107,19 @@ impl BackoffStrategy {
                 let base_multiplier = factor.powi(attempt as i32);
                 let base_delay = initial_delay.as_secs_f64() * base_multiplier;
 
-                // Add jitter: random value between 0 and base_delay
-                let mut rng = rand::rng();
-                let jitter = rng.random::<f64>() * base_delay;
-
-                Duration::from_secs_f64(base_delay + jitter)
+                #[cfg(feature = "native")]
+                {
+                    // Add jitter: random value between 0 and base_delay
+                    let mut rng = rand::rng();
+                    let jitter = rng.random::<f64>() * base_delay;
+                    Duration::from_secs_f64(base_delay + jitter)
+                }
+                
+                #[cfg(not(feature = "native"))]
+                {
+                    // Without rand, just use the base delay (no jitter)
+                    Duration::from_secs_f64(base_delay)
+                }
             }
         };
 
@@ -177,7 +186,7 @@ impl RetryPolicy {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests {
     use super::*;
 

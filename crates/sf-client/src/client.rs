@@ -1,7 +1,7 @@
 //! Core HTTP client with retry, compression, and Salesforce-specific handling.
 
 use std::time::Duration;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::ClientConfig;
 use crate::error::{Error, ErrorKind, Result};
@@ -9,13 +9,32 @@ use crate::request::{RequestBody, RequestBuilder, RequestMethod};
 use crate::response::{Response, ResponseExt};
 use crate::retry::RetryPolicy;
 
+// Native backend using reqwest
+#[cfg(feature = "native")]
+use reqwest;
+#[cfg(feature = "native")]
+use tracing::instrument;
+
+// WASM backend using extism
+#[cfg(feature = "wasm")]
+use extism_pdk;
+
 /// HTTP client for Salesforce APIs with built-in retry, compression, and error handling.
+#[cfg(feature = "native")]
 #[derive(Debug, Clone)]
 pub struct SfHttpClient {
     inner: reqwest::Client,
     config: ClientConfig,
 }
 
+/// HTTP client for Salesforce APIs with built-in retry, compression, and error handling.
+#[cfg(feature = "wasm")]
+#[derive(Debug, Clone)]
+pub struct SfHttpClient {
+    config: ClientConfig,
+}
+
+#[cfg(feature = "native")]
 impl SfHttpClient {
     /// Create a new HTTP client with default configuration.
     pub fn new(config: ClientConfig) -> Result<Self> {
@@ -257,7 +276,247 @@ impl SfHttpClient {
     }
 }
 
-#[cfg(test)]
+// WASM implementation using Extism PDK
+#[cfg(feature = "wasm")]
+impl SfHttpClient {
+    /// Create a new HTTP client with default configuration.
+    pub fn new(config: ClientConfig) -> Result<Self> {
+        Ok(Self { config })
+    }
+
+    /// Create a new HTTP client with default configuration.
+    pub fn default_client() -> Result<Self> {
+        Self::new(ClientConfig::default())
+    }
+
+    /// Get the client configuration.
+    pub fn config(&self) -> &ClientConfig {
+        &self.config
+    }
+
+    /// Create a GET request builder.
+    pub fn get(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Get, url)
+    }
+
+    /// Create a POST request builder.
+    pub fn post(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Post, url)
+    }
+
+    /// Create a PATCH request builder.
+    pub fn patch(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Patch, url)
+    }
+
+    /// Create a PUT request builder.
+    pub fn put(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Put, url)
+    }
+
+    /// Create a DELETE request builder.
+    pub fn delete(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Delete, url)
+    }
+
+    /// Create a HEAD request builder.
+    pub fn head(&self, url: impl Into<String>) -> RequestBuilder {
+        RequestBuilder::new(RequestMethod::Head, url)
+    }
+
+    /// Execute a request (synchronous for WASM).
+    pub fn execute(&self, request: RequestBuilder) -> Result<Response> {
+        let mut retry_policy = self
+            .config
+            .retry
+            .as_ref()
+            .map(|c| RetryPolicy::new(c.clone()));
+
+        loop {
+            let result = self.execute_once(&request);
+
+            match result {
+                Ok(response) => {
+                    // Check for Salesforce API errors
+                    return response.check_salesforce_error();
+                }
+                Err(err) if err.is_retryable() => {
+                    if let Some(ref mut policy) = retry_policy {
+                        if let Some(_delay) = policy.next_delay(err.retry_after()) {
+                            // Note: In WASM we can't easily sleep, so we just retry immediately
+                            // This is a limitation of the synchronous WASM environment
+                            warn!(
+                                attempt = policy.attempt(),
+                                error = %err,
+                                "Request failed, retrying (no delay in WASM)"
+                            );
+                            continue;
+                        }
+
+                        // Exhausted retries
+                        return Err(Error::new(ErrorKind::RetriesExhausted {
+                            attempts: policy.attempt(),
+                        }));
+                    }
+
+                    // No retry policy configured
+                    return Err(err);
+                }
+                Err(err) => {
+                    // Non-retryable error
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    /// Execute a single request without retry logic (synchronous for WASM).
+    fn execute_once(&self, request: &RequestBuilder) -> Result<Response> {
+        // Build URL with query parameters
+        let url = if !request.query_params.is_empty() {
+            let mut url = url::Url::parse(&request.url)
+                .map_err(|e| Error::with_source(ErrorKind::InvalidUrl(request.url.clone()), e))?;
+
+            // Add query parameters
+            for (key, value) in &request.query_params {
+                url.query_pairs_mut().append_pair(key, value);
+            }
+
+            url.to_string()
+        } else {
+            request.url.clone()
+        };
+
+        // Build headers
+        let mut headers = std::collections::BTreeMap::new();
+
+        // Add bearer token
+        if let Some(ref token) = request.bearer_token {
+            headers.insert("Authorization".to_string(), format!("Bearer {}", token));
+        }
+
+        // Add custom headers
+        for (name, value) in &request.headers {
+            headers.insert(name.clone(), value.clone());
+        }
+
+        // Add conditional headers
+        if let Some(ref etag) = request.if_match {
+            headers.insert("If-Match".to_string(), etag.clone());
+        }
+        if let Some(ref etag) = request.if_none_match {
+            headers.insert("If-None-Match".to_string(), etag.clone());
+        }
+        if let Some(ref ts) = request.if_modified_since {
+            headers.insert("If-Modified-Since".to_string(), ts.clone());
+        }
+        if let Some(ref ts) = request.if_unmodified_since {
+            headers.insert("If-Unmodified-Since".to_string(), ts.clone());
+        }
+
+        // Add compression headers if enabled
+        if self.config.compression.accept_compressed {
+            headers.insert("Accept-Encoding".to_string(), "gzip, deflate".to_string());
+        }
+
+        // Build body
+        let body = if let Some(ref body) = request.body {
+            match body {
+                RequestBody::Json(value) => {
+                    headers.insert("Content-Type".to_string(), "application/json".to_string());
+                    serde_json::to_vec(value)?
+                }
+                RequestBody::Text(text) => text.as_bytes().to_vec(),
+                RequestBody::Bytes(bytes) => bytes.to_vec(),
+                RequestBody::Form(data) => {
+                    let encoded = serde_urlencoded::to_string(data).map_err(|e| {
+                        Error::with_source(
+                            ErrorKind::Serialization("Failed to encode form data".to_string()),
+                            e,
+                        )
+                    })?;
+                    headers.insert("Content-Type".to_string(), "application/x-www-form-urlencoded".to_string());
+                    encoded.into_bytes()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        if self.config.enable_tracing {
+            debug!(
+                method = ?request.method,
+                url = %request.url,
+                "Sending request"
+            );
+        }
+
+        // Make the HTTP request using Extism PDK
+        let http_request = extism_manifest::HttpRequest {
+            url,
+            headers,
+            method: Some(request.method.as_str().to_string()),
+        };
+
+        let http_response = extism_pdk::http::request::<Vec<u8>>(&http_request, Some(body))?;
+
+        if self.config.enable_tracing {
+            let status = http_response.status_code();
+            if (200..300).contains(&status) {
+                debug!(status, "Response received");
+            } else {
+                info!(status, "Non-success response");
+            }
+        }
+
+        let status = http_response.status_code();
+
+        // Extract headers from response
+        let response_headers = http_response.headers().clone();
+
+        // Check for rate limiting
+        if status == 429 {
+            let retry_after = response_headers
+                .get("retry-after")
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(Duration::from_secs);
+
+            return Err(Error::new(ErrorKind::RateLimited { retry_after }));
+        }
+
+        // Check for retryable server errors (500, 502, 503, 504)
+        if matches!(status, 500 | 502 | 503 | 504) {
+            return Err(Error::new(ErrorKind::Http {
+                status,
+                message: format!("Server error: {}", status),
+            }));
+        }
+
+        let extism_response = crate::response::ExtismResponse::new(
+            status,
+            response_headers,
+            http_response.body(),
+        );
+
+        Ok(Response::new_extism(extism_response))
+    }
+
+    /// Execute a request and return the response, checking for errors.
+    pub fn send(&self, request: RequestBuilder) -> Result<Response> {
+        self.execute(request)
+    }
+
+    /// Execute a request and deserialize the JSON response.
+    pub fn send_json<T: serde::de::DeserializeOwned>(
+        &self,
+        request: RequestBuilder,
+    ) -> Result<T> {
+        let response = self.execute(request)?;
+        response.json()
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
 mod tests {
     use super::*;
     use wiremock::matchers::{header, method, path};

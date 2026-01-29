@@ -19,6 +19,7 @@ pub enum RequestMethod {
 
 impl RequestMethod {
     /// Convert to reqwest::Method.
+    #[cfg(feature = "native")]
     pub fn to_reqwest(&self) -> reqwest::Method {
         match self {
             RequestMethod::Get => reqwest::Method::GET,
@@ -27,6 +28,19 @@ impl RequestMethod {
             RequestMethod::Put => reqwest::Method::PUT,
             RequestMethod::Delete => reqwest::Method::DELETE,
             RequestMethod::Head => reqwest::Method::HEAD,
+        }
+    }
+
+    /// Get the method as a string (for WASM).
+    #[cfg(feature = "wasm")]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RequestMethod::Get => "GET",
+            RequestMethod::Post => "POST",
+            RequestMethod::Patch => "PATCH",
+            RequestMethod::Put => "PUT",
+            RequestMethod::Delete => "DELETE",
+            RequestMethod::Head => "HEAD",
         }
     }
 }
