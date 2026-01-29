@@ -215,9 +215,11 @@ impl OAuthClient {
             .await?;
 
         if !response.status().is_success() {
+            // Parse error response to provide detailed error information
+            let error: OAuthErrorResponse = response.json().await?;
             return Err(Error::new(ErrorKind::OAuth {
-                error: "revoke_failed".to_string(),
-                description: "Failed to revoke token".to_string(),
+                error: error.error,
+                description: error.error_description,
             }));
         }
 

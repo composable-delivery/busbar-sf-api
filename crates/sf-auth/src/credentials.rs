@@ -97,8 +97,8 @@ impl SalesforceCredentials {
     ///
     /// * `revoke_refresh` - If true, revokes the refresh token (and all access tokens).
     ///   If false, revokes only the access token.
-    /// * `login_url` - The Salesforce login URL (e.g., "https://login.salesforce.com"
-    ///   for production or "https://test.salesforce.com" for sandbox).
+    /// * `login_url` - The Salesforce login URL (e.g., <https://login.salesforce.com>
+    ///   for production or <https://test.salesforce.com> for sandbox).
     ///
     /// # Errors
     ///
