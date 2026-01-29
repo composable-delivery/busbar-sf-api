@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `bulk_operations.rs` - Bulk API 2.0 operations
 - This CHANGELOG file
 
-## [0.1.0] - 2026-01-27
+## [0.0.1] - 2026-01-27
 
 ### Added
 - **Core Infrastructure** (`busbar-sf-client`)
@@ -106,5 +106,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `quick-xml` 0.36 - XML parsing for SOAP
 - `csv` 1.3 - CSV handling for Bulk API
 
-[Unreleased]: https://github.com/composable-delivery/busbar-sf-api/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/composable-delivery/busbar-sf-api/releases/tag/v0.1.0
+[Unreleased]: https://github.com/composable-delivery/busbar-sf-api/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/composable-delivery/busbar-sf-api/releases/tag/v0.0.1
