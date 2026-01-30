@@ -503,6 +503,102 @@ impl ToolingClient {
     }
 
     // =========================================================================
+    // Query and Search Operations
+    // =========================================================================
+
+    /// Execute a SOQL query including deleted and archived records.
+    ///
+    /// This method uses the `/queryAll/` endpoint which includes soft-deleted
+    /// and archived records in the results, unlike the standard `query()` method.
+    ///
+    /// # Security
+    ///
+    /// **IMPORTANT**: Escape user-provided values with `busbar_sf_client::security::soql::escape_string()`
+    /// to prevent SOQL injection attacks.
+    #[instrument(skip(self))]
+    pub async fn query_all_records<T: DeserializeOwned>(
+        &self,
+        soql: &str,
+    ) -> Result<QueryResult<T>> {
+        let encoded = urlencoding::encode(soql);
+        let url = format!(
+            "{}/services/data/v{}/tooling/queryAll/?q={}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            encoded
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Execute a SOSL search against Tooling API objects.
+    ///
+    /// # Security
+    ///
+    /// **IMPORTANT**: If you are including user-provided values in the SOSL query,
+    /// you MUST escape them to prevent SOSL injection attacks.
+    #[instrument(skip(self))]
+    pub async fn search<T: DeserializeOwned>(&self, sosl: &str) -> Result<SearchResult<T>> {
+        let encoded = urlencoding::encode(sosl);
+        let url = format!(
+            "{}/services/data/v{}/tooling/search/?q={}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            encoded
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    // =========================================================================
+    // Describe Operations
+    // =========================================================================
+
+    /// Get a list of all Tooling API SObjects available in the org.
+    #[instrument(skip(self))]
+    pub async fn describe_global(&self) -> Result<DescribeGlobalResult> {
+        self.client
+            .tooling_get("sobjects")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get detailed metadata for a specific Tooling API SObject.
+    #[instrument(skip(self))]
+    pub async fn describe_sobject(&self, sobject: &str) -> Result<DescribeSObjectResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe", sobject);
+        self.client.tooling_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get basic information about a Tooling API SObject.
+    #[instrument(skip(self))]
+    pub async fn basic_info(&self, sobject: &str) -> Result<serde_json::Value> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}", sobject);
+        self.client.tooling_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a list of all available Tooling API resources.
+    #[instrument(skip(self))]
+    pub async fn resources(&self) -> Result<serde_json::Value> {
+        let url = format!(
+            "{}/services/data/v{}/tooling/",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // Composite API (Tooling)
     // =========================================================================
 
