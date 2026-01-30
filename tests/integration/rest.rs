@@ -526,3 +526,321 @@ async fn test_type_safe_query() {
         assert!(!account.name.is_empty(), "Account should have name");
     }
 }
+
+// ============================================================================
+// Incremental Sync Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_deleted_records() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create and delete a test account
+    let test_name = format!("Delete Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    // Delete the account
+    client
+        .delete("Account", &account_id)
+        .await
+        .expect("Account deletion should succeed");
+
+    // Wait a bit for the deletion to be processed
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Query for deleted records in a 30-day window
+    let now = chrono::Utc::now();
+    let start = (now - chrono::Duration::days(1)).to_rfc3339();
+    let end = now.to_rfc3339();
+
+    let result = client
+        .get_deleted("Account", &start, &end)
+        .await
+        .expect("get_deleted should succeed");
+
+    assert!(
+        !result.earliest_date_available.is_empty(),
+        "Should have earliest date available"
+    );
+    assert!(
+        !result.latest_date_covered.is_empty(),
+        "Should have latest date covered"
+    );
+    // The deleted record may or may not appear immediately, so we just verify the call works
+}
+
+#[tokio::test]
+async fn test_get_updated_records() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create and update a test account
+    let test_name = format!("Update Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    // Update the account
+    client
+        .update(
+            "Account",
+            &account_id,
+            &serde_json::json!({"Description": "Updated"}),
+        )
+        .await
+        .expect("Account update should succeed");
+
+    // Wait a bit for the update to be processed
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Query for updated records in a 30-day window
+    let now = chrono::Utc::now();
+    let start = (now - chrono::Duration::days(1)).to_rfc3339();
+    let end = now.to_rfc3339();
+
+    let result = client
+        .get_updated("Account", &start, &end)
+        .await
+        .expect("get_updated should succeed");
+
+    assert!(
+        !result.latest_date_covered.is_empty(),
+        "Should have latest date covered"
+    );
+
+    // Clean up
+    let _ = client.delete("Account", &account_id).await;
+}
+
+// ============================================================================
+// Binary Content Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_blob_content() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a ContentVersion with test data
+    let test_content = b"Test file content for blob retrieval";
+    use base64::Engine as _;
+    let base64_content = base64::engine::general_purpose::STANDARD.encode(test_content);
+
+    let content_version_id = client
+        .create(
+            "ContentVersion",
+            &serde_json::json!({
+                "Title": format!("Test Blob {}", chrono::Utc::now().timestamp_millis()),
+                "PathOnClient": "test.txt",
+                "VersionData": base64_content,
+            }),
+        )
+        .await
+        .expect("ContentVersion creation should succeed");
+
+    // Query to get the ContentDocument ID
+    let query_result: Vec<serde_json::Value> = client
+        .query_all(&format!(
+            "SELECT ContentDocumentId FROM ContentVersion WHERE Id = '{}'",
+            content_version_id
+        ))
+        .await
+        .expect("Query should succeed");
+
+    if let Some(cv) = query_result.first() {
+        if let Some(content_document_id) = cv.get("ContentDocumentId").and_then(|v| v.as_str()) {
+            // Retrieve the blob content
+            let blob_data = client
+                .get_blob("ContentVersion", &content_version_id, "VersionData")
+                .await
+                .expect("get_blob should succeed");
+
+            assert!(!blob_data.is_empty(), "Blob data should not be empty");
+            assert_eq!(
+                blob_data, test_content,
+                "Retrieved content should match uploaded content"
+            );
+
+            // Clean up - delete the ContentDocument
+            let _ = client.delete("ContentDocument", content_document_id).await;
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_get_rich_text_image() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // This test verifies the method works, but creating rich text images programmatically
+    // is complex. We'll test the error handling path instead.
+    let result = client
+        .get_rich_text_image(
+            "Account",
+            "001000000000000AAA",
+            "Description",
+            "069000000000000",
+        )
+        .await;
+
+    // We expect this to fail since we're using a fake ID, but it should fail with a proper error
+    // not a panic or malformed request
+    assert!(
+        result.is_err(),
+        "Should return an error for non-existent record"
+    );
+}
+
+// ============================================================================
+// Relationship Traversal Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_relationship_child() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a test account
+    let test_name = format!(
+        "Relationship Test {}",
+        chrono::Utc::now().timestamp_millis()
+    );
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    // Create a contact related to the account
+    let contact_id = client
+        .create(
+            "Contact",
+            &serde_json::json!({
+                "LastName": "Test Contact",
+                "AccountId": account_id
+            }),
+        )
+        .await
+        .expect("Contact creation should succeed");
+
+    // Get child contacts through relationship
+    let contacts_result: busbar_sf_rest::QueryResult<serde_json::Value> = client
+        .get_relationship("Account", &account_id, "Contacts")
+        .await
+        .expect("get_relationship should succeed for child relationship");
+
+    assert!(
+        contacts_result.total_size > 0,
+        "Should have at least one contact"
+    );
+    assert!(!contacts_result.records.is_empty(), "Should have records");
+
+    // Clean up
+    let _ = client.delete("Contact", &contact_id).await;
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_get_relationship_parent() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a test account
+    let test_name = format!(
+        "Parent Relationship Test {}",
+        chrono::Utc::now().timestamp_millis()
+    );
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    // Create a contact related to the account
+    let contact_id = client
+        .create(
+            "Contact",
+            &serde_json::json!({
+                "LastName": "Test Contact",
+                "AccountId": account_id
+            }),
+        )
+        .await
+        .expect("Contact creation should succeed");
+
+    // Get parent account through relationship
+    let account_result: serde_json::Value = client
+        .get_relationship("Contact", &contact_id, "Account")
+        .await
+        .expect("get_relationship should succeed for parent relationship");
+
+    assert!(account_result.get("Id").is_some(), "Should have account ID");
+    assert_eq!(
+        account_result.get("Id").and_then(|v| v.as_str()),
+        Some(account_id.as_str()),
+        "Should be the correct account"
+    );
+
+    // Clean up
+    let _ = client.delete("Contact", &contact_id).await;
+    let _ = client.delete("Account", &account_id).await;
+}
+
+// ============================================================================
+// SObject Basic Info Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_sobject_basic_info() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let info = client
+        .get_sobject_basic_info("Account")
+        .await
+        .expect("get_sobject_basic_info should succeed");
+
+    assert_eq!(info.object_describe.name, "Account", "Should be Account");
+    assert!(!info.object_describe.label.is_empty(), "Should have label");
+    assert!(
+        info.object_describe.key_prefix.is_some(),
+        "Account should have key prefix"
+    );
+    assert!(
+        !info.object_describe.urls.is_empty(),
+        "Should have URLs map"
+    );
+    assert!(
+        info.object_describe.createable,
+        "Account should be createable"
+    );
+    assert!(
+        info.object_describe.queryable,
+        "Account should be queryable"
+    );
+    // recent_items may be empty if user hasn't accessed any recently
+}
