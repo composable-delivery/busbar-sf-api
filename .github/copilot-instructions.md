@@ -58,19 +58,27 @@ crates/
 
 ## Testing Requirements
 
-- Unit tests for all new public methods
+### Unit Tests (No SF_AUTH_URL Required)
+- Unit tests for all new public methods in `src/**/*.rs`
 - Mock HTTP responses using the project's test infrastructure
 - Doc tests with `/// # Examples` blocks for public APIs
-- Integration tests go in `tests/` (require Salesforce org credentials)
+- **Unit tests MUST NOT require SF_AUTH_URL or a real Salesforce org**
+- Run with: `cargo test --lib`
+
+### Integration Tests (SF_AUTH_URL Required)
+- Integration tests go in `tests/integration/` directory
+- Organized by API module: `auth.rs`, `bulk.rs`, `metadata.rs`, `rest.rs`, `tooling.rs`
+- **Integration tests MUST run against a real Salesforce org**
+- Run with: `SF_AUTH_URL=... cargo test --test integration`
 - Test names should be descriptive: `test_get_deleted_returns_deleted_records`
 
 ### Integration Test Guidelines
 
-Integration tests in `tests/integration/` **MUST** run against a real Salesforce org and **MUST** fail if the environment is not properly configured. They are not optional.
+Integration tests in `tests/integration/` **MUST** run against a real Salesforce org and **MUST** fail if the environment is not properly configured.
 
 **Key Principles:**
 
-1. **Never Skip Tests**: Use `common::get_credentials()` which panics with helpful error messages if SF_AUTH_URL is not set or invalid. DO NOT use the deprecated `require_credentials()` pattern that returns `Option` and allows tests to skip.
+1. **Never Skip Tests**: Use `common::get_credentials()` which panics with helpful error messages if SF_AUTH_URL is not set or invalid.
 
 2. **Test Behavior, Not Just Execution**: Integration tests should:
    - Validate actual API responses and behavior
@@ -78,14 +86,17 @@ Integration tests in `tests/integration/` **MUST** run against a real Salesforce
    - Assert on specific values, not just "didn't error"
    - Verify state changes (create → verify created → delete → verify deleted)
 
-3. **Good vs Bad Examples**:
+3. **NOT Example Code**: Integration tests are NOT for wrapping example code. They test specific API behaviors with assertions. Keep actual examples in `examples/` directory for documentation.
+
+4. **Good vs Bad Examples**:
    
-   ❌ **BAD** - Just checks for no error:
+   ❌ **BAD** - Just runs without assertions:
    ```rust
    #[tokio::test]
    async fn test_create_account() {
-       let Some(creds) = require_credentials().await else { return; };
-       let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())?;
+       let creds = common::get_credentials().await;
+       let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+           .expect("Failed to create client");
        let _id = client.create("Account", &json!({"Name": "Test"})).await?;
        // No assertions - just "it didn't crash"
    }
@@ -119,7 +130,7 @@ Integration tests in `tests/integration/` **MUST** run against a real Salesforce
    }
    ```
 
-4. **Error Testing**: Test that errors happen when they should:
+5. **Error Testing**: Test that errors happen when they should:
    ```rust
    #[tokio::test]
    async fn test_invalid_sobject_returns_error() {
@@ -139,19 +150,36 @@ Integration tests in `tests/integration/` **MUST** run against a real Salesforce
    }
    ```
 
-5. **Use Descriptive Names**: Test names should explain what behavior is being tested:
+6. **Use Descriptive Names**: Test names should explain what behavior is being tested:
    - ✅ `test_composite_batch_executes_subrequests_independently`
    - ✅ `test_query_with_invalid_field_returns_error`
    - ❌ `test_composite_api`
    - ❌ `test_query`
 
-6. **Clean Up After Yourself**: Always delete test data you create, even if the test fails (use proper cleanup patterns).
+7. **Clean Up After Yourself**: Always delete test data you create, even if the test fails (use proper cleanup patterns).
 
-7. **Document What You're Testing**: Add comments explaining the behavior being validated:
+8. **Document What You're Testing**: Add comments explaining the behavior being validated:
    ```rust
    // Test that composite subrequests can reference results from earlier requests
    // using the @{referenceId.field} syntax
    ```
+
+### Test Organization
+
+```
+crates/
+  sf-*/src/
+    lib.rs          # Unit tests in #[cfg(test)] modules
+    client.rs       # Unit tests with mocked HTTP responses
+tests/
+  integration/
+    common.rs       # Shared test helpers (get_credentials)
+    auth.rs         # Authentication/OAuth integration tests
+    bulk.rs         # Bulk API 2.0 integration tests
+    metadata.rs     # Metadata API integration tests
+    rest.rs         # REST API integration tests
+    tooling.rs      # Tooling API integration tests
+```
 
 ## Style Guide
 
