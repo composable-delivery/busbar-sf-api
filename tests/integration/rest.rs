@@ -555,7 +555,7 @@ async fn test_get_deleted_records() {
     // Wait a bit for the deletion to be processed
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    // Query for deleted records in a 30-day window
+    // Query for deleted records in a 1-day window (API allows up to 30 days)
     let now = chrono::Utc::now();
     let start = (now - chrono::Duration::days(1)).to_rfc3339();
     let end = now.to_rfc3339();
@@ -573,6 +573,7 @@ async fn test_get_deleted_records() {
         !result.latest_date_covered.is_empty(),
         "Should have latest date covered"
     );
+    // Note: No cleanup needed - the account deletion is part of the test itself
     // The deleted record may or may not appear immediately, so we just verify the call works
 }
 
@@ -604,7 +605,7 @@ async fn test_get_updated_records() {
     // Wait a bit for the update to be processed
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-    // Query for updated records in a 30-day window
+    // Query for updated records in a 1-day window (API allows up to 30 days)
     let now = chrono::Utc::now();
     let start = (now - chrono::Duration::days(1)).to_rfc3339();
     let end = now.to_rfc3339();
@@ -661,23 +662,31 @@ async fn test_get_blob_content() {
         .await
         .expect("Query should succeed");
 
+    assert!(
+        !query_result.is_empty(),
+        "Query should return at least one result"
+    );
+
     if let Some(cv) = query_result.first() {
-        if let Some(content_document_id) = cv.get("ContentDocumentId").and_then(|v| v.as_str()) {
-            // Retrieve the blob content
-            let blob_data = client
-                .get_blob("ContentVersion", &content_version_id, "VersionData")
-                .await
-                .expect("get_blob should succeed");
+        let content_document_id = cv
+            .get("ContentDocumentId")
+            .and_then(|v| v.as_str())
+            .expect("ContentDocumentId should be present");
 
-            assert!(!blob_data.is_empty(), "Blob data should not be empty");
-            assert_eq!(
-                blob_data, test_content,
-                "Retrieved content should match uploaded content"
-            );
+        // Retrieve the blob content
+        let blob_data = client
+            .get_blob("ContentVersion", &content_version_id, "VersionData")
+            .await
+            .expect("get_blob should succeed");
 
-            // Clean up - delete the ContentDocument
-            let _ = client.delete("ContentDocument", content_document_id).await;
-        }
+        assert!(!blob_data.is_empty(), "Blob data should not be empty");
+        assert_eq!(
+            blob_data, test_content,
+            "Retrieved content should match uploaded content"
+        );
+
+        // Clean up - delete the ContentDocument
+        let _ = client.delete("ContentDocument", content_document_id).await;
     }
 }
 
@@ -691,12 +700,13 @@ async fn test_get_rich_text_image() {
 
     // This test verifies the method works, but creating rich text images programmatically
     // is complex. We'll test the error handling path instead.
+    // Using valid 18-character Salesforce ID format for both IDs
     let result = client
         .get_rich_text_image(
             "Account",
             "001000000000000AAA",
             "Description",
-            "069000000000000",
+            "069000000000000AAA",
         )
         .await;
 
