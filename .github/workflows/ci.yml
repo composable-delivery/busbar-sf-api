@@ -119,6 +119,33 @@ jobs:
             - name: Check MSRV
               run: cargo build --workspace --verbose
 
+    wasm:
+        name: WASM Tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Install Rust stable
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: wasm32-unknown-unknown
+
+            - name: Cache cargo
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: wasm-tests
+
+            - name: Run WASM unit tests
+              run: cargo test --package busbar-sf-client --no-default-features --features wasm --lib wasm_tests
+
+            - name: Build WASM integration test plugin
+              run: |
+                  cd crates/sf-client/tests/wasm-plugin
+                  cargo build --target wasm32-unknown-unknown --release
+
+            - name: Run WASM integration tests
+              run: cargo test --package busbar-sf-client --test test_wasm_integration -- --ignored
+
     coverage-unit:
         name: Coverage (Unit Tests)
         runs-on: ubuntu-latest
