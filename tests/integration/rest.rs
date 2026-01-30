@@ -2,7 +2,11 @@
 
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
-use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, SalesforceRestClient};
+use busbar_sf_rest::{
+    BatchSubrequest, CompositeBatchRequest, CompositeGraphRequest, CompositeRequest,
+    CompositeSubrequest, GraphRequest, QueryBuilder, SObjectTreeAttributes, SObjectTreeRecord,
+    SObjectTreeRequest, SalesforceRestClient,
+};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -53,6 +57,243 @@ async fn test_rest_composite_api() {
         if let Some(id) = first_response.body.get("id").and_then(|v| v.as_str()) {
             let _ = client.delete("Account", id).await;
         }
+    }
+}
+
+#[tokio::test]
+async fn test_rest_composite_batch_api() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a composite batch request with independent subrequests
+    let batch_request = CompositeBatchRequest {
+        batch_requests: vec![
+            BatchSubrequest {
+                method: "POST".to_string(),
+                url: format!("/services/data/v{}/sobjects/Account", creds.api_version()),
+                rich_input: Some(serde_json::json!({
+                    "Name": format!(
+                        "Batch Test Account 1 {}",
+                        chrono::Utc::now().timestamp_millis()
+                    )
+                })),
+            },
+            BatchSubrequest {
+                method: "POST".to_string(),
+                url: format!("/services/data/v{}/sobjects/Account", creds.api_version()),
+                rich_input: Some(serde_json::json!({
+                    "Name": format!(
+                        "Batch Test Account 2 {}",
+                        chrono::Utc::now().timestamp_millis()
+                    )
+                })),
+            },
+            BatchSubrequest {
+                method: "GET".to_string(),
+                url: format!(
+                    "/services/data/v{}/sobjects/Account/describe",
+                    creds.api_version()
+                ),
+                rich_input: None,
+            },
+        ],
+    };
+
+    let response = client
+        .composite_batch(&batch_request)
+        .await
+        .expect("Composite batch request should succeed");
+
+    assert_eq!(response.results.len(), 3, "Should have 3 sub-results");
+    assert!(!response.has_errors, "Should not have errors");
+
+    // Clean up created accounts
+    let mut created_ids = Vec::new();
+    for (i, result) in response.results.iter().enumerate() {
+        if i < 2 {
+            // First two are POST requests
+            if let Some(id) = result.result.get("id").and_then(|v| v.as_str()) {
+                created_ids.push(id.to_string());
+            }
+        }
+    }
+
+    for id in created_ids {
+        let _ = client.delete("Account", &id).await;
+    }
+}
+
+#[tokio::test]
+async fn test_rest_composite_tree_api() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a parent account with child contacts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let mut parent_fields = serde_json::Map::new();
+    parent_fields.insert(
+        "Name".to_string(),
+        serde_json::json!(format!("Tree Test Parent {}", timestamp)),
+    );
+
+    // Add child contacts
+    let mut child_contact_1 = serde_json::Map::new();
+    child_contact_1.insert(
+        "attributes".to_string(),
+        serde_json::json!({
+            "type": "Contact",
+            "referenceId": "contact1"
+        }),
+    );
+    child_contact_1.insert(
+        "LastName".to_string(),
+        serde_json::json!(format!("Child Contact 1 {}", timestamp)),
+    );
+
+    let mut child_contact_2 = serde_json::Map::new();
+    child_contact_2.insert(
+        "attributes".to_string(),
+        serde_json::json!({
+            "type": "Contact",
+            "referenceId": "contact2"
+        }),
+    );
+    child_contact_2.insert(
+        "LastName".to_string(),
+        serde_json::json!(format!("Child Contact 2 {}", timestamp)),
+    );
+
+    parent_fields.insert(
+        "Contacts".to_string(),
+        serde_json::json!({
+            "records": vec![
+                serde_json::Value::Object(child_contact_1),
+                serde_json::Value::Object(child_contact_2)
+            ]
+        }),
+    );
+
+    let tree_request = SObjectTreeRequest {
+        records: vec![SObjectTreeRecord {
+            attributes: SObjectTreeAttributes {
+                sobject_type: "Account".to_string(),
+                reference_id: "parentAccount".to_string(),
+            },
+            fields: parent_fields,
+        }],
+    };
+
+    let response = client
+        .composite_tree("Account", &tree_request)
+        .await
+        .expect("Composite tree request should succeed");
+
+    assert!(!response.has_errors, "Should not have errors");
+    assert_eq!(
+        response.results.len(),
+        3,
+        "Should create 1 parent + 2 child records"
+    );
+
+    // Clean up: delete the parent account (cascade will delete contacts)
+    if let Some(parent_result) = response.results.first() {
+        let _ = client.delete("Account", &parent_result.id).await;
+    }
+}
+
+#[tokio::test]
+async fn test_rest_composite_graph_api() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a composite graph request with cross-graph references
+    let graph_request = CompositeGraphRequest {
+        graphs: vec![
+            GraphRequest {
+                graph_id: "graph1".to_string(),
+                composite_request: vec![
+                    CompositeSubrequest {
+                        method: "POST".to_string(),
+                        url: format!("/services/data/v{}/sobjects/Account", creds.api_version()),
+                        reference_id: "Account1".to_string(),
+                        body: Some(serde_json::json!({
+                            "Name": format!(
+                                "Graph Test Account 1 {}",
+                                chrono::Utc::now().timestamp_millis()
+                            )
+                        })),
+                    },
+                    CompositeSubrequest {
+                        method: "POST".to_string(),
+                        url: format!("/services/data/v{}/sobjects/Contact", creds.api_version()),
+                        reference_id: "Contact1".to_string(),
+                        body: Some(serde_json::json!({
+                            "LastName": format!(
+                                "Graph Test Contact {}",
+                                chrono::Utc::now().timestamp_millis()
+                            ),
+                            "AccountId": "@{Account1.id}"
+                        })),
+                    },
+                ],
+            },
+            GraphRequest {
+                graph_id: "graph2".to_string(),
+                composite_request: vec![CompositeSubrequest {
+                    method: "POST".to_string(),
+                    url: format!("/services/data/v{}/sobjects/Account", creds.api_version()),
+                    reference_id: "Account2".to_string(),
+                    body: Some(serde_json::json!({
+                        "Name": format!(
+                            "Graph Test Account 2 {}",
+                            chrono::Utc::now().timestamp_millis()
+                        )
+                    })),
+                }],
+            },
+        ],
+    };
+
+    let response = client
+        .composite_graph(&graph_request)
+        .await
+        .expect("Composite graph request should succeed");
+
+    assert_eq!(response.graphs.len(), 2, "Should have 2 graph responses");
+
+    // Clean up created records
+    let mut created_account_ids = Vec::new();
+
+    for graph in &response.graphs {
+        assert!(
+            graph.is_successful,
+            "Graph {} should be successful",
+            graph.graph_id
+        );
+
+        for subresp in &graph.graph_response.responses {
+            if subresp.http_status_code == 201 {
+                if let Some(id) = subresp.body.get("id").and_then(|v| v.as_str()) {
+                    // Only delete accounts, contacts will cascade
+                    if subresp.reference_id.starts_with("Account") {
+                        created_account_ids.push(id.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    for id in created_account_ids {
+        let _ = client.delete("Account", &id).await;
     }
 }
 
