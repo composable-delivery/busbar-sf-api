@@ -714,4 +714,114 @@ mod wasm_tests {
         assert_eq!(request.bearer_token, Some("test-token".to_string()));
         assert!(request.headers.contains_key("X-Custom"));
     }
+
+    #[test]
+    fn test_wasm_all_http_methods() {
+        let client = SfHttpClient::default_client().unwrap();
+        
+        // Test all HTTP method builders
+        let get_req = client.get("https://example.com/get");
+        assert_eq!(get_req.method, RequestMethod::Get);
+        
+        let post_req = client.post("https://example.com/post");
+        assert_eq!(post_req.method, RequestMethod::Post);
+        
+        let put_req = client.put("https://example.com/put");
+        assert_eq!(put_req.method, RequestMethod::Put);
+        
+        let patch_req = client.patch("https://example.com/patch");
+        assert_eq!(patch_req.method, RequestMethod::Patch);
+        
+        let delete_req = client.delete("https://example.com/delete");
+        assert_eq!(delete_req.method, RequestMethod::Delete);
+        
+        let head_req = client.head("https://example.com/head");
+        assert_eq!(head_req.method, RequestMethod::Head);
+    }
+
+    #[test]
+    fn test_wasm_request_with_query_params() {
+        let client = SfHttpClient::default_client().unwrap();
+        let request = client
+            .get("https://example.com/api/test")
+            .query("key1", "value1")
+            .query("key2", "value2")
+            .bearer_auth("test-token");
+
+        assert_eq!(request.query_params.len(), 2);
+        assert_eq!(request.query_params[0], ("key1".to_string(), "value1".to_string()));
+        assert_eq!(request.query_params[1], ("key2".to_string(), "value2".to_string()));
+    }
+
+    #[test]
+    fn test_wasm_request_with_json_body() {
+        let client = SfHttpClient::default_client().unwrap();
+        let body_data = serde_json::json!({
+            "name": "Test Account",
+            "industry": "Technology"
+        });
+        
+        let request = client
+            .post("https://example.com/api/sobjects/Account")
+            .json(&body_data)
+            .unwrap()
+            .bearer_auth("test-token");
+
+        assert!(matches!(request.body, Some(RequestBody::Json(_))));
+    }
+
+    #[test]
+    fn test_wasm_request_with_conditional_headers() {
+        let client = SfHttpClient::default_client().unwrap();
+        
+        let request = client
+            .get("https://example.com/api/test")
+            .if_none_match("\"abc123\"")
+            .if_modified_since("Wed, 21 Oct 2015 07:28:00 GMT")
+            .bearer_auth("test-token");
+
+        assert_eq!(request.if_none_match, Some("\"abc123\"".to_string()));
+        assert_eq!(request.if_modified_since, Some("Wed, 21 Oct 2015 07:28:00 GMT".to_string()));
+    }
+
+    #[test]
+    fn test_wasm_request_with_custom_headers() {
+        let client = SfHttpClient::default_client().unwrap();
+        
+        let request = client
+            .get("https://example.com/api/test")
+            .header("X-Custom-Header", "custom-value")
+            .header("X-Request-ID", "12345")
+            .bearer_auth("test-token");
+
+        assert_eq!(request.headers.len(), 2);
+        assert_eq!(request.headers.get("X-Custom-Header"), Some(&"custom-value".to_string()));
+        assert_eq!(request.headers.get("X-Request-ID"), Some(&"12345".to_string()));
+    }
+
+    #[test]
+    fn test_wasm_config_builder() {
+        use std::time::Duration;
+        
+        let config = ClientConfig::builder()
+            .without_retry()
+            .with_timeout(Duration::from_secs(30))
+            .with_user_agent("Custom-Agent/1.0")
+            .build();
+        
+        let client = SfHttpClient::new(config).unwrap();
+        assert_eq!(client.config().timeout, Duration::from_secs(30));
+        assert_eq!(client.config().user_agent, "Custom-Agent/1.0");
+    }
+
+    #[test]
+    fn test_wasm_compression_config() {
+        let config = ClientConfig::builder()
+            .without_retry()
+            .with_compression(true)
+            .build();
+        
+        let client = SfHttpClient::new(config).unwrap();
+        assert!(client.config().compression.enabled);
+    }
 }
