@@ -110,11 +110,11 @@ async fn test_rest_composite_batch_api() {
     assert_eq!(response.results.len(), 3, "Should have 3 sub-results");
     assert!(!response.has_errors, "Should not have errors");
 
-    // Clean up created accounts
+    // Clean up created accounts - check status code to identify successful creates
     let mut created_ids = Vec::new();
-    for (i, result) in response.results.iter().enumerate() {
-        if i < 2 {
-            // First two are POST requests
+    for result in &response.results {
+        // Status code 201 indicates successful creation
+        if result.status_code == 201 {
             if let Some(id) = result.result.get("id").and_then(|v| v.as_str()) {
                 created_ids.push(id.to_string());
             }
@@ -201,8 +201,12 @@ async fn test_rest_composite_tree_api() {
         "Should create 1 parent + 2 child records"
     );
 
-    // Clean up: delete the parent account (cascade will delete contacts)
-    if let Some(parent_result) = response.results.first() {
+    // Clean up: find and delete the parent account (cascade will delete contacts)
+    if let Some(parent_result) = response
+        .results
+        .iter()
+        .find(|r| r.reference_id == "parentAccount")
+    {
         let _ = client.delete("Account", &parent_result.id).await;
     }
 }
