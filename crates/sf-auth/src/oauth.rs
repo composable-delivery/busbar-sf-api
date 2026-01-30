@@ -167,7 +167,38 @@ impl OAuthClient {
         Ok(info)
     }
 
-    /// Revoke an access token.
+    /// Revoke an access token or refresh token.
+    ///
+    /// This method implements [RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)
+    /// OAuth 2.0 Token Revocation. It programmatically invalidates tokens, enabling
+    /// clean session management and security-sensitive applications.
+    ///
+    /// # Token Type Behavior
+    ///
+    /// - **Revoking a refresh token**: Invalidates the refresh token AND all associated
+    ///   access tokens that were issued from it. Use this for complete session termination.
+    /// - **Revoking an access token**: Invalidates only that specific access token. The
+    ///   refresh token and other access tokens remain valid.
+    ///
+    /// # Idempotency
+    ///
+    /// This endpoint is idempotent - revoking an already invalid or non-existent token
+    /// will still return success (HTTP 200). This prevents information leakage about
+    /// token validity.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use busbar_sf_auth::{OAuthClient, OAuthConfig};
+    /// # async fn example() -> Result<(), busbar_sf_auth::Error> {
+    /// let config = OAuthConfig::new("consumer_key");
+    /// let client = OAuthClient::new(config);
+    ///
+    /// // Revoke a refresh token (also revokes all its access tokens)
+    /// client.revoke_token("refresh_token_here", "https://login.salesforce.com").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// The token parameter is not logged to prevent credential exposure.
     #[instrument(skip(self, token))]
@@ -184,9 +215,11 @@ impl OAuthClient {
             .await?;
 
         if !response.status().is_success() {
+            // Parse error response to provide detailed error information
+            let error: OAuthErrorResponse = response.json().await?;
             return Err(Error::new(ErrorKind::OAuth {
-                error: "revoke_failed".to_string(),
-                description: "Failed to revoke token".to_string(),
+                error: error.error,
+                description: error.error_description,
             }));
         }
 
@@ -481,5 +514,96 @@ mod tests {
         assert!(!debug_output.contains("super_secret_access_token"));
         assert!(!debug_output.contains("super_secret_refresh_token"));
         assert!(!debug_output.contains("signature_value"));
+    }
+
+    #[tokio::test]
+    async fn test_revoke_token_success() {
+        use wiremock::matchers::{body_string_contains, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock the revoke endpoint - returns 200 with empty body on success
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .and(header("Content-Type", "application/x-www-form-urlencoded"))
+            .and(body_string_contains("token=test_token_to_revoke"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        let result = client
+            .revoke_token("test_token_to_revoke", &mock_server.uri())
+            .await;
+
+        assert!(result.is_ok(), "Token revocation should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_revoke_token_idempotency() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock the revoke endpoint - returns 200 even for invalid tokens (idempotent)
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        // First revocation
+        let result1 = client
+            .revoke_token("already_invalid_token", &mock_server.uri())
+            .await;
+        assert!(result1.is_ok(), "First revocation should succeed");
+
+        // Second revocation of same token (idempotent behavior)
+        let result2 = client
+            .revoke_token("already_invalid_token", &mock_server.uri())
+            .await;
+        assert!(
+            result2.is_ok(),
+            "Second revocation should also succeed (idempotent)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_revoke_token_failure() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock the revoke endpoint returning an error
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "invalid_request",
+                "error_description": "Token parameter is missing"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        let result = client
+            .revoke_token("malformed_token", &mock_server.uri())
+            .await;
+
+        assert!(result.is_err(), "Token revocation should fail");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::OAuth { .. }),
+            "Should return OAuth error"
+        );
     }
 }
