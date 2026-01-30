@@ -41,7 +41,7 @@ async fn example_revoke_with_oauth_client() -> Result<(), Box<dyn std::error::Er
         println!("✗ No token to revoke");
         println!("  Tip: Set SF_TOKEN_TO_REVOKE environment variable");
         println!("  This can be either an access token or refresh token\n");
-        return String::new();
+        String::new()
     });
 
     if token.is_empty() {
