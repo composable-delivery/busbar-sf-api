@@ -160,6 +160,6 @@ The `codecov.yml` config enforces that coverage does not decrease on any PR.
 
 ## API Version
 
-- Default API version: `62.0`
+- Default API version: `65.0`
 - All clients support version override via `with_api_version()`
 - New endpoints should document the minimum API version they require
