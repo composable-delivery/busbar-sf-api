@@ -64,6 +64,95 @@ crates/
 - Integration tests go in `tests/` (require Salesforce org credentials)
 - Test names should be descriptive: `test_get_deleted_returns_deleted_records`
 
+### Integration Test Guidelines
+
+Integration tests in `tests/integration/` **MUST** run against a real Salesforce org and **MUST** fail if the environment is not properly configured. They are not optional.
+
+**Key Principles:**
+
+1. **Never Skip Tests**: Use `common::get_credentials()` which panics with helpful error messages if SF_AUTH_URL is not set or invalid. DO NOT use the deprecated `require_credentials()` pattern that returns `Option` and allows tests to skip.
+
+2. **Test Behavior, Not Just Execution**: Integration tests should:
+   - Validate actual API responses and behavior
+   - Test edge cases and error conditions
+   - Assert on specific values, not just "didn't error"
+   - Verify state changes (create → verify created → delete → verify deleted)
+
+3. **Good vs Bad Examples**:
+   
+   ❌ **BAD** - Just checks for no error:
+   ```rust
+   #[tokio::test]
+   async fn test_create_account() {
+       let Some(creds) = require_credentials().await else { return; };
+       let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())?;
+       let _id = client.create("Account", &json!({"Name": "Test"})).await?;
+       // No assertions - just "it didn't crash"
+   }
+   ```
+   
+   ✅ **GOOD** - Tests actual behavior:
+   ```rust
+   #[tokio::test]
+   async fn test_create_account_sets_name_correctly() {
+       let creds = common::get_credentials().await;
+       let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+           .expect("Failed to create client");
+       
+       let account_name = format!("Integration Test {}", chrono::Utc::now().timestamp());
+       
+       // Create and verify ID is returned
+       let id = client.create("Account", &json!({"Name": account_name}))
+           .await
+           .expect("Failed to create account");
+       assert!(!id.is_empty(), "Account ID should not be empty");
+       assert!(id.starts_with("001"), "Account ID should start with 001 prefix");
+       
+       // Verify the account was actually created with correct values
+       let created: serde_json::Value = client.get("Account", &id, Some(&["Id", "Name"]))
+           .await
+           .expect("Failed to retrieve created account");
+       assert_eq!(created["Name"], account_name, "Account name should match");
+       
+       // Cleanup
+       client.delete("Account", &id).await.expect("Failed to delete test account");
+   }
+   ```
+
+4. **Error Testing**: Test that errors happen when they should:
+   ```rust
+   #[tokio::test]
+   async fn test_invalid_sobject_returns_error() {
+       let creds = common::get_credentials().await;
+       let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+           .expect("Failed to create client");
+       
+       let result = client.create("InvalidSObject__c", &json!({"Name": "Test"})).await;
+       assert!(result.is_err(), "Creating invalid SObject should fail");
+       
+       let err = result.unwrap_err();
+       assert!(
+           format!("{}", err).contains("InvalidSObject__c") || 
+           format!("{}", err).contains("NOT_FOUND"),
+           "Error should mention the invalid SObject name"
+       );
+   }
+   ```
+
+5. **Use Descriptive Names**: Test names should explain what behavior is being tested:
+   - ✅ `test_composite_batch_executes_subrequests_independently`
+   - ✅ `test_query_with_invalid_field_returns_error`
+   - ❌ `test_composite_api`
+   - ❌ `test_query`
+
+6. **Clean Up After Yourself**: Always delete test data you create, even if the test fails (use proper cleanup patterns).
+
+7. **Document What You're Testing**: Add comments explaining the behavior being validated:
+   ```rust
+   // Test that composite subrequests can reference results from earlier requests
+   // using the @{referenceId.field} syntax
+   ```
+
 ## Style Guide
 
 - Run `cargo fmt --workspace` before committing
