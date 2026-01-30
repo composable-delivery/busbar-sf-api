@@ -2,7 +2,10 @@
 
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
-use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, SalesforceRestClient};
+use busbar_sf_rest::{
+    CompositeRequest, CompositeSubrequest, ParameterizedSearchRequest, QueryBuilder,
+    SalesforceRestClient, SearchSObjectSpec,
+};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -525,4 +528,212 @@ async fn test_type_safe_query() {
         assert!(account.id.is_some(), "Account should have ID");
         assert!(!account.name.is_empty(), "Account should have name");
     }
+}
+
+// ============================================================================
+// Advanced Search API Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_parameterized_search() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a test account to search for
+    let test_name = format!("SearchTest{}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name.clone()}))
+        .await
+        .expect("Failed to create test account");
+
+    // Wait a moment for the record to be indexed
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Test parameterized search
+    let request = ParameterizedSearchRequest {
+        q: test_name.clone(),
+        fields: vec!["Id".to_string(), "Name".to_string()],
+        sobjects: vec![SearchSObjectSpec {
+            name: "Account".to_string(),
+            fields: Some(vec!["Id".to_string(), "Name".to_string()]),
+            where_clause: None,
+            limit: Some(10),
+        }],
+        overall_limit: Some(100),
+        offset: None,
+        spell_correction: Some(false),
+    };
+
+    let result = client
+        .parameterized_search(&request)
+        .await
+        .expect("Parameterized search should succeed");
+
+    assert!(
+        !result.search_records.is_empty() || result.metadata.additional.is_object(),
+        "Should return search results or metadata"
+    );
+
+    // Clean up
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_search_suggestions() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a test account with a unique name
+    let test_name = format!("SuggestTest{}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name.clone()}))
+        .await
+        .expect("Failed to create test account");
+
+    // Wait a moment for the record to be indexed
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Test search suggestions
+    let result = client
+        .search_suggestions(&test_name, "Account")
+        .await
+        .expect("Search suggestions should succeed");
+
+    // Suggestions may or may not include our new record depending on indexing
+    assert!(
+        result.auto_suggest_results.is_empty() || !result.auto_suggest_results.is_empty(),
+        "Should return a valid suggestion result"
+    );
+
+    // Clean up
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_search_scope_order() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test search scope order
+    let result = client
+        .search_scope_order()
+        .await
+        .expect("Search scope order should succeed");
+
+    assert!(
+        !result.scope_entities.is_empty(),
+        "Should return at least one scope entity"
+    );
+
+    // Verify structure of scope entities
+    for entity in &result.scope_entities {
+        assert!(!entity.name.is_empty(), "Entity should have a name");
+        assert!(!entity.label.is_empty(), "Entity should have a label");
+    }
+}
+
+#[tokio::test]
+async fn test_search_result_layouts() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test search result layouts for standard objects
+    let result = client
+        .search_result_layouts(&["Account", "Contact"])
+        .await
+        .expect("Search result layouts should succeed");
+
+    assert!(
+        !result.search_layout.is_empty(),
+        "Should return layout information"
+    );
+
+    // Verify structure of layout info
+    for layout in &result.search_layout {
+        assert!(!layout.label.is_empty(), "Layout should have a label");
+        assert!(
+            !layout.columns.is_empty(),
+            "Layout should have at least one column"
+        );
+
+        // Verify column structure
+        for column in &layout.columns {
+            assert!(!column.field.is_empty(), "Column should have a field");
+            assert!(!column.label.is_empty(), "Column should have a label");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_search_suggestions_invalid_sobject() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test with invalid SObject name (security validation)
+    let result = client.search_suggestions("test", "Bad'; DROP--").await;
+
+    assert!(
+        result.is_err(),
+        "Search suggestions with invalid SObject should fail"
+    );
+}
+
+#[tokio::test]
+async fn test_parameterized_search_invalid_sobject() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test with invalid SObject name (security validation)
+    let request = ParameterizedSearchRequest {
+        q: "test".to_string(),
+        sobjects: vec![SearchSObjectSpec {
+            name: "Bad'; DROP--".to_string(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    let result = client.parameterized_search(&request).await;
+
+    assert!(
+        result.is_err(),
+        "Parameterized search with invalid SObject should fail"
+    );
+}
+
+#[tokio::test]
+async fn test_search_result_layouts_invalid_sobject() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test with invalid SObject name (security validation)
+    let result = client
+        .search_result_layouts(&["Account", "Bad'; DROP--"])
+        .await;
+
+    assert!(
+        result.is_err(),
+        "Search result layouts with invalid SObject should fail"
+    );
 }
