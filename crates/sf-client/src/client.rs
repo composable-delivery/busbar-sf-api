@@ -277,14 +277,29 @@ impl SfHttpClient {
 // WASM implementation using Extism PDK
 #[cfg(feature = "wasm")]
 impl SfHttpClient {
-    /// Create a new HTTP client with default configuration.
+    /// Create a new HTTP client with the given configuration.
+    ///
+    /// Note: Retry policies are not supported in WASM. The configuration must have
+    /// `retry: None`, otherwise this will return an error. Use `ClientConfig::builder()
+    /// .without_retry().build()` to create a valid WASM configuration.
     pub fn new(config: ClientConfig) -> Result<Self> {
+        // Validate that retry is not configured for WASM
+        if config.retry.is_some() {
+            return Err(Error::new(ErrorKind::Config(
+                "Retry policies are not supported in WASM environments. \
+                 Please configure ClientConfig with retry: None using \
+                 ClientConfig::builder().without_retry().build()."
+                    .to_string(),
+            )));
+        }
+
         Ok(Self { config })
     }
 
-    /// Create a new HTTP client with default configuration.
+    /// Create a new HTTP client with default configuration (no retry for WASM).
     pub fn default_client() -> Result<Self> {
-        Self::new(ClientConfig::default())
+        // For WASM, default to no retry since retry is not supported
+        Self::new(ClientConfig::builder().without_retry().build())
     }
 
     /// Get the client configuration.
@@ -324,13 +339,9 @@ impl SfHttpClient {
 
     /// Execute a request (synchronous for WASM).
     ///
-    /// Note: Retry logic is not supported in WASM due to the inability to sleep between retries.
-    /// If a retry policy is configured, this will return an error on retryable failures instead
-    /// of retrying immediately, which could overwhelm the server. Configure your ClientConfig
-    /// with `retry: None` for WASM environments.
+    /// Note: Retry logic is not supported in WASM. The client creation validates that
+    /// retry is not configured, so this method executes requests without retry logic.
     pub fn execute(&self, request: RequestBuilder) -> Result<Response> {
-        let retry_policy_enabled = self.config.retry.is_some();
-
         let result = self.execute_once(&request);
 
         match result {
@@ -338,30 +349,7 @@ impl SfHttpClient {
                 // Check for Salesforce API errors
                 response.check_salesforce_error()
             }
-            Err(err) if err.is_retryable() => {
-                if retry_policy_enabled {
-                    // In WASM, we cannot sleep between retries, so immediate retries would
-                    // overwhelm the server and potentially trigger more aggressive rate limiting.
-                    // Return an error indicating that retries are not supported in WASM.
-                    warn!(
-                        error = %err,
-                        "Retryable error encountered in WASM, but retries are not supported. \
-                         Configure ClientConfig with retry: None for WASM environments."
-                    );
-                    return Err(Error::new(ErrorKind::Config(
-                        "Retry policies are not supported in WASM environments. \
-                         Please configure ClientConfig with retry: None."
-                            .to_string(),
-                    )));
-                }
-
-                // No retry policy configured, return the error
-                Err(err)
-            }
-            Err(err) => {
-                // Non-retryable error
-                Err(err)
-            }
+            Err(err) => Err(err),
         }
     }
 
@@ -688,8 +676,10 @@ mod wasm_tests {
     use super::*;
 
     #[test]
-    fn test_wasm_client_creation() {
+    fn test_wasm_default_client_creation() {
+        // default_client should succeed and have no retry configured
         let client = SfHttpClient::default_client().unwrap();
+        assert!(client.config().retry.is_none());
         assert!(client.config().compression.enabled);
     }
 
@@ -697,6 +687,19 @@ mod wasm_tests {
     fn test_wasm_client_creation_without_retry() {
         let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
         assert!(client.config().retry.is_none());
+    }
+
+    #[test]
+    fn test_wasm_client_creation_with_retry_fails() {
+        // Creating a client with retry should fail in WASM
+        let config = ClientConfig::builder()
+            .with_retry(crate::RetryConfig::default())
+            .build();
+        let result = SfHttpClient::new(config);
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err.kind, ErrorKind::Config(_)));
     }
 
     #[test]
@@ -710,21 +713,5 @@ mod wasm_tests {
         assert_eq!(request.url, "https://example.com/api/test");
         assert_eq!(request.bearer_token, Some("test-token".to_string()));
         assert!(request.headers.contains_key("X-Custom"));
-    }
-
-    #[test]
-    fn test_wasm_retry_policy_returns_error() {
-        // This test verifies that when retry is enabled, WASM returns an error
-        // instead of attempting immediate retries
-        let config = ClientConfig::builder()
-            .with_retry(crate::RetryConfig::default())
-            .build();
-        let client = SfHttpClient::new(config).unwrap();
-        
-        // Verify retry is configured
-        assert!(client.config().retry.is_some());
-        
-        // Note: Full testing requires HTTP mocking which is not available in WASM test environment
-        // This test mainly verifies the client can be constructed with retry config
     }
 }

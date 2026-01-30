@@ -56,7 +56,10 @@ async fn main() {
 use busbar_sf_client::{SfHttpClient, ClientConfig};
 
 fn main() {
-    let client = SfHttpClient::default_client().unwrap();
+    // WASM does not support retry policies - configure without retry
+    let client = SfHttpClient::new(
+        ClientConfig::builder().without_retry().build()
+    ).unwrap();
     let response = client
         .get("https://api.example.com/resource")
         .bearer_auth("token")
