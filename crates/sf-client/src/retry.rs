@@ -186,7 +186,7 @@ impl RetryPolicy {
     }
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

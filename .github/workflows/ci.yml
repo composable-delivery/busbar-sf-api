@@ -136,7 +136,7 @@ jobs:
                   shared-key: wasm-tests
 
             - name: Run WASM unit tests
-              run: cargo test --package busbar-sf-client --no-default-features --features wasm --lib wasm_tests
+              run: cargo test --package busbar-sf-client --no-default-features --features wasm --lib
 
             - name: Build WASM integration test plugin
               run: |

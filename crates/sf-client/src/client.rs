@@ -1,12 +1,16 @@
 //! Core HTTP client with retry, compression, and Salesforce-specific handling.
 
 use std::time::Duration;
+
+#[cfg(feature = "native")]
 use tracing::{debug, info, warn};
 
 use crate::config::ClientConfig;
 use crate::error::{Error, ErrorKind, Result};
 use crate::request::{RequestBody, RequestBuilder, RequestMethod};
 use crate::response::{Response, ResponseExt};
+
+#[cfg(feature = "native")]
 use crate::retry::RetryPolicy;
 
 // Native backend
@@ -426,13 +430,8 @@ impl SfHttpClient {
             Vec::new()
         };
 
-        if self.config.enable_tracing {
-            debug!(
-                method = ?request.method,
-                url = %request.url,
-                "Sending request"
-            );
-        }
+        // Note: Tracing/logging in WASM is handled by the host environment
+        // The enable_tracing config has no effect in WASM builds
 
         // Make the HTTP request using Extism PDK
         let http_request = extism_manifest::HttpRequest {
@@ -443,14 +442,8 @@ impl SfHttpClient {
 
         let http_response = extism_pdk::http::request::<Vec<u8>>(&http_request, Some(body))?;
 
-        if self.config.enable_tracing {
-            let status = http_response.status_code();
-            if (200..300).contains(&status) {
-                debug!(status, "Response received");
-            } else {
-                info!(status, "Non-success response");
-            }
-        }
+        // Note: Tracing/logging in WASM is handled by the host environment
+        // The enable_tracing config has no effect in WASM builds
 
         let status = http_response.status_code();
 
