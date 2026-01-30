@@ -540,17 +540,13 @@ async fn test_quick_actions_list() {
         .expect("Failed to create REST client");
 
     // List quick actions for Account
-    let actions = client
+    let _actions = client
         .list_quick_actions("Account")
         .await
         .expect("list_quick_actions should succeed");
 
     // Quick actions may or may not exist depending on org setup
-    // Just verify the API call succeeds and returns a valid array
-    assert!(
-        actions.is_empty() || !actions.is_empty(),
-        "Should return valid quick actions array"
-    );
+    // The expect() above verifies the API call succeeds
 }
 
 #[tokio::test]
@@ -737,16 +733,13 @@ async fn test_process_rules_list_all() {
         .expect("Failed to create REST client");
 
     // List all process rules
-    let rules = client
+    let _rules = client
         .list_process_rules()
         .await
         .expect("list_process_rules should succeed");
 
     // Process rules may or may not exist
-    assert!(
-        rules.rules.is_empty() || !rules.rules.is_empty(),
-        "Should return valid process rules array"
-    );
+    // The expect() above verifies the API call succeeds
 }
 
 #[tokio::test]
@@ -758,16 +751,13 @@ async fn test_process_rules_list_for_sobject() {
         .expect("Failed to create REST client");
 
     // List process rules for Account
-    let rules = client
+    let _rules = client
         .list_process_rules_for_sobject("Account")
         .await
         .expect("list_process_rules_for_sobject should succeed");
 
     // Process rules may or may not exist
-    assert!(
-        rules.rules.is_empty() || !rules.rules.is_empty(),
-        "Should return valid process rules array"
-    );
+    // The expect() above verifies the API call succeeds
 }
 
 #[tokio::test]
@@ -822,16 +812,13 @@ async fn test_approvals_list_pending() {
         .expect("Failed to create REST client");
 
     // List pending approvals
-    let approvals = client
+    let _approvals = client
         .list_pending_approvals()
         .await
         .expect("list_pending_approvals should succeed");
 
     // Approvals may or may not exist
-    assert!(
-        approvals.approvals.is_empty() || !approvals.approvals.is_empty(),
-        "Should return valid approvals array"
-    );
+    // The expect() above verifies the API call succeeds
 }
 
 #[tokio::test]
@@ -978,16 +965,13 @@ async fn test_invocable_actions_list_custom() {
         .expect("Failed to create REST client");
 
     // List custom invocable actions
-    let actions = client
+    let _actions = client
         .list_custom_actions()
         .await
         .expect("list_custom_actions should succeed");
 
     // Custom actions may or may not exist
-    assert!(
-        actions.actions.is_empty() || !actions.actions.is_empty(),
-        "Should return valid custom actions array"
-    );
+    // The expect() above verifies the API call succeeds
 }
 
 #[tokio::test]
