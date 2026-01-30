@@ -183,3 +183,232 @@ async fn test_bulk_error_invalid_job_id() {
 
     assert!(result.is_err(), "Invalid job ID should fail");
 }
+
+// ============================================================================
+// Parallel Query Results Tests (API v62.0+)
+// ============================================================================
+
+#[tokio::test]
+async fn test_parallel_query_results_basic() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job first
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(50);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test get_parallel_query_results
+    let batch = client
+        .get_parallel_query_results(&result.job.id, None)
+        .await
+        .expect("Get parallel query results should succeed");
+
+    // Should have at least one result URL if there are results
+    if result.job.number_records_processed > 0 {
+        assert!(
+            !batch.result_url.is_empty(),
+            "Should have at least one result URL when records exist"
+        );
+
+        // Each URL should be a valid string
+        for url in &batch.result_url {
+            assert!(!url.is_empty(), "Result URL should not be empty");
+            assert!(
+                url.contains("/results/") || url.contains("/parallelResults"),
+                "URL should be a valid results endpoint"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_parallel_query_results_with_max_records() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .limit(100);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test with maxRecords parameter
+    let batch = client
+        .get_parallel_query_results(&result.job.id, Some(3))
+        .await
+        .expect("Get parallel query results with maxRecords should succeed");
+
+    // Should have at most 3 result URLs
+    if result.job.number_records_processed > 0 {
+        assert!(
+            batch.result_url.len() <= 3,
+            "Should have at most 3 result URLs when maxRecords=3"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_get_all_query_results_parallel() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job with a reasonable number of records
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(100);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test high-level parallel download
+    let csv_data = client
+        .get_all_query_results_parallel(&result.job.id)
+        .await
+        .expect("Get all query results parallel should succeed");
+
+    // Validate CSV structure
+    let lines: Vec<&str> = csv_data.lines().collect();
+    assert!(!lines.is_empty(), "Should have at least header line");
+
+    if result.job.number_records_processed > 0 {
+        assert!(lines.len() > 1, "Should have data rows");
+
+        // Check header
+        let header = lines[0];
+        assert!(
+            header.to_lowercase().contains("id"),
+            "Header should contain Id"
+        );
+        assert!(
+            header.to_lowercase().contains("name"),
+            "Header should contain Name"
+        );
+
+        // Verify we got the right number of data rows
+        let data_rows = lines.len() - 1; // Subtract header
+        assert!(
+            data_rows > 0 && data_rows as i64 <= result.job.number_records_processed,
+            "Should have correct number of data rows"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_parallel_vs_serial_results_consistency() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .limit(50);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    if result.job.number_records_processed == 0 {
+        eprintln!("skipping: no records to test");
+        return;
+    }
+
+    // Get results using serial method
+    let serial_results = client
+        .get_all_query_results(&result.job.id)
+        .await
+        .expect("Serial results should succeed");
+
+    // Get results using parallel method
+    let parallel_results = client
+        .get_all_query_results_parallel(&result.job.id)
+        .await
+        .expect("Parallel results should succeed");
+
+    // Both should return CSV data with same structure
+    let serial_lines: Vec<&str> = serial_results.lines().collect();
+    let parallel_lines: Vec<&str> = parallel_results.lines().collect();
+
+    assert_eq!(
+        serial_lines.len(),
+        parallel_lines.len(),
+        "Both methods should return same number of lines"
+    );
+
+    // Headers should match
+    assert_eq!(serial_lines[0], parallel_lines[0], "Headers should match");
+
+    // Data row count should match
+    let serial_data_rows = serial_lines.len() - 1;
+    let parallel_data_rows = parallel_lines.len() - 1;
+    assert_eq!(
+        serial_data_rows, parallel_data_rows,
+        "Both methods should return same number of data rows"
+    );
+}
+
+#[tokio::test]
+async fn test_parallel_query_results_empty_job() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query that returns no results
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .where_eq("Id", "000000000000000AAA")
+        .expect("Where clause should succeed") // Invalid ID that won't match
+        .limit(10);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test parallel results on empty job
+    let _batch = client
+        .get_parallel_query_results(&result.job.id, None)
+        .await
+        .expect("Get parallel query results should succeed even with no results");
+
+    // Should handle empty results gracefully
+    let csv_data = client
+        .get_all_query_results_parallel(&result.job.id)
+        .await
+        .expect("Get all parallel results should succeed even with no results");
+
+    // Should have at least header
+    let lines: Vec<&str> = csv_data.lines().collect();
+    assert!(!lines.is_empty(), "Should have at least header line");
+}
