@@ -165,7 +165,8 @@ jobs:
                   fi
                   
                   # Run coverage only if tests passed
-                  cargo llvm-cov --workspace --all-features --lib --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
+                  # Capture just the coverage summary lines
+                  cargo llvm-cov --workspace --all-features --lib --lcov --output-path coverage/lcov-unit.info 2>&1 | grep -E "^(Filename|---)" | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Coverage summary
@@ -195,10 +196,10 @@ jobs:
                   fi
                   
                   # Coverage summary (only if available)
-                  if [ -f coverage/summary.txt ]; then
+                  if [ -f coverage/summary.txt ] && [ -s coverage/summary.txt ]; then
                     echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    head -3 coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
                   fi
 
@@ -286,7 +287,8 @@ jobs:
                   fi
                   
                   # Run coverage only if tests passed
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info --summary-only -- --nocapture | tee coverage/summary.txt
+                  # Capture just the coverage summary lines
+                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info -- --nocapture 2>&1 | grep -E "^(Filename|---)" | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Integration tests summary
@@ -334,10 +336,10 @@ jobs:
                   fi
                   
                   # Coverage summary (only if available)
-                  if [ -f coverage/summary.txt ]; then
+                  if [ -f coverage/summary.txt ] && [ -s coverage/summary.txt ]; then
                     echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    head -3 coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
                   fi
 
