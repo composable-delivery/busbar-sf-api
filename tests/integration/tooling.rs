@@ -6,6 +6,12 @@ use busbar_sf_tooling::{
     CompositeBatchRequest, CompositeBatchSubrequest, CompositeRequest, CompositeSubrequest,
     ToolingClient,
 };
+use std::sync::LazyLock;
+use tokio::sync::Mutex;
+
+// Global mutex to serialize Apex class creation across tests
+// Salesforce only allows one admin operation (class creation/compilation) at a time
+static APEX_CLASS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 // ============================================================================
 // Tooling API Tests
@@ -434,35 +440,49 @@ async fn test_run_tests_async_with_test_class() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarIntegrationTest{}", timestamp);
+
     // First, create a simple test class
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarIntegrationTest {
+private class {} {{
     @isTest
-    static void testSimpleAssertion() {
+    static void testSimpleAssertion() {{
         System.assertEquals(4, 2 + 2, 'Math should work');
-    }
+    }}
     
     @isTest
-    static void testAnotherAssertion() {
+    static void testAnotherAssertion() {{
         System.assertNotEquals(null, 'value', 'Value should not be null');
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    // Create the test class
-    let class_data = serde_json::json!({
-        "Name": "BusbarIntegrationTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        // Create the test class
+        let class_data = serde_json::json!({
+            "Name": class_name,
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        id
+    };
 
     // Run tests asynchronously using class ID
     let request = busbar_sf_tooling::RunTestsAsyncRequest {
@@ -523,35 +543,49 @@ async fn test_run_tests_sync_with_test_method() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarSyncTest{}", timestamp);
+
     // First, create a simple test class
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarSyncTest {
+private class {} {{
     @isTest
-    static void testBasicAssertion() {
+    static void testBasicAssertion() {{
         Integer result = 10 + 5;
         System.assertEquals(15, result, 'Addition should work');
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    // Create the test class
-    let class_data = serde_json::json!({
-        "Name": "BusbarSyncTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        // Create the test class
+        let class_data = serde_json::json!({
+            "Name": class_name.clone(),
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        id
+    };
 
     // Run tests synchronously
     let request = busbar_sf_tooling::RunTestsSyncRequest {
-        tests: Some(vec!["BusbarSyncTest.testBasicAssertion".to_string()]),
+        tests: Some(vec![format!("{}.testBasicAssertion", class_name)]),
         skip_code_coverage: Some(true),
     };
 
@@ -570,10 +604,7 @@ private class BusbarSyncTest {
             success.method_name, "testBasicAssertion",
             "Should be the correct method"
         );
-        assert_eq!(
-            success.name, "BusbarSyncTest",
-            "Should be the correct class"
-        );
+        assert_eq!(success.name, class_name, "Should be the correct class");
     }
 
     // Clean up: delete the test class
@@ -588,33 +619,47 @@ async fn test_run_tests_sync_with_failing_test() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarFailTest{}", timestamp);
+
     // Create a test class with a failing test
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarFailTest {
+private class {} {{
     @isTest
-    static void testThatFails() {
+    static void testThatFails() {{
         System.assertEquals(5, 10, 'This should fail');
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    let class_data = serde_json::json!({
-        "Name": "BusbarFailTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        let class_data = serde_json::json!({
+            "Name": class_name.clone(),
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        id
+    };
 
     // Run the failing test
     let request = busbar_sf_tooling::RunTestsSyncRequest {
-        tests: Some(vec!["BusbarFailTest.testThatFails".to_string()]),
+        tests: Some(vec![format!("{}.testThatFails", class_name)]),
         skip_code_coverage: Some(true),
     };
 
@@ -654,29 +699,43 @@ async fn test_discover_tests_v65() {
         .expect("Failed to create Tooling client")
         .with_api_version("65.0");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarDiscoverTest{}", timestamp);
+
     // First, create a simple test class to discover
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarDiscoverTest {
+private class {} {{
     @isTest
-    static void testDiscovery() {
+    static void testDiscovery() {{
         System.assert(true);
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    let class_data = serde_json::json!({
-        "Name": "BusbarDiscoverTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        let class_data = serde_json::json!({
+            "Name": class_name.clone(),
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile and be discoverable
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile and be discoverable before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
+
+        id
+    };
 
     // Discover all tests
     let result = client
@@ -693,7 +752,7 @@ private class BusbarDiscoverTest {
     let our_test = result
         .tests
         .iter()
-        .find(|t| t.class_name.as_deref() == Some("BusbarDiscoverTest"));
+        .find(|t| t.class_name.as_deref() == Some(class_name.as_str()));
 
     assert!(our_test.is_some(), "Should find our test class");
 
@@ -735,29 +794,43 @@ async fn test_run_tests_unified_api_v65() {
         .expect("Failed to create Tooling client")
         .with_api_version("65.0");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarUnifiedTest{}", timestamp);
+
     // Create a simple test class
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarUnifiedTest {
+private class {} {{
     @isTest
-    static void testUnifiedRunner() {
+    static void testUnifiedRunner() {{
         System.assertEquals(100, 50 + 50);
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    let class_data = serde_json::json!({
-        "Name": "BusbarUnifiedTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        let class_data = serde_json::json!({
+            "Name": class_name,
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        id
+    };
 
     // Run tests using the unified API
     let request = busbar_sf_tooling::RunTestsRequest {
@@ -789,33 +862,47 @@ async fn test_run_tests_async_with_class_names() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
+    // Use unique class name with timestamp to avoid conflicts
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let class_name = format!("BusbarNameTest{}", timestamp);
+
     // Create a test class
-    let test_class_body = r#"
+    let test_class_body = format!(
+        r#"
 @isTest
-private class BusbarNameTest {
+private class {} {{
     @isTest
-    static void testWithClassName() {
+    static void testWithClassName() {{
         System.assert(true);
-    }
-}
-"#;
+    }}
+}}
+"#,
+        class_name
+    );
 
-    let class_data = serde_json::json!({
-        "Name": "BusbarNameTest",
-        "Body": test_class_body
-    });
+    // Serialize Apex class creation to avoid "admin operation already in progress" errors
+    let class_id = {
+        let _lock = APEX_CLASS_LOCK.lock().await;
 
-    let class_id = client
-        .create("ApexClass", &class_data)
-        .await
-        .expect("Failed to create test class");
+        let class_data = serde_json::json!({
+            "Name": class_name.clone(),
+            "Body": test_class_body
+        });
 
-    // Give it a moment to compile
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        let id = client
+            .create("ApexClass", &class_data)
+            .await
+            .expect("Failed to create test class");
+
+        // Give it a moment to compile before releasing lock
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+        id
+    };
 
     // Run tests using class names instead of IDs
     let request = busbar_sf_tooling::RunTestsAsyncRequest {
-        class_names: Some(vec!["BusbarNameTest".to_string()]),
+        class_names: Some(vec![class_name]),
         test_level: Some("RunSpecifiedTests".to_string()),
         skip_code_coverage: Some(true),
         ..Default::default()
