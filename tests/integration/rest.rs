@@ -526,3 +526,281 @@ async fn test_type_safe_query() {
         assert!(!account.name.is_empty(), "Account should have name");
     }
 }
+
+// ============================================================================
+// Standalone REST Resources - Integration Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_rest_tabs() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let tabs = client.tabs().await.expect("tabs() should succeed");
+
+    assert!(!tabs.is_empty(), "Should return at least one tab");
+    // Verify structure of first tab
+    if let Some(first_tab) = tabs.first() {
+        assert!(first_tab.get("label").is_some(), "Tab should have a label");
+        assert!(first_tab.get("url").is_some(), "Tab should have a url");
+    }
+}
+
+#[tokio::test]
+async fn test_rest_theme() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let theme = client.theme().await.expect("theme() should succeed");
+
+    // Verify theme has expected structure
+    assert!(
+        theme.get("themeItems").is_some(),
+        "Theme should have themeItems"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_app_menu_app_switcher() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let app_menu = client
+        .app_menu("AppSwitcher")
+        .await
+        .expect("app_menu(AppSwitcher) should succeed");
+
+    // Verify structure
+    assert!(app_menu.is_object(), "App menu should be an object");
+}
+
+#[tokio::test]
+async fn test_rest_app_menu_salesforce1() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let app_menu = client
+        .app_menu("Salesforce1")
+        .await
+        .expect("app_menu(Salesforce1) should succeed");
+
+    // Verify structure
+    assert!(app_menu.is_object(), "App menu should be an object");
+}
+
+#[tokio::test]
+async fn test_rest_app_menu_invalid_type() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.app_menu("InvalidType").await;
+
+    assert!(
+        result.is_err(),
+        "app_menu with invalid type should return error"
+    );
+    let error = result.unwrap_err();
+    let error_msg = error.to_string();
+    assert!(
+        error_msg.contains("INVALID_APP_MENU_TYPE"),
+        "Error should indicate invalid app menu type"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_recent_items() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let recent = client
+        .recent_items()
+        .await
+        .expect("recent_items() should succeed");
+
+    // Recent items is a Vec (could be empty if no recent items)
+    // Just verify it returns successfully
+    let _count = recent.len(); // Verify it's a valid Vec
+}
+
+#[tokio::test]
+async fn test_rest_relevant_items() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let relevant = client
+        .relevant_items()
+        .await
+        .expect("relevant_items() should succeed");
+
+    // Relevant items should be an object or array
+    assert!(
+        relevant.is_object() || relevant.is_array(),
+        "Relevant items should be an object or array"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_compact_layouts() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let layouts = client
+        .compact_layouts("Account,Contact")
+        .await
+        .expect("compact_layouts() should succeed");
+
+    // Verify structure
+    assert!(
+        layouts.is_object() || layouts.is_array(),
+        "Compact layouts should be an object or array"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_compact_layouts_invalid_sobject() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.compact_layouts("Invalid$Object").await;
+
+    assert!(
+        result.is_err(),
+        "compact_layouts with invalid sobject should return error"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_compact_layouts_empty_input() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.compact_layouts("").await;
+
+    assert!(
+        result.is_err(),
+        "compact_layouts with empty input should return error"
+    );
+    let error = result.unwrap_err();
+    let error_msg = error.to_string();
+    assert!(
+        error_msg.contains("cannot be empty"),
+        "Error should indicate empty input"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_platform_event_schema_invalid_name() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test with invalid event name (contains invalid character)
+    let result = client.platform_event_schema("Invalid$Event__e").await;
+
+    assert!(
+        result.is_err(),
+        "platform_event_schema with invalid event name should return error"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_lightning_toggle_metrics() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let metrics = client
+        .lightning_toggle_metrics()
+        .await
+        .expect("lightning_toggle_metrics() should succeed");
+
+    // Verify it returns some data
+    assert!(
+        metrics.is_object() || metrics.is_array(),
+        "Lightning toggle metrics should be an object or array"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_lightning_usage() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let usage = client
+        .lightning_usage()
+        .await
+        .expect("lightning_usage() should succeed");
+
+    // Verify it returns some data
+    assert!(
+        usage.is_object() || usage.is_array(),
+        "Lightning usage should be an object or array"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_deploy_returns_error() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let zip_data = vec![0u8; 100]; // Dummy zip data
+    let options = serde_json::json!({
+        "singlePackage": true,
+        "checkOnly": false,
+        "rollbackOnError": true
+    });
+
+    let result = client.rest_deploy(&zip_data, &options).await;
+
+    // This should return an error since it's not implemented
+    assert!(
+        result.is_err(),
+        "rest_deploy() should return error as it's not implemented"
+    );
+    let error = result.unwrap_err();
+    let error_msg = error.to_string();
+    assert!(
+        error_msg.contains("multipart") || error_msg.contains("SOAP"),
+        "Error should mention multipart or SOAP alternative"
+    );
+}
