@@ -67,3 +67,29 @@ fn main() {
         .unwrap();
 }
 ```
+
+## Testing
+
+### Running Native Tests
+
+```bash
+# Run all tests with default (native) features
+cargo test --package busbar-sf-client
+
+# Run specific test module
+cargo test --package busbar-sf-client --lib client::tests
+```
+
+### Running WASM Tests
+
+```bash
+# Run WASM unit tests
+cargo test --package busbar-sf-client --no-default-features --features wasm --lib wasm_tests
+
+# Run WASM integration tests (requires wasm32-unknown-unknown target)
+rustup target add wasm32-unknown-unknown
+cargo test --package busbar-sf-client --test test_wasm_integration -- --ignored
+```
+
+For more details on WASM testing, see [tests/README.md](tests/README.md).
+
