@@ -830,8 +830,8 @@ mod tests {
         let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
 
         let sobject = "ApexClass";
-        let ids = vec!["01p000000000001AAA", "01p000000000002AAA"];
-        let fields = vec!["Id", "Name"];
+        let ids = ["01p000000000001AAA", "01p000000000002AAA"];
+        let fields = ["Id", "Name"];
 
         let ids_param = ids.join(",");
         let fields_param = fields.join(",");
@@ -866,7 +866,7 @@ mod tests {
     fn test_collections_delete_url_construction() {
         let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
 
-        let ids = vec!["01p000000000001AAA", "01p000000000002AAA"];
+        let ids = ["01p000000000001AAA", "01p000000000002AAA"];
         let ids_param = ids.join(",");
 
         let url = format!(

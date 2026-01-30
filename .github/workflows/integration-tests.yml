@@ -53,6 +53,9 @@ jobs:
               run: |
                   echo "Running integration tests with coverage..."
                   mkdir -p coverage
+                  # Run tests first to ensure failures cause build to fail
+                  cargo test --workspace --test integration --all-features -- --nocapture
+                  # Then run with coverage for reporting (errors already caught above)
                   cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
 
             - name: Coverage summary
