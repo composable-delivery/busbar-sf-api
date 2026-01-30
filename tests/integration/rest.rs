@@ -107,8 +107,8 @@ async fn test_rest_composite_batch_api() {
         .await
         .expect("Composite batch request should succeed");
 
-    assert_eq!(response.results.len(), 3, "Should have 3 sub-results");
     assert!(!response.has_errors, "Should not have errors");
+    assert_eq!(response.results.len(), 3, "Should have 3 sub-results");
 
     // Clean up created accounts - check status code to identify successful creates
     let mut created_ids = Vec::new();
