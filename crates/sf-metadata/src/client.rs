@@ -1167,4 +1167,220 @@ mod tests {
         assert_eq!(result.status, RetrieveStatus::Succeeded);
         assert!(result.zip_file.is_some());
     }
+
+    #[test]
+    fn test_metadata_url_construction() {
+        let client = MetadataClient::from_parts("https://na1.salesforce.com", "token")
+            .with_api_version("62.0");
+        assert_eq!(
+            client.metadata_url(),
+            "https://na1.salesforce.com/services/Soap/m/62.0"
+        );
+    }
+
+    #[test]
+    fn test_build_headers() {
+        let client = MetadataClient::from_parts("https://na1.salesforce.com", "token123");
+        let headers = client.build_headers("deploy");
+
+        assert_eq!(
+            headers.get("content-type").unwrap(),
+            "text/xml;charset=UTF-8"
+        );
+        assert_eq!(headers.get("soapaction").unwrap(), "deploy");
+        assert_eq!(headers.get("authorization").unwrap(), "Bearer token123");
+    }
+
+    #[test]
+    fn test_parse_soap_fault() {
+        let client = MetadataClient::from_parts("url", "token");
+
+        let xml = r#"
+        <soap:Envelope>
+            <soap:Body>
+                <soap:Fault>
+                    <faultcode>sf:INVALID_SESSION_ID</faultcode>
+                    <faultstring>Session expired or invalid</faultstring>
+                </soap:Fault>
+            </soap:Body>
+        </soap:Envelope>"#;
+
+        let fault = client.parse_soap_fault(xml).unwrap();
+        assert_eq!(fault.fault_code, "sf:INVALID_SESSION_ID");
+        assert_eq!(fault.fault_string, "Session expired or invalid");
+    }
+
+    #[test]
+    fn test_parse_soap_fault_returns_none_for_success() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml =
+            "<soap:Envelope><soap:Body><result><id>123</id></result></soap:Body></soap:Envelope>";
+        assert!(client.parse_soap_fault(xml).is_none());
+    }
+
+    #[test]
+    fn test_extract_elements_multiple() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = "<root><name>Alice</name><name>Bob</name><name>Charlie</name></root>";
+        let names = client.extract_elements(xml, "name");
+        assert_eq!(names, vec!["Alice", "Bob", "Charlie"]);
+    }
+
+    #[test]
+    fn test_extract_elements_empty() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = "<root><other>value</other></root>";
+        let names = client.extract_elements(xml, "name");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn test_extract_element_with_namespaced_open_tag() {
+        let client = MetadataClient::from_parts("url", "token");
+        // Salesforce SOAP responses sometimes use namespace-prefixed open tags
+        // with un-prefixed close tags
+        let xml = "<root><sf:id>12345</id></root>";
+        assert_eq!(client.extract_element(xml, "id"), Some("12345".to_string()));
+
+        let xml = "<root><met:status>Succeeded</status></root>";
+        assert_eq!(
+            client.extract_element(xml, "status"),
+            Some("Succeeded".to_string())
+        );
+
+        let xml = "<root><tns:done>true</done></root>";
+        assert_eq!(
+            client.extract_element(xml, "done"),
+            Some("true".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_deploy_result_with_failures() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <result>
+                <id>0Af456</id>
+                <done>true</done>
+                <status>Failed</status>
+                <success>false</success>
+                <numberComponentsDeployed>3</numberComponentsDeployed>
+                <numberComponentErrors>2</numberComponentErrors>
+                <numberComponentsTotal>5</numberComponentsTotal>
+                <numberTestsCompleted>10</numberTestsCompleted>
+                <numberTestErrors>1</numberTestErrors>
+                <numberTestsTotal>11</numberTestsTotal>
+                <errorMessage>Deployment failed</errorMessage>
+                <componentFailures>
+                    <componentType>ApexClass</componentType>
+                    <fullName>BadClass</fullName>
+                    <problem>Compilation error</problem>
+                    <problemType>Error</problemType>
+                    <lineNumber>42</lineNumber>
+                    <columnNumber>5</columnNumber>
+                    <created>false</created>
+                    <deleted>false</deleted>
+                </componentFailures>
+            </result>
+        "#;
+
+        let result = client.parse_deploy_result(xml).unwrap();
+        assert_eq!(result.id, "0Af456");
+        assert!(!result.success);
+        assert_eq!(result.status, DeployStatus::Failed);
+        assert_eq!(result.number_components_deployed, 3);
+        assert_eq!(result.number_components_errors, 2);
+        assert_eq!(result.number_tests_completed, 10);
+        assert_eq!(result.number_tests_errors, 1);
+        assert_eq!(result.error_message, Some("Deployment failed".to_string()));
+        assert_eq!(result.component_failures.len(), 1);
+        assert_eq!(
+            result.component_failures[0].full_name,
+            Some("BadClass".to_string())
+        );
+        assert_eq!(result.component_failures[0].line_number, Some(42));
+        assert_eq!(result.component_failures[0].column_number, Some(5));
+    }
+
+    #[test]
+    fn test_parse_test_failures() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <failures>
+                <name>MyTestClass</name>
+                <methodName>testInsert</methodName>
+                <message>System.AssertException: Expected 1, got 2</message>
+                <stackTrace>Class.MyTestClass.testInsert: line 15, column 1</stackTrace>
+            </failures>
+            <failures>
+                <name>MyTestClass</name>
+                <methodName>testUpdate</methodName>
+                <message>Null pointer</message>
+            </failures>
+        "#;
+
+        let failures = client.parse_test_failures(xml);
+        assert_eq!(failures.len(), 2);
+        assert_eq!(failures[0].name, Some("MyTestClass".to_string()));
+        assert_eq!(failures[0].method_name, Some("testInsert".to_string()));
+        assert!(failures[0]
+            .message
+            .as_ref()
+            .unwrap()
+            .contains("AssertException"));
+        assert!(failures[0].stack_trace.is_some());
+        assert!(failures[1].stack_trace.is_none());
+    }
+
+    #[test]
+    fn test_parse_component_successes() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <componentSuccesses>
+                <componentType>ApexClass</componentType>
+                <fileName>classes/MyClass.cls</fileName>
+                <fullName>MyClass</fullName>
+                <created>true</created>
+                <deleted>false</deleted>
+            </componentSuccesses>
+        "#;
+
+        let successes = client.parse_component_successes(xml);
+        assert_eq!(successes.len(), 1);
+        assert_eq!(successes[0].component_type, Some("ApexClass".to_string()));
+        assert_eq!(successes[0].full_name, Some("MyClass".to_string()));
+        assert!(successes[0].created);
+        assert!(!successes[0].deleted);
+    }
+
+    #[test]
+    fn test_parse_retrieve_result_with_messages_and_files() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <result>
+                <id>09S789</id>
+                <done>true</done>
+                <status>Succeeded</status>
+                <success>true</success>
+                <fileProperties>
+                    <fullName>MyClass</fullName>
+                    <fileName>classes/MyClass.cls</fileName>
+                    <type>ApexClass</type>
+                    <id>01p123</id>
+                </fileProperties>
+                <messages>
+                    <fileName>classes/OldClass.cls</fileName>
+                    <problem>Entity is deleted</problem>
+                </messages>
+            </result>
+        "#;
+
+        let result = client.parse_retrieve_result(xml).unwrap();
+        assert!(result.success);
+        assert_eq!(result.file_properties.len(), 1);
+        assert_eq!(result.file_properties[0].full_name, "MyClass");
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(result.messages[0].file_name, "classes/OldClass.cls");
+        assert_eq!(result.messages[0].problem, "Entity is deleted");
+    }
 }

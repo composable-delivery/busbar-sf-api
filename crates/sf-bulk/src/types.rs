@@ -530,4 +530,266 @@ mod tests {
             "\"queryAll\""
         );
     }
+
+    #[test]
+    fn test_bulk_operation_api_name() {
+        assert_eq!(BulkOperation::Insert.api_name(), "insert");
+        assert_eq!(BulkOperation::Update.api_name(), "update");
+        assert_eq!(BulkOperation::Upsert.api_name(), "upsert");
+        assert_eq!(BulkOperation::Delete.api_name(), "delete");
+        assert_eq!(BulkOperation::HardDelete.api_name(), "hardDelete");
+        assert_eq!(BulkOperation::Query.api_name(), "query");
+        assert_eq!(BulkOperation::QueryAll.api_name(), "queryAll");
+    }
+
+    #[test]
+    fn test_job_state_success() {
+        assert!(JobState::JobComplete.is_success());
+        assert!(!JobState::Failed.is_success());
+        assert!(!JobState::Aborted.is_success());
+        assert!(!JobState::Open.is_success());
+        assert!(!JobState::InProgress.is_success());
+    }
+
+    #[test]
+    fn test_column_delimiter_char() {
+        assert_eq!(ColumnDelimiter::Comma.char(), ',');
+        assert_eq!(ColumnDelimiter::Tab.char(), '\t');
+        assert_eq!(ColumnDelimiter::Semicolon.char(), ';');
+        assert_eq!(ColumnDelimiter::Pipe.char(), '|');
+        assert_eq!(ColumnDelimiter::Backquote.char(), '`');
+        assert_eq!(ColumnDelimiter::Caret.char(), '^');
+    }
+
+    #[test]
+    fn test_column_delimiter_api_name() {
+        assert_eq!(ColumnDelimiter::Comma.api_name(), "COMMA");
+        assert_eq!(ColumnDelimiter::Tab.api_name(), "TAB");
+        assert_eq!(ColumnDelimiter::Semicolon.api_name(), "SEMICOLON");
+        assert_eq!(ColumnDelimiter::Pipe.api_name(), "PIPE");
+        assert_eq!(ColumnDelimiter::Backquote.api_name(), "BACKQUOTE");
+        assert_eq!(ColumnDelimiter::Caret.api_name(), "CARET");
+    }
+
+    #[test]
+    fn test_ingest_job_request_with_builder() {
+        let request = CreateIngestJobRequest::new("Account", BulkOperation::Upsert)
+            .with_external_id_field("External_Id__c")
+            .with_column_delimiter(ColumnDelimiter::Pipe)
+            .with_line_ending(LineEnding::Crlf);
+
+        assert_eq!(request.object, "Account");
+        assert_eq!(request.operation, BulkOperation::Upsert);
+        assert_eq!(
+            request.external_id_field_name,
+            Some("External_Id__c".to_string())
+        );
+        assert_eq!(request.column_delimiter, ColumnDelimiter::Pipe);
+        assert_eq!(request.line_ending, LineEnding::Crlf);
+    }
+
+    #[test]
+    fn test_ingest_job_deserialization() {
+        let json = serde_json::json!({
+            "id": "7508000000Gxxx",
+            "state": "JobComplete",
+            "object": "Account",
+            "operation": "insert",
+            "numberRecordsProcessed": 100,
+            "numberRecordsFailed": 2,
+            "createdDate": "2024-01-15T10:30:00.000Z",
+            "totalProcessingTime": 5000,
+            "apiVersion": 62.0,
+            "concurrencyMode": "Parallel"
+        });
+
+        let job: IngestJob = serde_json::from_value(json).unwrap();
+        assert_eq!(job.id, "7508000000Gxxx");
+        assert_eq!(job.state, JobState::JobComplete);
+        assert_eq!(job.object, "Account");
+        assert_eq!(job.number_records_processed, 100);
+        assert_eq!(job.number_records_failed, 2);
+        // API version should be deserialized from float to string
+        assert_eq!(job.api_version, Some("62.0".to_string()));
+    }
+
+    #[test]
+    fn test_ingest_job_api_version_as_string() {
+        // Some Salesforce responses return apiVersion as a string
+        let json = serde_json::json!({
+            "id": "750xx",
+            "state": "Open",
+            "object": "Contact",
+            "operation": "update",
+            "apiVersion": "62.0"
+        });
+
+        let job: IngestJob = serde_json::from_value(json).unwrap();
+        assert_eq!(job.api_version, Some("62.0".to_string()));
+    }
+
+    #[test]
+    fn test_query_job_deserialization() {
+        let json = serde_json::json!({
+            "id": "750xx",
+            "state": "JobComplete",
+            "operation": "query",
+            "query": "SELECT Id, Name FROM Account",
+            "numberRecordsProcessed": 500
+        });
+
+        let job: QueryJob = serde_json::from_value(json).unwrap();
+        assert_eq!(job.id, "750xx");
+        assert_eq!(job.state, JobState::JobComplete);
+        assert_eq!(job.query, Some("SELECT Id, Name FROM Account".to_string()));
+        assert_eq!(job.number_records_processed, 500);
+    }
+
+    #[test]
+    fn test_ingest_job_result_success_rate() {
+        let result = IngestJobResult {
+            job: IngestJob {
+                id: "750xx".to_string(),
+                state: JobState::JobComplete,
+                object: "Account".to_string(),
+                operation: "insert".to_string(),
+                number_records_processed: 98,
+                number_records_failed: 2,
+                created_date: None,
+                system_modstamp: None,
+                total_processing_time: None,
+                api_version: None,
+                concurrency_mode: None,
+                error_message: None,
+            },
+            successful_results: Some("Id,Name\n001xx,Acme".to_string()),
+            failed_results: Some("Id,Error\n,DUPLICATE".to_string()),
+        };
+
+        assert!(result.is_success());
+        assert!(result.has_failures());
+        assert!((result.success_rate() - 0.98).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_ingest_job_result_no_records() {
+        let result = IngestJobResult {
+            job: IngestJob {
+                id: "750xx".to_string(),
+                state: JobState::JobComplete,
+                object: "Account".to_string(),
+                operation: "insert".to_string(),
+                number_records_processed: 0,
+                number_records_failed: 0,
+                created_date: None,
+                system_modstamp: None,
+                total_processing_time: None,
+                api_version: None,
+                concurrency_mode: None,
+                error_message: None,
+            },
+            successful_results: None,
+            failed_results: None,
+        };
+
+        // When no records processed, success_rate should be 1.0 (not NaN/panic)
+        assert!((result.success_rate() - 1.0).abs() < 0.001);
+        assert!(!result.has_failures());
+    }
+
+    #[test]
+    fn test_query_job_result() {
+        let result = QueryJobResult {
+            job: QueryJob {
+                id: "750xx".to_string(),
+                state: JobState::JobComplete,
+                operation: "query".to_string(),
+                query: Some("SELECT Id FROM Account".to_string()),
+                number_records_processed: 42,
+                created_date: None,
+                system_modstamp: None,
+                total_processing_time: None,
+                error_message: None,
+            },
+            results: Some("Id\n001xx\n002xx".to_string()),
+        };
+
+        assert!(result.is_success());
+        assert_eq!(result.record_count(), 42);
+    }
+
+    #[test]
+    fn test_ingest_job_list_deserialization() {
+        let json = serde_json::json!({
+            "records": [
+                {"id": "750a", "state": "JobComplete", "object": "Account", "operation": "insert"},
+                {"id": "750b", "state": "Failed", "object": "Contact", "operation": "update", "errorMessage": "Invalid data"}
+            ],
+            "done": true
+        });
+
+        let list: IngestJobList = serde_json::from_value(json).unwrap();
+        assert!(list.done);
+        assert_eq!(list.records.len(), 2);
+        assert_eq!(list.records[0].state, JobState::JobComplete);
+        assert_eq!(list.records[1].state, JobState::Failed);
+        assert_eq!(
+            list.records[1].error_message,
+            Some("Invalid data".to_string())
+        );
+    }
+
+    #[test]
+    fn test_content_type_serialization() {
+        assert_eq!(serde_json::to_string(&ContentType::Csv).unwrap(), "\"CSV\"");
+    }
+
+    #[test]
+    fn test_line_ending_serialization() {
+        assert_eq!(serde_json::to_string(&LineEnding::Lf).unwrap(), "\"LF\"");
+        assert_eq!(
+            serde_json::to_string(&LineEnding::Crlf).unwrap(),
+            "\"CRLF\""
+        );
+    }
+
+    #[test]
+    fn test_column_delimiter_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ColumnDelimiter::Comma).unwrap(),
+            "\"COMMA\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ColumnDelimiter::Tab).unwrap(),
+            "\"TAB\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ColumnDelimiter::Pipe).unwrap(),
+            "\"PIPE\""
+        );
+    }
+
+    #[test]
+    fn test_ingest_job_request_serialization() {
+        let request = CreateIngestJobRequest::new("Account", BulkOperation::Insert);
+        let json = serde_json::to_value(&request).unwrap();
+
+        assert_eq!(json["object"], "Account");
+        assert_eq!(json["operation"], "insert");
+        assert_eq!(json["contentType"], "CSV");
+        assert_eq!(json["columnDelimiter"], "COMMA");
+        assert_eq!(json["lineEnding"], "LF");
+        // external_id_field_name should be omitted when None
+        assert!(json.get("externalIdFieldName").is_none());
+    }
+
+    #[test]
+    fn test_upsert_job_request_serialization() {
+        let request = CreateIngestJobRequest::new("Account", BulkOperation::Upsert)
+            .with_external_id_field("External_Id__c");
+        let json = serde_json::to_value(&request).unwrap();
+
+        assert_eq!(json["operation"], "upsert");
+        assert_eq!(json["externalIdFieldName"], "External_Id__c");
+    }
 }

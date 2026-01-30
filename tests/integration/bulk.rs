@@ -1,6 +1,6 @@
 //! Bulk API 2.0 integration tests using SF_AUTH_URL.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_bulk::{BulkApiClient, BulkOperation};
 use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
@@ -11,9 +11,7 @@ use busbar_sf_rest::{QueryBuilder, SalesforceRestClient};
 
 #[tokio::test]
 async fn test_bulk_insert_lifecycle() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -56,9 +54,7 @@ async fn test_bulk_insert_lifecycle() {
 
 #[tokio::test]
 async fn test_bulk_query_operation() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -95,9 +91,7 @@ async fn test_bulk_query_operation() {
 
 #[tokio::test]
 async fn test_bulk_update_operation() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     let rest_client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -150,9 +144,7 @@ async fn test_bulk_update_operation() {
 
 #[tokio::test]
 async fn test_bulk_error_invalid_sobject_ingest() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -167,9 +159,7 @@ async fn test_bulk_error_invalid_sobject_ingest() {
 
 #[tokio::test]
 async fn test_bulk_error_invalid_query_field() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -185,9 +175,7 @@ async fn test_bulk_error_invalid_query_field() {
 
 #[tokio::test]
 async fn test_bulk_error_invalid_job_id() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 

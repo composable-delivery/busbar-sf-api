@@ -232,4 +232,121 @@ mod tests {
         assert!(!err.is_retryable());
         assert!(err.to_string().contains("INVALID_FIELD"));
     }
+
+    #[test]
+    fn test_error_kind_display_messages() {
+        // Verify each ErrorKind variant formats its Display message correctly
+        let cases: Vec<(ErrorKind, &str)> = vec![
+            (
+                ErrorKind::Http {
+                    status: 500,
+                    message: "Internal Server Error".into(),
+                },
+                "HTTP error: 500 Internal Server Error",
+            ),
+            (
+                ErrorKind::RateLimited {
+                    retry_after: Some(Duration::from_secs(30)),
+                },
+                "retry after",
+            ),
+            (ErrorKind::RateLimited { retry_after: None }, "Rate limited"),
+            (
+                ErrorKind::Authentication("expired token".into()),
+                "Authentication error: expired token",
+            ),
+            (
+                ErrorKind::Authorization("insufficient privileges".into()),
+                "Authorization error: insufficient privileges",
+            ),
+            (
+                ErrorKind::NotFound("Account/001".into()),
+                "Not found: Account/001",
+            ),
+            (
+                ErrorKind::PreconditionFailed("ETag mismatch".into()),
+                "Precondition failed: ETag mismatch",
+            ),
+            (ErrorKind::Timeout, "Request timeout"),
+            (
+                ErrorKind::Connection("refused".into()),
+                "Connection error: refused",
+            ),
+            (
+                ErrorKind::Json("unexpected EOF".into()),
+                "JSON error: unexpected EOF",
+            ),
+            (
+                ErrorKind::InvalidUrl("no scheme".into()),
+                "Invalid URL: no scheme",
+            ),
+            (
+                ErrorKind::Serialization("not a map".into()),
+                "Serialization error: not a map",
+            ),
+            (
+                ErrorKind::Config("missing field".into()),
+                "Configuration error: missing field",
+            ),
+            (
+                ErrorKind::RetriesExhausted { attempts: 3 },
+                "All 3 retry attempts exhausted",
+            ),
+            (ErrorKind::Other("something else".into()), "something else"),
+        ];
+
+        for (kind, expected_substring) in cases {
+            let display = kind.to_string();
+            assert!(
+                display.contains(expected_substring),
+                "Expected '{display}' to contain '{expected_substring}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_retryable_http_status_codes() {
+        let retryable = [429, 500, 502, 503, 504];
+        for status in retryable {
+            let err = Error::new(ErrorKind::Http {
+                status,
+                message: "error".into(),
+            });
+            assert!(err.is_retryable(), "HTTP {status} should be retryable");
+        }
+
+        let non_retryable = [400, 401, 403, 404, 405, 409, 422];
+        for status in non_retryable {
+            let err = Error::new(ErrorKind::Http {
+                status,
+                message: "error".into(),
+            });
+            assert!(!err.is_retryable(), "HTTP {status} should NOT be retryable");
+        }
+    }
+
+    #[test]
+    fn test_error_with_source() {
+        let source_err = std::io::Error::other("disk full");
+        let err = Error::with_source(ErrorKind::Other("write failed".into()), source_err);
+
+        assert!(err.source.is_some());
+        assert_eq!(err.to_string(), "write failed");
+    }
+
+    #[test]
+    fn test_from_serde_json_error() {
+        let json_err = serde_json::from_str::<String>("not valid json").unwrap_err();
+        let err: Error = json_err.into();
+        assert!(matches!(err.kind, ErrorKind::Json(_)));
+        assert!(err.source.is_some());
+    }
+
+    #[test]
+    fn test_from_url_parse_error() {
+        let url_err = url::Url::parse("not a url").unwrap_err();
+        let err: Error = url_err.into();
+        assert!(matches!(err.kind, ErrorKind::Config(_)));
+        assert!(err.to_string().contains("Invalid URL"));
+    }
 }
