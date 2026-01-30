@@ -142,42 +142,63 @@ jobs:
               run: |
                   echo "::group::Unit coverage"
                   mkdir -p coverage
+                  
                   # Run tests and capture output
-                  set +e
                   cargo test --workspace --lib --all-features --verbose 2>&1 | tee coverage/test-output.txt
-                  TEST_EXIT_CODE=$?
-                  set -e
+                  TEST_EXIT_CODE=${PIPESTATUS[0]}
                   
-                  # Extract test summary
-                  echo "Test exit code: $TEST_EXIT_CODE" > coverage/test-summary.txt
-                  grep "test result:" coverage/test-output.txt >> coverage/test-summary.txt || true
+                  # Parse test results for summary
+                  TOTAL_PASSED=$(grep -o "[0-9]\+ passed" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
+                  TOTAL_FAILED=$(grep -o "[0-9]\+ failed" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
+                  TOTAL_IGNORED=$(grep -o "[0-9]\+ ignored" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
                   
-                  # Run coverage
+                  echo "PASSED=$TOTAL_PASSED" > coverage/test-summary.txt
+                  echo "FAILED=$TOTAL_FAILED" >> coverage/test-summary.txt
+                  echo "IGNORED=$TOTAL_IGNORED" >> coverage/test-summary.txt
+                  echo "EXIT_CODE=$TEST_EXIT_CODE" >> coverage/test-summary.txt
+                  
+                  # If tests failed, exit now (don't run coverage)
+                  if [ $TEST_EXIT_CODE -ne 0 ]; then
+                    echo "Tests failed with exit code $TEST_EXIT_CODE"
+                    echo "::endgroup::"
+                    exit $TEST_EXIT_CODE
+                  fi
+                  
+                  # Run coverage only if tests passed
                   cargo llvm-cov --workspace --all-features --lib --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
                   echo "::endgroup::"
-                  
-                  exit $TEST_EXIT_CODE
 
             - name: Coverage summary
               if: always()
               run: |
-                  echo "## Unit Test Coverage" >> "$GITHUB_STEP_SUMMARY"
+                  echo "## 📊 Unit Test Results" >> "$GITHUB_STEP_SUMMARY"
                   echo "" >> "$GITHUB_STEP_SUMMARY"
                   
-                  # Test results
                   if [ -f coverage/test-summary.txt ]; then
-                    echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/test-summary.txt >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    source coverage/test-summary.txt
+                    
+                    # Create results table
+                    echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ✅ Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ❌ Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ⏭️ Ignored | $IGNORED |" >> "$GITHUB_STEP_SUMMARY"
+                    
+                    if [ "$EXIT_CODE" -ne 0 ]; then
+                      echo "" >> "$GITHUB_STEP_SUMMARY"
+                      echo "**Status: ❌ FAILED**" >> "$GITHUB_STEP_SUMMARY"
+                    else
+                      echo "" >> "$GITHUB_STEP_SUMMARY"
+                      echo "**Status: ✅ PASSED**" >> "$GITHUB_STEP_SUMMARY"
+                    fi
                     echo "" >> "$GITHUB_STEP_SUMMARY"
                   fi
                   
-                  # Coverage details
+                  # Coverage summary (only if available)
                   if [ -f coverage/summary.txt ]; then
-                    echo "### Coverage Details" >> "$GITHUB_STEP_SUMMARY"
+                    echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    head -3 coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
                   fi
 
@@ -233,61 +254,90 @@ jobs:
               run: |
                   echo "::group::Integration tests"
                   mkdir -p coverage
-                  # Run tests and capture output for summary
-                  set +e
+                  
+                  # Run tests and capture output
                   cargo test --workspace --test integration --all-features -- --nocapture 2>&1 | tee coverage/test-output.txt
-                  TEST_EXIT_CODE=$?
-                  set -e
+                  TEST_EXIT_CODE=${PIPESTATUS[0]}
                   
-                  # Extract test summary
-                  echo "Test exit code: $TEST_EXIT_CODE" > coverage/test-summary.txt
-                  grep "test result:" coverage/test-output.txt >> coverage/test-summary.txt || true
+                  # Parse test results
+                  TOTAL_PASSED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ passed" | awk '{print $1}')
+                  TOTAL_FAILED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ failed" | awk '{print $1}')
+                  TOTAL_IGNORED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ ignored" | awk '{print $1}')
+                  TEST_DURATION=$(grep "finished in" coverage/test-output.txt | tail -1 | grep -o "finished in .*" | sed 's/finished in //')
                   
-                  # Run with coverage for reporting
+                  echo "PASSED=$TOTAL_PASSED" > coverage/test-summary.txt
+                  echo "FAILED=$TOTAL_FAILED" >> coverage/test-summary.txt
+                  echo "IGNORED=$TOTAL_IGNORED" >> coverage/test-summary.txt
+                  echo "DURATION=$TEST_DURATION" >> coverage/test-summary.txt
+                  echo "EXIT_CODE=$TEST_EXIT_CODE" >> coverage/test-summary.txt
+                  
+                  # Extract failed test names if any
+                  if [ $TEST_EXIT_CODE -ne 0 ]; then
+                    grep "test.*\.\.\. FAILED" coverage/test-output.txt | sed 's/test //' | sed 's/ \.\.\. FAILED//' > coverage/failed-tests.txt || true
+                    # Extract actual error message (first failure only)
+                    sed -n '/^failures:$/,/^test result:/p' coverage/test-output.txt | head -20 > coverage/error-details.txt || true
+                  fi
+                  
+                  # If tests failed, exit now (don't run coverage)
+                  if [ $TEST_EXIT_CODE -ne 0 ]; then
+                    echo "Tests failed with exit code $TEST_EXIT_CODE"
+                    echo "::endgroup::"
+                    exit $TEST_EXIT_CODE
+                  fi
+                  
+                  # Run coverage only if tests passed
                   cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info --summary-only -- --nocapture | tee coverage/summary.txt
                   echo "::endgroup::"
-                  
-                  # Exit with original test exit code
-                  exit $TEST_EXIT_CODE
 
             - name: Integration tests summary
               if: always()
               run: |
-                  echo "## Integration Tests (Real Org)" >> "$GITHUB_STEP_SUMMARY"
+                  echo "## 🌐 Integration Test Results" >> "$GITHUB_STEP_SUMMARY"
                   echo "" >> "$GITHUB_STEP_SUMMARY"
                   
-                  # Test results
                   if [ -f coverage/test-summary.txt ]; then
-                    echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/test-summary.txt >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    source coverage/test-summary.txt
+                    
+                    # Create results table
+                    echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ✅ Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ❌ Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ⏭️ Ignored | $IGNORED |" >> "$GITHUB_STEP_SUMMARY"
+                    echo "| ⏱️ Duration | $DURATION |" >> "$GITHUB_STEP_SUMMARY"
                     echo "" >> "$GITHUB_STEP_SUMMARY"
-                  fi
-                  
-                  # Show failed tests if any
-                  if [ -f coverage/test-output.txt ]; then
-                    if grep -q "FAILED" coverage/test-output.txt; then
-                      echo "### Failed Tests" >> "$GITHUB_STEP_SUMMARY"
-                      echo '```' >> "$GITHUB_STEP_SUMMARY"
-                      grep "test.*FAILED" coverage/test-output.txt | head -20 >> "$GITHUB_STEP_SUMMARY"
-                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    
+                    if [ "$EXIT_CODE" -ne 0 ]; then
+                      echo "**Status: ❌ FAILED**" >> "$GITHUB_STEP_SUMMARY"
                       echo "" >> "$GITHUB_STEP_SUMMARY"
                       
+                      # Show failed tests
+                      if [ -f coverage/failed-tests.txt ]; then
+                        echo "### Failed Tests" >> "$GITHUB_STEP_SUMMARY"
+                        while IFS= read -r test_name; do
+                          echo "- \`$test_name\`" >> "$GITHUB_STEP_SUMMARY"
+                        done < coverage/failed-tests.txt
+                        echo "" >> "$GITHUB_STEP_SUMMARY"
+                      fi
+                      
                       # Show error details
-                      echo "### Error Details" >> "$GITHUB_STEP_SUMMARY"
-                      echo '```' >> "$GITHUB_STEP_SUMMARY"
-                      grep -A 10 "failures:" coverage/test-output.txt | head -30 >> "$GITHUB_STEP_SUMMARY"
-                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      if [ -f coverage/error-details.txt ]; then
+                        echo "### Error Details" >> "$GITHUB_STEP_SUMMARY"
+                        echo '```' >> "$GITHUB_STEP_SUMMARY"
+                        cat coverage/error-details.txt >> "$GITHUB_STEP_SUMMARY"
+                        echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      fi
+                    else
+                      echo "**Status: ✅ PASSED**" >> "$GITHUB_STEP_SUMMARY"
                       echo "" >> "$GITHUB_STEP_SUMMARY"
                     fi
                   fi
                   
-                  # Coverage summary
+                  # Coverage summary (only if available)
                   if [ -f coverage/summary.txt ]; then
                     echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    head -3 coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
                     echo '```' >> "$GITHUB_STEP_SUMMARY"
                   fi
 
