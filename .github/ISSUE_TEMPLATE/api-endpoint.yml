@@ -1,0 +1,79 @@
+name: API Endpoint Coverage
+description: Request implementation of a new Salesforce API endpoint
+title: "Add [API] endpoint: [endpoint name]"
+labels: ["enhancement", "api-coverage"]
+body:
+  - type: dropdown
+    id: api
+    attributes:
+      label: Salesforce API
+      description: Which Salesforce API does this endpoint belong to?
+      options:
+        - REST API (sf-rest)
+        - Bulk API 2.0 (sf-bulk)
+        - Metadata API (sf-metadata)
+        - Tooling API (sf-tooling)
+        - Authentication (sf-auth)
+    validations:
+      required: true
+
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: Endpoint(s)
+      description: |
+        List the HTTP method + path (REST/Tooling/Bulk) or SOAP operation name (Metadata).
+        Use one line per endpoint.
+      placeholder: |
+        GET /services/data/vXX.0/sobjects/{SObjectType}/deleted/?start={start}&end={end}
+        GET /services/data/vXX.0/sobjects/{SObjectType}/updated/?start={start}&end={end}
+    validations:
+      required: true
+
+  - type: input
+    id: docs-link
+    attributes:
+      label: Salesforce Documentation
+      description: Link to the official Salesforce developer documentation for this endpoint.
+      placeholder: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/...
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What does this endpoint do? What are the key use cases?
+      placeholder: |
+        Describe the endpoint's purpose, when it would be used, and any important
+        details about request/response format, pagination, or limitations.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation-hints
+    attributes:
+      label: Implementation Hints
+      description: |
+        Optional: File paths, existing patterns to follow, expected types, or other
+        guidance for implementing this endpoint.
+      placeholder: |
+        - File: `crates/sf-rest/src/client.rs`
+        - Follow the pattern used by `get()` method
+        - Response type: define `GetDeletedResult` struct
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: What must be true for this issue to be considered complete?
+      placeholder: |
+        - [ ] Method implemented on the client struct
+        - [ ] Request/response types defined with serde derives
+        - [ ] Doc comments with examples
+        - [ ] Unit tests with mocked HTTP responses
+        - [ ] Integration test (if applicable)
+    validations:
+      required: false

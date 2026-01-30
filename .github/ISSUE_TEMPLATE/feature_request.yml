@@ -1,0 +1,56 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "Feature: [brief description]"
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Related Crate
+      description: Which crate would this feature belong to?
+      options:
+        - sf-client
+        - sf-auth
+        - sf-rest
+        - sf-bulk
+        - sf-metadata
+        - sf-tooling
+        - Cross-crate / Infrastructure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the feature you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case / Motivation
+      description: Why is this feature needed? What problem does it solve?
+      placeholder: |
+        As a developer building a Salesforce integration, I need to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Optional. How do you think this could be implemented?
+      placeholder: |
+        Add a `foo()` method to `SalesforceRestClient` that...
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Optional. What alternatives have you considered?
+    validations:
+      required: false

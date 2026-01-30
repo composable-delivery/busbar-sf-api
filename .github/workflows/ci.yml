@@ -169,13 +169,23 @@ jobs:
               run: |
                   echo "::group::Unit coverage"
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov.info --summary-only | tee coverage/summary.txt
+                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Coverage summary
               run: |
                   echo "### Coverage (Unit Tests)" >> "$GITHUB_STEP_SUMMARY"
                   sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@v5
+              with:
+                  files: ./coverage/lcov-unit.info
+                  flags: unit-tests
+                  name: unit-tests
+                  fail_ci_if_error: false
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
             - name: Upload coverage artifacts
               uses: actions/upload-artifact@v4
@@ -219,7 +229,7 @@ jobs:
               run: |
                   echo "::group::Integration tests"
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
+                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info --summary-only -- --nocapture | tee coverage/summary.txt
                   echo "::endgroup::"
 
             - name: Integration tests summary
@@ -240,6 +250,16 @@ jobs:
                   else
                     echo "No coverage summary generated" >> "$GITHUB_STEP_SUMMARY"
                   fi
+
+            - name: Upload coverage to Codecov
+              uses: codecov/codecov-action@v5
+              with:
+                  files: ./coverage/lcov-integration.info
+                  flags: integration-tests
+                  name: integration-tests
+                  fail_ci_if_error: false
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
             - name: Upload coverage artifacts
               uses: actions/upload-artifact@v4

@@ -3,6 +3,8 @@
 //! Run all integration tests with:
 //!   SF_AUTH_URL=... cargo test --test integration -- --ignored --nocapture
 
+#[path = "integration/auth.rs"]
+mod auth;
 #[path = "integration/bulk.rs"]
 mod bulk;
 #[path = "integration/common.rs"]
