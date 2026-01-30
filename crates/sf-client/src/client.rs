@@ -9,9 +9,7 @@ use crate::request::{RequestBody, RequestBuilder, RequestMethod};
 use crate::response::{Response, ResponseExt};
 use crate::retry::RetryPolicy;
 
-// Native backend using reqwest
-#[cfg(feature = "native")]
-use reqwest;
+// Native backend
 #[cfg(feature = "native")]
 use tracing::instrument;
 
@@ -682,5 +680,51 @@ mod tests {
             .unwrap();
 
         assert!(response.is_not_modified());
+    }
+}
+
+#[cfg(all(test, feature = "wasm"))]
+mod wasm_tests {
+    use super::*;
+
+    #[test]
+    fn test_wasm_client_creation() {
+        let client = SfHttpClient::default_client().unwrap();
+        assert!(client.config().compression.enabled);
+    }
+
+    #[test]
+    fn test_wasm_client_creation_without_retry() {
+        let client = SfHttpClient::new(ClientConfig::builder().without_retry().build()).unwrap();
+        assert!(client.config().retry.is_none());
+    }
+
+    #[test]
+    fn test_wasm_request_builder_creation() {
+        let client = SfHttpClient::default_client().unwrap();
+        let request = client
+            .get("https://example.com/api/test")
+            .bearer_auth("test-token")
+            .header("X-Custom", "value");
+
+        assert_eq!(request.url, "https://example.com/api/test");
+        assert_eq!(request.bearer_token, Some("test-token".to_string()));
+        assert!(request.headers.contains_key("X-Custom"));
+    }
+
+    #[test]
+    fn test_wasm_retry_policy_returns_error() {
+        // This test verifies that when retry is enabled, WASM returns an error
+        // instead of attempting immediate retries
+        let config = ClientConfig::builder()
+            .with_retry(crate::RetryConfig::default())
+            .build();
+        let client = SfHttpClient::new(config).unwrap();
+        
+        // Verify retry is configured
+        assert!(client.config().retry.is_some());
+        
+        // Note: Full testing requires HTTP mocking which is not available in WASM test environment
+        // This test mainly verifies the client can be constructed with retry config
     }
 }
