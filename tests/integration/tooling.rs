@@ -207,27 +207,30 @@ async fn test_tooling_collections_get_multiple() {
 
     let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
 
-    // Test get_multiple
+    // Test get_multiple - retrieve records by their IDs via SObject Collections
     let results: Vec<serde_json::Value> = client
         .get_multiple("ApexClass", &id_refs, &["Id", "Name"])
         .await
-        .expect("get_multiple should succeed");
+        .unwrap_or_else(|e| panic!("get_multiple failed for ApexClass with IDs {:?}: {e}", &ids));
 
-    // Collections API may return fewer records than requested if records don't exist
-    // or user doesn't have access, so we check that we got at least one record
+    // Null entries in the response (records not found) are filtered out by get_multiple.
+    // Since we just queried these IDs, we expect all to be present.
     assert!(
         !results.is_empty(),
-        "Should return at least one record"
+        "Should return at least one record (queried {} IDs)",
+        ids.len()
     );
-    
-    // Verify we didn't get more records than we requested
+
     assert!(
         results.len() <= ids.len(),
         "Should not return more records than requested"
     );
 
     for result in &results {
-        assert!(result.get("Id").is_some(), "Each record should have an Id");
+        assert!(
+            result.get("Id").is_some(),
+            "Each record should have an Id field: got {result:?}"
+        );
     }
 }
 

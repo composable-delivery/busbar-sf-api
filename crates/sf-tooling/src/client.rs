@@ -602,7 +602,11 @@ impl ToolingClient {
             ids_param,
             fields_param
         );
-        self.client.get_json(&url).await.map_err(Into::into)
+        // The SObject Collections GET response is a JSON array that may contain
+        // null entries for records that could not be retrieved (deleted, no access, etc.).
+        // Deserialize as Vec<Option<T>> and filter out the nulls.
+        let results: Vec<Option<T>> = self.client.get_json(&url).await.map_err(Error::from)?;
+        Ok(results.into_iter().flatten().collect())
     }
 
     /// Create multiple Tooling API records in a single request (up to 200).

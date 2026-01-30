@@ -1,360 +1,138 @@
 name: CI
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
-    workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
-# Explicit permissions for security
 permissions:
-    contents: read
+  contents: read
 
 env:
-    RUST_BACKTRACE: 1
-    CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
 
 jobs:
-    test:
-        name: Test
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
-                rust: [stable, beta]
-                exclude:
-                    # Only run beta on Ubuntu to save CI time
-                    - os: windows-latest
-                      rust: beta
-                    - os: macos-latest
-                      rust: beta
-        steps:
-            - uses: actions/checkout@v6
+  # ── Fast checks (no compilation) ──────────────────────────────────────
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
 
-            - name: Install Rust ${{ matrix.rust }}
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ matrix.rust }}
+  # ── Lint ──────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: ${{ matrix.os }}-${{ matrix.rust }}
+  # ── Unit tests with coverage ──────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
 
-            - name: Build
-              run: cargo build --workspace --verbose
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov --workspace --all-features --lib --lcov --output-path lcov-unit.info
 
-            - name: Run unit tests
-              run: cargo test --workspace --lib --verbose
+      - name: Run doc tests
+        run: cargo test --workspace --doc
 
-            - name: Run doc tests
-              run: cargo test --workspace --doc --verbose
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
 
-    fmt:
-        name: Format
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-unit.info
+          flags: unit-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: rustfmt
+  # ── Documentation ─────────────────────────────────────────────────────
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
 
-            - name: Check formatting
-              run: cargo fmt --all --check
+  # ── MSRV ──────────────────────────────────────────────────────────────
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
 
-    clippy:
-        name: Clippy
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
+  # ── Integration tests (real Salesforce org) ───────────────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    environment: scratch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: clippy
+      - name: Verify credentials
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          if [ -z "$SF_AUTH_URL" ]; then
+            echo "::error::SF_AUTH_URL secret is not configured"
+            exit 1
+          fi
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
+      - name: Run integration tests with coverage
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
-            - name: Run clippy
-              run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Generate summary
+        if: always()
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
 
-    docs:
-        name: Documentation
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-
-            - name: Check documentation
-              run: cargo doc --workspace --no-deps --all-features
-              env:
-                  RUSTDOCFLAGS: -D warnings
-
-    msrv:
-        name: MSRV (Minimum Supported Rust Version)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust 1.88
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: "1.88"
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: msrv-1.88
-
-            - name: Check MSRV
-              run: cargo build --workspace --verbose
-
-    coverage-unit:
-        name: Coverage (Unit Tests)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: llvm-tools-preview
-
-            - name: Install cargo-llvm-cov
-              uses: taiki-e/install-action@cargo-llvm-cov
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: coverage-unit
-
-            - name: Run unit test coverage
-              run: |
-                  echo "::group::Unit coverage"
-                  mkdir -p coverage
-                  
-                  # Run tests and capture output
-                  cargo test --workspace --lib --all-features --verbose 2>&1 | tee coverage/test-output.txt
-                  TEST_EXIT_CODE=${PIPESTATUS[0]}
-                  
-                  # Parse test results for summary
-                  TOTAL_PASSED=$(grep -o "[0-9]\+ passed" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
-                  TOTAL_FAILED=$(grep -o "[0-9]\+ failed" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
-                  TOTAL_IGNORED=$(grep -o "[0-9]\+ ignored" coverage/test-output.txt | awk '{sum+=$1} END {print sum}')
-                  
-                  echo "PASSED=$TOTAL_PASSED" > coverage/test-summary.txt
-                  echo "FAILED=$TOTAL_FAILED" >> coverage/test-summary.txt
-                  echo "IGNORED=$TOTAL_IGNORED" >> coverage/test-summary.txt
-                  echo "EXIT_CODE=$TEST_EXIT_CODE" >> coverage/test-summary.txt
-                  
-                  # If tests failed, exit now (don't run coverage)
-                  if [ $TEST_EXIT_CODE -ne 0 ]; then
-                    echo "Tests failed with exit code $TEST_EXIT_CODE"
-                    echo "::endgroup::"
-                    exit $TEST_EXIT_CODE
-                  fi
-                  
-                  # Run coverage only if tests passed
-                  # Capture just the coverage summary lines
-                  cargo llvm-cov --workspace --all-features --lib --lcov --output-path coverage/lcov-unit.info 2>&1 | grep -E "^(Filename|---)" | tee coverage/summary.txt
-                  echo "::endgroup::"
-
-            - name: Coverage summary
-              if: always()
-              run: |
-                  echo "## 📊 Unit Test Results" >> "$GITHUB_STEP_SUMMARY"
-                  echo "" >> "$GITHUB_STEP_SUMMARY"
-                  
-                  if [ -f coverage/test-summary.txt ]; then
-                    source coverage/test-summary.txt
-                    
-                    # Create results table
-                    echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ✅ Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ❌ Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ⏭️ Ignored | $IGNORED |" >> "$GITHUB_STEP_SUMMARY"
-                    
-                    if [ "$EXIT_CODE" -ne 0 ]; then
-                      echo "" >> "$GITHUB_STEP_SUMMARY"
-                      echo "**Status: ❌ FAILED**" >> "$GITHUB_STEP_SUMMARY"
-                    else
-                      echo "" >> "$GITHUB_STEP_SUMMARY"
-                      echo "**Status: ✅ PASSED**" >> "$GITHUB_STEP_SUMMARY"
-                    fi
-                    echo "" >> "$GITHUB_STEP_SUMMARY"
-                  fi
-                  
-                  # Coverage summary (only if available)
-                  if [ -f coverage/summary.txt ] && [ -s coverage/summary.txt ]; then
-                    echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                  fi
-
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v5
-              with:
-                  files: ./coverage/lcov-unit.info
-                  flags: unit-tests
-                  name: unit-tests
-                  fail_ci_if_error: false
-              env:
-                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-            - name: Upload coverage artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: unit-coverage
-                  path: coverage/
-
-    integration:
-        name: Integration Tests (Real Org)
-        runs-on: ubuntu-latest
-        environment: scratch
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: llvm-tools-preview
-
-            - name: Install cargo-llvm-cov
-              uses: taiki-e/install-action@cargo-llvm-cov
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: integration-tests
-
-            - name: Require SF_AUTH_URL
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  if [ -z "$SF_AUTH_URL" ]; then
-                    echo "ERROR: SF_AUTH_URL secret is not set"
-                    exit 1
-                  fi
-                  echo "✓ SF_AUTH_URL secret is available"
-
-            - name: Integration tests (with coverage)
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  echo "::group::Integration tests"
-                  mkdir -p coverage
-                  
-                  # Run tests and capture output
-                  cargo test --workspace --test integration --all-features -- --nocapture 2>&1 | tee coverage/test-output.txt
-                  TEST_EXIT_CODE=${PIPESTATUS[0]}
-                  
-                  # Parse test results
-                  TOTAL_PASSED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ passed" | awk '{print $1}')
-                  TOTAL_FAILED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ failed" | awk '{print $1}')
-                  TOTAL_IGNORED=$(grep "test result:" coverage/test-output.txt | tail -1 | grep -o "[0-9]\+ ignored" | awk '{print $1}')
-                  TEST_DURATION=$(grep "finished in" coverage/test-output.txt | tail -1 | grep -o "finished in .*" | sed 's/finished in //')
-                  
-                  echo "PASSED=$TOTAL_PASSED" > coverage/test-summary.txt
-                  echo "FAILED=$TOTAL_FAILED" >> coverage/test-summary.txt
-                  echo "IGNORED=$TOTAL_IGNORED" >> coverage/test-summary.txt
-                  echo "DURATION=$TEST_DURATION" >> coverage/test-summary.txt
-                  echo "EXIT_CODE=$TEST_EXIT_CODE" >> coverage/test-summary.txt
-                  
-                  # Extract failed test names if any
-                  if [ $TEST_EXIT_CODE -ne 0 ]; then
-                    grep "test.*\.\.\. FAILED" coverage/test-output.txt | sed 's/test //' | sed 's/ \.\.\. FAILED//' > coverage/failed-tests.txt || true
-                    # Extract actual error message (first failure only)
-                    sed -n '/^failures:$/,/^test result:/p' coverage/test-output.txt | head -20 > coverage/error-details.txt || true
-                  fi
-                  
-                  # If tests failed, exit now (don't run coverage)
-                  if [ $TEST_EXIT_CODE -ne 0 ]; then
-                    echo "Tests failed with exit code $TEST_EXIT_CODE"
-                    echo "::endgroup::"
-                    exit $TEST_EXIT_CODE
-                  fi
-                  
-                  # Run coverage only if tests passed
-                  # Capture just the coverage summary lines
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info -- --nocapture 2>&1 | grep -E "^(Filename|---)" | tee coverage/summary.txt
-                  echo "::endgroup::"
-
-            - name: Integration tests summary
-              if: always()
-              run: |
-                  echo "## 🌐 Integration Test Results" >> "$GITHUB_STEP_SUMMARY"
-                  echo "" >> "$GITHUB_STEP_SUMMARY"
-                  
-                  if [ -f coverage/test-summary.txt ]; then
-                    source coverage/test-summary.txt
-                    
-                    # Create results table
-                    echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ✅ Passed | $PASSED |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ❌ Failed | $FAILED |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ⏭️ Ignored | $IGNORED |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "| ⏱️ Duration | $DURATION |" >> "$GITHUB_STEP_SUMMARY"
-                    echo "" >> "$GITHUB_STEP_SUMMARY"
-                    
-                    if [ "$EXIT_CODE" -ne 0 ]; then
-                      echo "**Status: ❌ FAILED**" >> "$GITHUB_STEP_SUMMARY"
-                      echo "" >> "$GITHUB_STEP_SUMMARY"
-                      
-                      # Show failed tests
-                      if [ -f coverage/failed-tests.txt ]; then
-                        echo "### Failed Tests" >> "$GITHUB_STEP_SUMMARY"
-                        while IFS= read -r test_name; do
-                          echo "- \`$test_name\`" >> "$GITHUB_STEP_SUMMARY"
-                        done < coverage/failed-tests.txt
-                        echo "" >> "$GITHUB_STEP_SUMMARY"
-                      fi
-                      
-                      # Show error details
-                      if [ -f coverage/error-details.txt ]; then
-                        echo "### Error Details" >> "$GITHUB_STEP_SUMMARY"
-                        echo '```' >> "$GITHUB_STEP_SUMMARY"
-                        cat coverage/error-details.txt >> "$GITHUB_STEP_SUMMARY"
-                        echo '```' >> "$GITHUB_STEP_SUMMARY"
-                      fi
-                    else
-                      echo "**Status: ✅ PASSED**" >> "$GITHUB_STEP_SUMMARY"
-                      echo "" >> "$GITHUB_STEP_SUMMARY"
-                    fi
-                  fi
-                  
-                  # Coverage summary (only if available)
-                  if [ -f coverage/summary.txt ] && [ -s coverage/summary.txt ]; then
-                    echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-                    echo '```' >> "$GITHUB_STEP_SUMMARY"
-                  fi
-
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v5
-              with:
-                  files: ./coverage/lcov-integration.info
-                  flags: integration-tests
-                  name: integration-tests
-                  fail_ci_if_error: false
-              env:
-                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-            - name: Upload coverage artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: integration-coverage
-                  path: coverage/
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-integration.info
+          flags: integration-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

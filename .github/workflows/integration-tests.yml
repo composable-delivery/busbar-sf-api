@@ -1,76 +1,54 @@
-name: Integration Tests
+name: Integration Tests (Manual)
 
 on:
-    workflow_dispatch:
+  workflow_dispatch:
 
-# Explicit permissions for security
 permissions:
-    contents: read
+  contents: read
 
 env:
-    RUST_BACKTRACE: 1
-    CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
 
 jobs:
-    integration-tests:
-        name: Integration Tests
-        runs-on: ubuntu-latest
-        environment: scratch
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    environment: scratch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
 
-        steps:
-            - uses: actions/checkout@v6
+      - name: Verify credentials
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          if [ -z "$SF_AUTH_URL" ]; then
+            echo "::error::SF_AUTH_URL secret is not configured"
+            exit 1
+          fi
 
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: llvm-tools-preview
+      - name: Run integration tests with coverage
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
-            - name: Install cargo-llvm-cov
-              uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate summary
+        if: always()
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          echo "### Integration Tests (Manual)" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: integration-tests
-
-            - name: Build workspace
-              run: cargo build --workspace --verbose
-
-            - name: Authenticate with Salesforce using SF_AUTH_URL
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  echo "SF_AUTH_URL is set: $([ -n "$SF_AUTH_URL" ] && echo 'yes' || echo 'no')"
-                  if [ -z "$SF_AUTH_URL" ]; then
-                    echo "ERROR: SF_AUTH_URL secret is not set"
-                    exit 1
-                  fi
-                  echo "✓ SF_AUTH_URL secret is available"
-
-            - name: Run integration tests with coverage
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  echo "Running integration tests with coverage..."
-                  mkdir -p coverage
-                  # Run tests first to ensure failures cause build to fail
-                  cargo test --workspace --test integration --all-features -- --nocapture
-                  # Then run with coverage for reporting (errors already caught above)
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov.info --summary-only -- --nocapture | tee coverage/summary.txt
-
-            - name: Coverage summary
-              run: |
-                  echo "### Coverage (Integration)" >> "$GITHUB_STEP_SUMMARY"
-                  sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-
-            - name: Upload coverage artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: integration-coverage
-                  path: coverage/
-
-            - name: Integration summary
-              if: always()
-              run: |
-                  echo "### Integration Tests (Manual)" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- Job status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-integration.info
+          flags: integration-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

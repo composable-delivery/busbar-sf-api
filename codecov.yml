@@ -1,0 +1,29 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  status:
+    project:
+      default:
+        # Coverage must not decrease by more than 1%
+        threshold: 1%
+    patch:
+      default:
+        # New code in PRs should have at least 50% coverage
+        target: 50%
+
+flags:
+  unit-tests:
+    paths:
+      - crates/
+      - src/
+    carryforward: true
+  integration-tests:
+    paths:
+      - crates/
+      - src/
+    carryforward: true
+
+ignore:
+  - "tests/"
+  - "examples/"
