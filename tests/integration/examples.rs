@@ -3,7 +3,7 @@
 //! These tests verify that all example programs work correctly against
 //! a real Salesforce org using the SF_AUTH_URL environment variable.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_bulk::BulkApiClient;
 use busbar_sf_client::QueryResult;
@@ -18,9 +18,7 @@ use std::collections::HashMap;
 
 #[tokio::test]
 async fn test_example_basic_auth_from_sfdx_auth_url() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     assert!(creds.is_valid(), "Credentials should be valid");
     assert!(
@@ -46,9 +44,7 @@ async fn test_example_basic_auth_from_sfdx_auth_url() {
 
 #[tokio::test]
 async fn test_example_basic_auth_credentials_redaction() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     let debug_output = format!("{:?}", creds);
     assert!(
@@ -75,9 +71,7 @@ struct ExampleAccount {
 
 #[tokio::test]
 async fn test_example_rest_crud_typed() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -127,9 +121,7 @@ async fn test_example_rest_crud_typed() {
 
 #[tokio::test]
 async fn test_example_rest_crud_dynamic() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -162,9 +154,7 @@ async fn test_example_rest_crud_dynamic() {
 
 #[tokio::test]
 async fn test_example_rest_crud_multiple() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -207,9 +197,7 @@ async fn test_example_rest_crud_multiple() {
 
 #[tokio::test]
 async fn test_example_queries_query_builder() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -249,9 +237,7 @@ async fn test_example_queries_query_builder() {
 
 #[tokio::test]
 async fn test_example_queries_basic_query() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -272,9 +258,7 @@ async fn test_example_queries_basic_query() {
 
 #[tokio::test]
 async fn test_example_queries_relationship_query() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -298,9 +282,7 @@ async fn test_example_queries_relationship_query() {
 
 #[tokio::test]
 async fn test_example_queries_aggregate() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -327,9 +309,7 @@ async fn test_example_queries_aggregate() {
 
 #[tokio::test]
 async fn test_example_bulk_insert() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -377,9 +357,7 @@ async fn test_example_bulk_insert() {
 
 #[tokio::test]
 async fn test_example_bulk_query() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -413,9 +391,7 @@ async fn test_example_bulk_query() {
 
 #[tokio::test]
 async fn test_example_error_handling_basic() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -435,9 +411,7 @@ async fn test_example_error_handling_basic() {
 
 #[tokio::test]
 async fn test_example_error_handling_limits() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -463,9 +437,7 @@ async fn test_example_error_handling_limits() {
 
 #[tokio::test]
 async fn test_example_error_handling_invalid_query() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -485,9 +457,7 @@ async fn test_example_error_handling_invalid_query() {
 async fn test_all_examples_integration() {
     println!("\n=== Running All Examples Integration Test ===\n");
 
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     println!("✓ Authentication successful");
 
     let rest_client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())

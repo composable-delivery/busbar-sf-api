@@ -1,7 +1,7 @@
 use busbar_sf_auth::SalesforceCredentials;
 
 /// Get authenticated credentials for integration tests.
-/// 
+///
 /// **IMPORTANT**: Integration tests MUST run against a real Salesforce org.
 /// This function will panic with a helpful error message if SF_AUTH_URL is not set
 /// or is invalid. Tests should NOT skip when credentials are unavailable.
@@ -57,7 +57,7 @@ pub async fn get_credentials() -> SalesforceCredentials {
         } else {
             auth_url.clone()
         };
-        
+
         panic!(
             "\n\n\
             ╔══════════════════════════════════════════════════════════════════════╗\n\
@@ -108,34 +108,5 @@ pub async fn get_credentials() -> SalesforceCredentials {
                 format!("{}", e)
             );
         }
-    }
-}
-
-// ============================================================================
-// DEPRECATED: Legacy functions for backward compatibility
-// These will be removed in a future version. Use get_credentials() instead.
-// ============================================================================
-
-/// DEPRECATED: Use get_credentials() instead.
-/// This function silently skips tests, which is NOT the desired behavior.
-#[deprecated(
-    since = "0.0.3",
-    note = "Use get_credentials() instead. Integration tests should fail, not skip."
-)]
-pub fn require_sf_auth_url() -> bool {
-    std::env::var("SF_AUTH_URL").is_ok()
-}
-
-/// DEPRECATED: Use get_credentials() instead.
-/// This function silently skips tests, which is NOT the desired behavior.
-#[deprecated(
-    since = "0.0.3",
-    note = "Use get_credentials() instead. Integration tests should fail, not skip."
-)]
-pub async fn require_credentials() -> Option<SalesforceCredentials> {
-    if std::env::var("SF_AUTH_URL").is_ok() {
-        Some(get_credentials().await)
-    } else {
-        None
     }
 }

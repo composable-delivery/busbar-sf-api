@@ -1,6 +1,6 @@
 //! Metadata API integration tests using SF_AUTH_URL.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_metadata::MetadataClient;
 
@@ -10,9 +10,7 @@ use busbar_sf_metadata::MetadataClient;
 
 #[tokio::test]
 async fn test_metadata_describe_types() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let result = client
@@ -28,9 +26,7 @@ async fn test_metadata_describe_types() {
 
 #[tokio::test]
 async fn test_metadata_list_types() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let types = client
@@ -49,9 +45,7 @@ async fn test_metadata_list_types() {
 
 #[tokio::test]
 async fn test_metadata_list_custom_objects() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let result = client
@@ -71,9 +65,7 @@ async fn test_metadata_list_custom_objects() {
 
 #[tokio::test]
 async fn test_metadata_error_invalid_token() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::from_parts(creds.instance_url(), "invalid-token");
 
     let result = client.describe_metadata().await;

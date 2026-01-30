@@ -3,6 +3,7 @@
 //! These tests require a Salesforce scratch org to be authenticated.
 //! Run with: `cargo test --test integration -- --ignored --nocapture`
 
+use super::common::get_credentials;
 use busbar_sf_auth::{Credentials, SalesforceCredentials};
 use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_tooling::ToolingClient;
@@ -15,23 +16,14 @@ fn org_alias() -> String {
     std::env::var("SF_TEST_ORG_ALIAS").unwrap_or_else(|_| DEFAULT_ORG_ALIAS.to_string())
 }
 
-fn require_scratch_credentials() -> bool {
-    if std::env::var("SF_AUTH_URL").is_ok() || std::env::var("SF_TEST_ORG_ALIAS").is_ok() {
-        true
-    } else {
-        eprintln!("skipping: SF_AUTH_URL or SF_TEST_ORG_ALIAS not set");
-        false
-    }
-}
-
 /// Helper to get authenticated credentials from SFDX CLI or SF_AUTH_URL.
+/// Falls back to SFDX alias if SF_AUTH_URL is not set (for local development).
 async fn get_test_credentials() -> SalesforceCredentials {
-    if let Ok(auth_url) = std::env::var("SF_AUTH_URL") {
-        return SalesforceCredentials::from_sfdx_auth_url(&auth_url)
-            .await
-            .unwrap_or_else(|_| panic!("Failed to authenticate from SF_AUTH_URL"));
+    if std::env::var("SF_AUTH_URL").is_ok() {
+        return get_credentials().await;
     }
 
+    // Fall back to SFDX CLI alias for local development
     let alias = org_alias();
     SalesforceCredentials::from_sfdx_alias(&alias)
         .await
@@ -44,9 +36,7 @@ async fn get_test_credentials() -> SalesforceCredentials {
 
 #[tokio::test]
 async fn test_sfdx_authentication() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
 
     assert!(creds.is_valid(), "Credentials should be valid");
@@ -69,9 +59,7 @@ async fn test_sfdx_authentication() {
 
 #[tokio::test]
 async fn test_credentials_debug_redaction() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
 
     let debug_output = format!("{:?}", creds);
@@ -91,9 +79,7 @@ async fn test_credentials_debug_redaction() {
 
 #[tokio::test]
 async fn test_rest_api_versions() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -111,9 +97,7 @@ async fn test_rest_api_versions() {
 
 #[tokio::test]
 async fn test_rest_api_limits() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -135,9 +119,7 @@ async fn test_rest_api_limits() {
 
 #[tokio::test]
 async fn test_rest_describe_global() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -163,9 +145,7 @@ async fn test_rest_describe_global() {
 
 #[tokio::test]
 async fn test_rest_describe_sobject() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -188,9 +168,7 @@ async fn test_rest_describe_sobject() {
 
 #[tokio::test]
 async fn test_rest_query() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -212,9 +190,7 @@ async fn test_rest_query() {
 
 #[tokio::test]
 async fn test_rest_crud_lifecycle() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -277,9 +253,7 @@ async fn test_rest_crud_lifecycle() {
 
 #[tokio::test]
 async fn test_tooling_query() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
@@ -297,9 +271,7 @@ async fn test_tooling_query() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
@@ -315,9 +287,7 @@ async fn test_tooling_execute_anonymous() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous_with_error() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
@@ -333,9 +303,7 @@ async fn test_tooling_execute_anonymous_with_error() {
 
 #[tokio::test]
 async fn test_invalid_query_error() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -349,9 +317,7 @@ async fn test_invalid_query_error() {
 
 #[tokio::test]
 async fn test_invalid_sobject_error() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
@@ -370,9 +336,7 @@ async fn test_invalid_sobject_error() {
 
 #[tokio::test]
 async fn test_client_debug_redacts_token() {
-    if !require_scratch_credentials() {
-        return;
-    }
+    // Tests now use get_test_credentials() which will panic if not configured
     let creds = get_test_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");

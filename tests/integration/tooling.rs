@@ -1,6 +1,6 @@
 //! Tooling API integration tests using SF_AUTH_URL.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_tooling::{
     CompositeBatchRequest, CompositeBatchSubrequest, CompositeRequest, CompositeSubrequest,
@@ -13,9 +13,7 @@ use busbar_sf_tooling::{
 
 #[tokio::test]
 async fn test_tooling_query_apex_classes() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -34,9 +32,7 @@ async fn test_tooling_query_apex_classes() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous_success() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -57,9 +53,7 @@ async fn test_tooling_execute_anonymous_success() {
 
 #[tokio::test]
 async fn test_tooling_execute_anonymous_compile_error() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -72,9 +66,7 @@ async fn test_tooling_execute_anonymous_compile_error() {
 
 #[tokio::test]
 async fn test_tooling_query_all_pagination() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -92,9 +84,7 @@ async fn test_tooling_query_all_pagination() {
 
 #[tokio::test]
 async fn test_tooling_composite_api() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -141,9 +131,7 @@ async fn test_tooling_composite_api() {
 
 #[tokio::test]
 async fn test_tooling_composite_batch() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -192,9 +180,7 @@ async fn test_tooling_composite_batch() {
 
 #[tokio::test]
 async fn test_tooling_collections_get_multiple() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -240,9 +226,7 @@ async fn test_tooling_collections_get_multiple() {
 
 #[tokio::test]
 async fn test_tooling_collections_create_update_delete() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -280,9 +264,7 @@ async fn test_tooling_collections_create_update_delete() {
 
 #[tokio::test]
 async fn test_tooling_collections_delete_multiple() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -307,9 +289,7 @@ async fn test_tooling_collections_delete_multiple() {
 
 #[tokio::test]
 async fn test_tooling_create_multiple_trace_flags() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -384,9 +364,7 @@ async fn test_tooling_create_multiple_trace_flags() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_query() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -402,9 +380,7 @@ async fn test_tooling_error_invalid_query() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_sobject_create_get_delete() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -428,9 +404,7 @@ async fn test_tooling_error_invalid_sobject_create_get_delete() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_log_id() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
