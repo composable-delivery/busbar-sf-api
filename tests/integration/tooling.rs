@@ -421,3 +421,113 @@ async fn test_tooling_error_invalid_log_id() {
 
     assert!(result.is_err(), "Log body with invalid ID should fail");
 }
+
+// ============================================================================
+// Code Intelligence Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_completions_apex() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.completions_apex().await;
+
+    assert!(result.is_ok(), "Completions apex should succeed");
+
+    let completions = result.unwrap();
+    assert!(
+        !completions
+            .public_declarations
+            .public_declarations
+            .is_empty(),
+        "Should return Apex system completions"
+    );
+
+    // Verify we got some known Apex system classes/methods
+    let has_system_types = completions
+        .public_declarations
+        .public_declarations
+        .iter()
+        .any(|item| {
+            item.name.to_lowercase().contains("system")
+                || item.name.to_lowercase().contains("string")
+                || item.name.to_lowercase().contains("list")
+        });
+
+    assert!(
+        has_system_types,
+        "Should include common Apex system types like System, String, or List"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_completions_visualforce() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.completions_visualforce().await;
+
+    assert!(result.is_ok(), "Completions visualforce should succeed");
+
+    let completions = result.unwrap();
+    assert!(
+        !completions
+            .public_declarations
+            .public_declarations
+            .is_empty(),
+        "Should return Visualforce completions"
+    );
+
+    // Verify we got some known Visualforce components
+    let has_vf_components = completions
+        .public_declarations
+        .public_declarations
+        .iter()
+        .any(|item| {
+            item.name.to_lowercase().contains("apex:")
+                || item.name.to_lowercase().contains("page")
+                || item.name.to_lowercase().contains("component")
+        });
+
+    assert!(
+        has_vf_components,
+        "Should include Visualforce components like apex:page"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_apex_manifest() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.apex_manifest().await;
+
+    assert!(result.is_ok(), "Apex manifest should succeed");
+
+    let manifest = result.unwrap();
+
+    // A scratch org might not have any custom classes initially, but it should still return a valid response
+    // We just verify the structure is correct - the lists should be valid (not checking length since >= 0 is always true)
+
+    // If there are any classes, verify they have the expected fields
+    if let Some(class) = manifest.classes.first() {
+        assert!(!class.id.is_empty(), "Class should have an ID");
+        assert!(!class.name.is_empty(), "Class should have a name");
+    }
+
+    // If there are any triggers, verify they have the expected fields
+    if let Some(trigger) = manifest.triggers.first() {
+        assert!(!trigger.id.is_empty(), "Trigger should have an ID");
+        assert!(!trigger.name.is_empty(), "Trigger should have a name");
+    }
+}
