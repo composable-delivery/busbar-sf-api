@@ -421,3 +421,89 @@ async fn test_tooling_error_invalid_log_id() {
 
     assert!(result.is_err(), "Log body with invalid ID should fail");
 }
+
+// ============================================================================
+// MetadataComponentDependency Tests (requires dependencies feature)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_tooling_query_metadata_component_dependencies() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Query all dependencies (limited to 2000 records)
+    let result = client.get_metadata_component_dependencies(None).await;
+
+    assert!(
+        result.is_ok(),
+        "MetadataComponentDependency query should succeed"
+    );
+
+    let deps = result.unwrap();
+    // The scratch org may or may not have dependencies, so we just verify the query succeeds
+    println!("Found {} metadata component dependencies", deps.len());
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_tooling_query_metadata_component_dependencies_with_filter() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Query with a filter for ApexClass dependencies
+    let result = client
+        .get_metadata_component_dependencies(Some("MetadataComponentType = 'ApexClass'"))
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Filtered MetadataComponentDependency query should succeed"
+    );
+
+    let deps = result.unwrap();
+    // Verify that if there are results, they match the filter
+    for dep in &deps {
+        if let Some(component_type) = &dep.metadata_component_type {
+            assert_eq!(
+                component_type, "ApexClass",
+                "Filtered results should only contain ApexClass"
+            );
+        }
+    }
+
+    println!(
+        "Found {} ApexClass metadata component dependencies",
+        deps.len()
+    );
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_tooling_query_metadata_component_dependencies_raw() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Query using raw SOQL to test the type deserialization
+    let result: Result<Vec<busbar_sf_client::MetadataComponentDependency>, _> = client
+        .query_all(
+            "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, \
+             RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType \
+             FROM MetadataComponentDependency LIMIT 10",
+        )
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Raw MetadataComponentDependency query should succeed"
+    );
+}

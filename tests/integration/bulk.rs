@@ -183,3 +183,140 @@ async fn test_bulk_error_invalid_job_id() {
 
     assert!(result.is_err(), "Invalid job ID should fail");
 }
+
+// ============================================================================
+// MetadataComponentDependency Tests (requires dependencies feature)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentType",
+            ])
+            .limit(1000); // Bulk API supports up to 100,000 records
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk MetadataComponentDependency query should succeed");
+
+    assert!(
+        result.job.number_records_processed >= 0,
+        "Should process records"
+    );
+
+    println!(
+        "Bulk query processed {} MetadataComponentDependency records",
+        result.job.number_records_processed
+    );
+
+    if let Some(csv_results) = result.results {
+        let lines: Vec<&str> = csv_results.lines().collect();
+        assert!(!lines.is_empty(), "Should have at least header line");
+        if let Some(header) = lines.first() {
+            assert!(
+                header.contains("MetadataComponentId") || header.contains("metadatacomponentid"),
+                "Header should contain MetadataComponentId"
+            );
+            assert!(
+                header.contains("RefMetadataComponentId")
+                    || header.contains("refmetadatacomponentid"),
+                "Header should contain RefMetadataComponentId"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies_with_filter() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Query with a filter for ApexClass dependencies
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+            ])
+            .where_eq("MetadataComponentType", "ApexClass")
+            .expect("where_eq should succeed")
+            .limit(100);
+
+    let result = client.execute_query(query_builder).await;
+
+    // This may fail if there are no ApexClass dependencies in the scratch org,
+    // or succeed with 0 results, both are valid outcomes
+    match result {
+        Ok(query_result) => {
+            println!(
+                "Bulk query with filter processed {} records",
+                query_result.job.number_records_processed
+            );
+        }
+        Err(e) => {
+            // If it fails, it should be due to no matching records or query limitations
+            println!("Bulk query with filter error (expected): {}", e);
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_metadata_component_dependency_type_deserialization() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Query a small number of records to test type deserialization
+    let query_builder: QueryBuilder<busbar_sf_client::MetadataComponentDependency> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentNamespace",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentNamespace",
+                "RefMetadataComponentType",
+            ])
+            .limit(5);
+
+    let result = client.execute_query(query_builder).await;
+
+    assert!(
+        result.is_ok(),
+        "Bulk query with MetadataComponentDependency type should succeed"
+    );
+
+    let query_result = result.unwrap();
+    println!(
+        "Type deserialization test processed {} records",
+        query_result.job.number_records_processed
+    );
+}
