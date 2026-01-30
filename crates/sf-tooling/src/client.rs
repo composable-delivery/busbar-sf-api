@@ -546,9 +546,11 @@ impl ToolingClient {
     // SObject Collections (Tooling)
     // =========================================================================
 
-    /// Get multiple Tooling API records by ID in a single request (up to 2000).
+    /// Get multiple Tooling API records by ID in a single request.
     ///
-    /// Available since API v45.0.
+    /// Uses a Tooling API SOQL query (`WHERE Id IN (...)`) internally.
+    /// The Tooling API's SObject Collections GET endpoint is documented but
+    /// does not work reliably for most objects, so we use SOQL instead.
     ///
     /// # Arguments
     /// * `sobject` - The SObject type (e.g., "ApexClass", "CustomField")
@@ -563,19 +565,21 @@ impl ToolingClient {
     ///     .await?;
     /// ```
     #[instrument(skip(self))]
-    pub async fn get_multiple<T: serde::de::DeserializeOwned>(
+    pub async fn get_multiple<T: DeserializeOwned + Clone>(
         &self,
         sobject: &str,
         ids: &[&str],
         fields: &[&str],
     ) -> Result<Vec<T>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
                 message: "Invalid SObject name".to_string(),
             }));
         }
-        // Validate all IDs
         for id in ids {
             if !url_security::is_valid_salesforce_id(id) {
                 return Err(Error::new(ErrorKind::Salesforce {
@@ -584,7 +588,6 @@ impl ToolingClient {
                 }));
             }
         }
-        // Validate and filter field names
         let safe_fields: Vec<&str> = soql::filter_safe_fields(fields.iter().copied()).collect();
         if safe_fields.is_empty() {
             return Err(Error::new(ErrorKind::Salesforce {
@@ -592,21 +595,18 @@ impl ToolingClient {
                 message: "No valid field names provided".to_string(),
             }));
         }
-        let ids_param = ids.join(",");
-        let fields_param = safe_fields.join(",");
-        let url = format!(
-            "{}/services/data/v{}/tooling/composite/sobjects/{}?ids={}&fields={}",
-            self.client.instance_url(),
-            self.client.api_version(),
+        // Build a SOQL query: SELECT fields FROM sobject WHERE Id IN ('id1','id2',...)
+        // IDs are already validated by is_valid_salesforce_id (alphanumeric only),
+        // so they are safe to embed directly.
+        let fields_clause = safe_fields.join(", ");
+        let ids_clause: Vec<String> = ids.iter().map(|id| format!("'{id}'")).collect();
+        let soql = format!(
+            "SELECT {} FROM {} WHERE Id IN ({})",
+            fields_clause,
             sobject,
-            ids_param,
-            fields_param
+            ids_clause.join(", ")
         );
-        // The SObject Collections GET response is a JSON array that may contain
-        // null entries for records that could not be retrieved (deleted, no access, etc.).
-        // Deserialize as Vec<Option<T>> and filter out the nulls.
-        let results: Vec<Option<T>> = self.client.get_json(&url).await.map_err(Error::from)?;
-        Ok(results.into_iter().flatten().collect())
+        self.query_all(&soql).await
     }
 
     /// Create multiple Tooling API records in a single request (up to 200).
@@ -830,28 +830,25 @@ mod tests {
     }
 
     #[test]
-    fn test_collections_get_url_construction() {
-        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
-
+    fn test_collections_get_soql_construction() {
+        // get_multiple uses a SOQL query internally because the Tooling API
+        // SObject Collections GET endpoint does not work reliably.
         let sobject = "ApexClass";
         let ids = ["01p000000000001AAA", "01p000000000002AAA"];
         let fields = ["Id", "Name"];
 
-        let ids_param = ids.join(",");
-        let fields_param = fields.join(",");
-
-        let url = format!(
-            "{}/services/data/v{}/tooling/composite/sobjects/{}?ids={}&fields={}",
-            client.client.instance_url(),
-            client.client.api_version(),
+        let fields_clause = fields.join(", ");
+        let ids_clause: Vec<String> = ids.iter().map(|id| format!("'{id}'")).collect();
+        let soql = format!(
+            "SELECT {} FROM {} WHERE Id IN ({})",
+            fields_clause,
             sobject,
-            ids_param,
-            fields_param
+            ids_clause.join(", ")
         );
 
         assert_eq!(
-            url,
-            "https://na1.salesforce.com/services/data/v62.0/tooling/composite/sobjects/ApexClass?ids=01p000000000001AAA,01p000000000002AAA&fields=Id,Name"
+            soql,
+            "SELECT Id, Name FROM ApexClass WHERE Id IN ('01p000000000001AAA', '01p000000000002AAA')"
         );
     }
 
@@ -884,6 +881,93 @@ mod tests {
         assert_eq!(
             url,
             "https://na1.salesforce.com/services/data/v62.0/tooling/composite/sobjects?ids=01p000000000001AAA,01p000000000002AAA&allOrNone=false"
+        );
+    }
+
+    // =========================================================================
+    // get_multiple validation tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_multiple_empty_ids_returns_empty() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result: Vec<serde_json::Value> = client
+            .get_multiple("ApexClass", &[], &["Id", "Name"])
+            .await
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_multiple_invalid_sobject_name() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result: std::result::Result<Vec<serde_json::Value>, _> = client
+            .get_multiple("Robert'; DROP TABLE--", &["01p000000000001AAA"], &["Id"])
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_SOBJECT"),
+            "Expected INVALID_SOBJECT error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_multiple_invalid_id_format() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result: std::result::Result<Vec<serde_json::Value>, _> = client
+            .get_multiple("ApexClass", &["not-a-valid-sf-id!"], &["Id"])
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_ID"),
+            "Expected INVALID_ID error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_multiple_invalid_fields_filtered() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        // All field names are invalid (contain injection attempts)
+        let result: std::result::Result<Vec<serde_json::Value>, _> = client
+            .get_multiple(
+                "ApexClass",
+                &["01p000000000001AAA"],
+                &["'; DROP TABLE--", "1=1 OR"],
+            )
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_FIELDS"),
+            "Expected INVALID_FIELDS error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_get_multiple_soql_construction_with_many_ids() {
+        // Verify the SOQL query is constructed correctly for multiple IDs
+        let sobject = "ApexClass";
+        let ids = [
+            "01p000000000001AAA",
+            "01p000000000002AAA",
+            "01p000000000003AAA",
+        ];
+        let fields = ["Id", "Name", "Body"];
+
+        let fields_clause = fields.join(", ");
+        let ids_clause: Vec<String> = ids.iter().map(|id| format!("'{id}'")).collect();
+        let soql = format!(
+            "SELECT {} FROM {} WHERE Id IN ({})",
+            fields_clause,
+            sobject,
+            ids_clause.join(", ")
+        );
+
+        assert_eq!(
+            soql,
+            "SELECT Id, Name, Body FROM ApexClass WHERE Id IN ('01p000000000001AAA', '01p000000000002AAA', '01p000000000003AAA')"
         );
     }
 }

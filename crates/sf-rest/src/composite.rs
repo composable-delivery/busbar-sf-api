@@ -139,3 +139,179 @@ pub struct CompositeTreeError {
     pub message: String,
     pub fields: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_composite_request_serialization() {
+        let request = CompositeRequest {
+            all_or_none: true,
+            collate_subrequests: false,
+            subrequests: vec![
+                CompositeSubrequest {
+                    method: "POST".to_string(),
+                    url: "/services/data/v62.0/sobjects/Account".to_string(),
+                    reference_id: "NewAccount".to_string(),
+                    body: Some(json!({"Name": "Test Corp"})),
+                },
+                CompositeSubrequest {
+                    method: "GET".to_string(),
+                    url: "/services/data/v62.0/sobjects/Account/@{NewAccount.id}".to_string(),
+                    reference_id: "GetAccount".to_string(),
+                    body: None,
+                },
+            ],
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["allOrNone"], true);
+        assert_eq!(json["collateSubrequests"], false);
+        assert_eq!(json["compositeRequest"].as_array().unwrap().len(), 2);
+
+        let first = &json["compositeRequest"][0];
+        assert_eq!(first["method"], "POST");
+        assert_eq!(first["referenceId"], "NewAccount");
+        assert!(first["body"].is_object());
+
+        // GET subrequest should omit null body
+        let second = &json["compositeRequest"][1];
+        assert_eq!(second["method"], "GET");
+        assert!(second.get("body").is_none());
+    }
+
+    #[test]
+    fn test_composite_response_deserialization() {
+        let json = json!({
+            "compositeResponse": [
+                {
+                    "body": {"id": "001xx000003Dgb2AAC", "success": true, "errors": []},
+                    "httpHeaders": {"Location": "/services/data/v62.0/sobjects/Account/001xx"},
+                    "httpStatusCode": 201,
+                    "referenceId": "NewAccount"
+                },
+                {
+                    "body": {"Id": "001xx000003Dgb2AAC", "Name": "Test Corp"},
+                    "httpHeaders": {},
+                    "httpStatusCode": 200,
+                    "referenceId": "GetAccount"
+                }
+            ]
+        });
+
+        let response: CompositeResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(response.responses.len(), 2);
+        assert_eq!(response.responses[0].http_status_code, 201);
+        assert_eq!(response.responses[0].reference_id, "NewAccount");
+        assert_eq!(response.responses[1].http_status_code, 200);
+    }
+
+    #[test]
+    fn test_composite_batch_request_serialization() {
+        let request = CompositeBatchRequest {
+            batch_requests: vec![CompositeBatchSubrequest {
+                method: "GET".to_string(),
+                url: "/services/data/v62.0/sobjects/Account/001xx".to_string(),
+                rich_input: None,
+                binary_part_name: None,
+                binary_part_name_alias: None,
+            }],
+            halt_on_error: true,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["haltOnError"], true);
+        assert_eq!(json["batchRequests"].as_array().unwrap().len(), 1);
+        // Optional fields should be omitted
+        assert!(json["batchRequests"][0].get("richInput").is_none());
+    }
+
+    #[test]
+    fn test_composite_batch_response_deserialization() {
+        let json = json!({
+            "hasErrors": true,
+            "results": [
+                {"statusCode": 200, "result": {"Id": "001xx", "Name": "Acme"}},
+                {"statusCode": 404, "result": [{"errorCode": "NOT_FOUND", "message": "not found"}]}
+            ]
+        });
+
+        let response: CompositeBatchResponse = serde_json::from_value(json).unwrap();
+        assert!(response.has_errors);
+        assert_eq!(response.results.len(), 2);
+        assert_eq!(response.results[0].status_code, 200);
+        assert_eq!(response.results[1].status_code, 404);
+    }
+
+    #[test]
+    fn test_composite_tree_request_serialization() {
+        let mut fields = serde_json::Map::new();
+        fields.insert("Name".to_string(), json!("Parent Account"));
+
+        let request = CompositeTreeRequest {
+            records: vec![CompositeTreeRecord {
+                attributes: CompositeTreeAttributes {
+                    sobject_type: "Account".to_string(),
+                },
+                reference_id: "ref1".to_string(),
+                fields,
+            }],
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        let record = &json["records"][0];
+        assert_eq!(record["attributes"]["type"], "Account");
+        assert_eq!(record["referenceId"], "ref1");
+        assert_eq!(record["Name"], "Parent Account");
+    }
+
+    #[test]
+    fn test_composite_tree_response_with_errors() {
+        let json = json!({
+            "hasErrors": true,
+            "results": [
+                {
+                    "referenceId": "ref1",
+                    "id": null,
+                    "errors": [
+                        {
+                            "statusCode": "REQUIRED_FIELD_MISSING",
+                            "message": "Required fields are missing: [Name]",
+                            "fields": ["Name"]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let response: CompositeTreeResponse = serde_json::from_value(json).unwrap();
+        assert!(response.has_errors);
+        assert!(response.results[0].id.is_none());
+        assert_eq!(response.results[0].errors.len(), 1);
+        assert_eq!(
+            response.results[0].errors[0].status_code,
+            "REQUIRED_FIELD_MISSING"
+        );
+        assert_eq!(response.results[0].errors[0].fields, vec!["Name"]);
+    }
+
+    #[test]
+    fn test_composite_tree_response_success() {
+        let json = json!({
+            "hasErrors": false,
+            "results": [
+                {"referenceId": "ref1", "id": "001xx000003Dgb2AAC", "errors": []}
+            ]
+        });
+
+        let response: CompositeTreeResponse = serde_json::from_value(json).unwrap();
+        assert!(!response.has_errors);
+        assert_eq!(
+            response.results[0].id,
+            Some("001xx000003Dgb2AAC".to_string())
+        );
+        assert!(response.results[0].errors.is_empty());
+    }
+}

@@ -207,29 +207,28 @@ async fn test_tooling_collections_get_multiple() {
 
     let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
 
-    // Test get_multiple - retrieve records by their IDs via SObject Collections
+    // Test get_multiple - retrieves records by ID using Tooling API SOQL query.
+    // (The SObject Collections GET endpoint is documented but does not work
+    // reliably on the Tooling API, so get_multiple uses SOQL internally.)
     let results: Vec<serde_json::Value> = client
         .get_multiple("ApexClass", &id_refs, &["Id", "Name"])
         .await
         .unwrap_or_else(|e| panic!("get_multiple failed for ApexClass with IDs {:?}: {e}", &ids));
 
-    // Null entries in the response (records not found) are filtered out by get_multiple.
-    // Since we just queried these IDs, we expect all to be present.
-    assert!(
-        !results.is_empty(),
-        "Should return at least one record (queried {} IDs)",
-        ids.len()
-    );
-
-    assert!(
-        results.len() <= ids.len(),
-        "Should not return more records than requested"
+    assert_eq!(
+        results.len(),
+        ids.len(),
+        "Should return exactly as many records as IDs requested"
     );
 
     for result in &results {
+        let id = result
+            .get("Id")
+            .and_then(|v| v.as_str())
+            .expect("Each record should have an Id field");
         assert!(
-            result.get("Id").is_some(),
-            "Each record should have an Id field: got {result:?}"
+            ids.contains(&id.to_string()),
+            "Returned Id {id} should be one of the requested IDs"
         );
     }
 }
