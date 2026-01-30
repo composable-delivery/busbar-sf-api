@@ -46,8 +46,8 @@ jobs:
             - name: Build
               run: cargo build --workspace --verbose
 
-            - name: Run tests
-              run: cargo test --workspace --verbose
+            - name: Run unit tests
+              run: cargo test --workspace --lib --verbose
 
             - name: Run doc tests
               run: cargo test --workspace --doc --verbose
@@ -142,13 +142,44 @@ jobs:
               run: |
                   echo "::group::Unit coverage"
                   mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
+                  # Run tests and capture output
+                  set +e
+                  cargo test --workspace --lib --all-features --verbose 2>&1 | tee coverage/test-output.txt
+                  TEST_EXIT_CODE=$?
+                  set -e
+                  
+                  # Extract test summary
+                  echo "Test exit code: $TEST_EXIT_CODE" > coverage/test-summary.txt
+                  grep "test result:" coverage/test-output.txt >> coverage/test-summary.txt || true
+                  
+                  # Run coverage
+                  cargo llvm-cov --workspace --all-features --lib --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
                   echo "::endgroup::"
+                  
+                  exit $TEST_EXIT_CODE
 
             - name: Coverage summary
+              if: always()
               run: |
-                  echo "### Coverage (Unit Tests)" >> "$GITHUB_STEP_SUMMARY"
-                  sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                  echo "## Unit Test Coverage" >> "$GITHUB_STEP_SUMMARY"
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  
+                  # Test results
+                  if [ -f coverage/test-summary.txt ]; then
+                    echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    cat coverage/test-summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    echo "" >> "$GITHUB_STEP_SUMMARY"
+                  fi
+                  
+                  # Coverage details
+                  if [ -f coverage/summary.txt ]; then
+                    echo "### Coverage Details" >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                  fi
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@v5
@@ -202,29 +233,62 @@ jobs:
               run: |
                   echo "::group::Integration tests"
                   mkdir -p coverage
-                  # Run tests first to ensure failures cause build to fail
-                  cargo test --workspace --test integration --all-features -- --nocapture
-                  # Then run with coverage for reporting (errors already caught above)
+                  # Run tests and capture output for summary
+                  set +e
+                  cargo test --workspace --test integration --all-features -- --nocapture 2>&1 | tee coverage/test-output.txt
+                  TEST_EXIT_CODE=$?
+                  set -e
+                  
+                  # Extract test summary
+                  echo "Test exit code: $TEST_EXIT_CODE" > coverage/test-summary.txt
+                  grep "test result:" coverage/test-output.txt >> coverage/test-summary.txt || true
+                  
+                  # Run with coverage for reporting
                   cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info --summary-only -- --nocapture | tee coverage/summary.txt
                   echo "::endgroup::"
+                  
+                  # Exit with original test exit code
+                  exit $TEST_EXIT_CODE
 
             - name: Integration tests summary
               if: always()
               run: |
-                  echo "### Integration Tests (Real Org)" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- SF_AUTH_URL available: true" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- Job status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-                  if [ -f coverage/summary.txt ]; then
+                  echo "## Integration Tests (Real Org)" >> "$GITHUB_STEP_SUMMARY"
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  
+                  # Test results
+                  if [ -f coverage/test-summary.txt ]; then
+                    echo "### Test Results" >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
+                    cat coverage/test-summary.txt >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
                     echo "" >> "$GITHUB_STEP_SUMMARY"
-                    sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
                   fi
-
-            - name: Coverage summary
-              run: |
+                  
+                  # Show failed tests if any
+                  if [ -f coverage/test-output.txt ]; then
+                    if grep -q "FAILED" coverage/test-output.txt; then
+                      echo "### Failed Tests" >> "$GITHUB_STEP_SUMMARY"
+                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      grep "test.*FAILED" coverage/test-output.txt | head -20 >> "$GITHUB_STEP_SUMMARY"
+                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      echo "" >> "$GITHUB_STEP_SUMMARY"
+                      
+                      # Show error details
+                      echo "### Error Details" >> "$GITHUB_STEP_SUMMARY"
+                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      grep -A 10 "failures:" coverage/test-output.txt | head -30 >> "$GITHUB_STEP_SUMMARY"
+                      echo '```' >> "$GITHUB_STEP_SUMMARY"
+                      echo "" >> "$GITHUB_STEP_SUMMARY"
+                    fi
+                  fi
+                  
+                  # Coverage summary
                   if [ -f coverage/summary.txt ]; then
+                    echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
                     cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-                  else
-                    echo "No coverage summary generated" >> "$GITHUB_STEP_SUMMARY"
+                    echo '```' >> "$GITHUB_STEP_SUMMARY"
                   fi
 
             - name: Upload coverage to Codecov
