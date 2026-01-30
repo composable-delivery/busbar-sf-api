@@ -421,3 +421,294 @@ async fn test_tooling_error_invalid_log_id() {
 
     assert!(result.is_err(), "Log body with invalid ID should fail");
 }
+
+// ============================================================================
+// New Endpoint Integration Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_update_trace_flag() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // First, get or create a DebugLevel
+    let debug_levels: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM DebugLevel LIMIT 1")
+        .await
+        .expect("Should get debug levels");
+
+    if debug_levels.is_empty() {
+        eprintln!("Skipping test_tooling_update_trace_flag: No DebugLevel available");
+        return;
+    }
+
+    let debug_level_id = debug_levels[0]["Id"]
+        .as_str()
+        .expect("Should have debug level ID");
+
+    // Get current user ID
+    let user_info: serde_json::Value = client
+        .query("SELECT Id FROM User WHERE Username = UserInfo.getUserName() LIMIT 1")
+        .await
+        .expect("Should get user info")
+        .records
+        .into_iter()
+        .next()
+        .expect("Should have user");
+
+    let user_id = user_info["Id"].as_str().expect("Should have user ID");
+
+    // Create a TraceFlag
+    let expiration = chrono::Utc::now() + chrono::Duration::hours(1);
+    let trace_flag_data = serde_json::json!({
+        "TracedEntityId": user_id,
+        "DebugLevelId": debug_level_id,
+        "LogType": "USER_DEBUG",
+        "StartDate": chrono::Utc::now().to_rfc3339(),
+        "ExpirationDate": expiration.to_rfc3339(),
+    });
+
+    let trace_flag_id = client
+        .create("TraceFlag", &trace_flag_data)
+        .await
+        .expect("Should create TraceFlag");
+
+    // Now test the update method
+    let new_expiration = chrono::Utc::now() + chrono::Duration::hours(2);
+    let update_data = serde_json::json!({
+        "ExpirationDate": new_expiration.to_rfc3339(),
+    });
+
+    let update_result = client
+        .update("TraceFlag", &trace_flag_id, &update_data)
+        .await;
+
+    assert!(
+        update_result.is_ok(),
+        "TraceFlag update should succeed: {:?}",
+        update_result
+    );
+
+    // Verify the update
+    let updated_flag: serde_json::Value = client
+        .get("TraceFlag", &trace_flag_id)
+        .await
+        .expect("Should retrieve updated TraceFlag");
+
+    assert!(
+        updated_flag["ExpirationDate"].is_string(),
+        "Should have expiration date"
+    );
+
+    // Cleanup
+    let _ = client.delete("TraceFlag", &trace_flag_id).await;
+}
+
+#[tokio::test]
+async fn test_tooling_query_all_records() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Query all records including deleted ones
+    let result = client
+        .query_all_records::<serde_json::Value>("SELECT Id, Name FROM ApexClass LIMIT 10")
+        .await;
+
+    assert!(result.is_ok(), "query_all_records should succeed");
+
+    let query_result = result.unwrap();
+    assert!(
+        query_result.done || query_result.next_records_url.is_some(),
+        "Query should complete or have pagination"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_search_sosl() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Search for Apex classes using SOSL
+    let search_query =
+        "FIND {test*} IN NAME FIELDS RETURNING ApexClass(Id, Name), ApexTrigger(Id, Name)";
+    let result = client.search::<serde_json::Value>(search_query).await;
+
+    assert!(result.is_ok(), "SOSL search should succeed: {:?}", result);
+
+    // Verify the result structure is correct (search_records field exists)
+    let _search_result = result.unwrap();
+    // search_records may be empty if no matches found, which is ok
+}
+
+#[tokio::test]
+async fn test_tooling_describe_global() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.describe_global().await;
+
+    assert!(
+        result.is_ok(),
+        "describe_global should succeed: {:?}",
+        result
+    );
+
+    let global_describe = result.unwrap();
+    assert!(
+        !global_describe.sobjects.is_empty(),
+        "Should have tooling sObjects"
+    );
+
+    // Verify that common Tooling objects are present
+    let apex_class_found = global_describe
+        .sobjects
+        .iter()
+        .any(|obj| obj.name == "ApexClass");
+    assert!(apex_class_found, "Should include ApexClass in results");
+}
+
+#[tokio::test]
+async fn test_tooling_describe_sobject() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.describe_sobject("ApexClass").await;
+
+    assert!(
+        result.is_ok(),
+        "describe_sobject should succeed: {:?}",
+        result
+    );
+
+    let describe = result.unwrap();
+    assert_eq!(describe.name, "ApexClass", "Should describe ApexClass");
+    assert!(!describe.fields.is_empty(), "Should have fields");
+
+    // Verify common fields exist
+    let has_name_field = describe.fields.iter().any(|f| f.name == "Name");
+    let has_body_field = describe.fields.iter().any(|f| f.name == "Body");
+    assert!(has_name_field, "Should have Name field");
+    assert!(has_body_field, "Should have Body field");
+}
+
+#[tokio::test]
+async fn test_tooling_basic_info() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.basic_info("ApexClass").await;
+
+    assert!(result.is_ok(), "basic_info should succeed: {:?}", result);
+
+    let info = result.unwrap();
+    assert!(
+        info.is_object(),
+        "basic_info should return a JSON object: {:?}",
+        info
+    );
+
+    // Should have objectDescribe or other metadata
+    assert!(
+        info.get("objectDescribe").is_some() || info.get("recentItems").is_some(),
+        "Should have metadata fields"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_resources() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.resources().await;
+
+    assert!(result.is_ok(), "resources should succeed: {:?}", result);
+
+    let resources = result.unwrap();
+    assert!(
+        resources.is_object(),
+        "resources should return a JSON object"
+    );
+
+    // Should have common Tooling API endpoints
+    let resources_obj = resources.as_object().expect("Should be an object");
+    assert!(!resources_obj.is_empty(), "Should have resource endpoints");
+
+    // Verify some expected resources exist (as strings or objects)
+    let has_sobjects = resources_obj.contains_key("sobjects");
+    let has_query = resources_obj.contains_key("query");
+    assert!(
+        has_sobjects || has_query,
+        "Should have sobjects or query resource"
+    );
+}
+
+// ============================================================================
+// Error Handling Tests for New Endpoints
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_error_invalid_sobject_describe() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.describe_sobject("NonExistentToolingObject__c").await;
+
+    assert!(
+        result.is_err(),
+        "Describing non-existent Tooling object should fail"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_error_invalid_sobject_update() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let update_data = serde_json::json!({"Name": "Test"});
+    let result = client.update("ApexClass", "invalid-id", &update_data).await;
+
+    assert!(result.is_err(), "Update with invalid ID should fail");
+}
+
+#[tokio::test]
+async fn test_tooling_error_invalid_sosl_search() {
+    let Some(creds) = require_credentials().await else {
+        return;
+    };
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Invalid SOSL query syntax
+    let result = client
+        .search::<serde_json::Value>("this is not valid SOSL")
+        .await;
+
+    assert!(result.is_err(), "Invalid SOSL should fail");
+}
