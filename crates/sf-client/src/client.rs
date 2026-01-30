@@ -325,47 +325,44 @@ impl SfHttpClient {
     }
 
     /// Execute a request (synchronous for WASM).
+    ///
+    /// Note: Retry logic is not supported in WASM due to the inability to sleep between retries.
+    /// If a retry policy is configured, this will return an error on retryable failures instead
+    /// of retrying immediately, which could overwhelm the server. Configure your ClientConfig
+    /// with `retry: None` for WASM environments.
     pub fn execute(&self, request: RequestBuilder) -> Result<Response> {
-        let mut retry_policy = self
-            .config
-            .retry
-            .as_ref()
-            .map(|c| RetryPolicy::new(c.clone()));
+        let retry_policy_enabled = self.config.retry.is_some();
 
-        loop {
-            let result = self.execute_once(&request);
+        let result = self.execute_once(&request);
 
-            match result {
-                Ok(response) => {
-                    // Check for Salesforce API errors
-                    return response.check_salesforce_error();
+        match result {
+            Ok(response) => {
+                // Check for Salesforce API errors
+                response.check_salesforce_error()
+            }
+            Err(err) if err.is_retryable() => {
+                if retry_policy_enabled {
+                    // In WASM, we cannot sleep between retries, so immediate retries would
+                    // overwhelm the server and potentially trigger more aggressive rate limiting.
+                    // Return an error indicating that retries are not supported in WASM.
+                    warn!(
+                        error = %err,
+                        "Retryable error encountered in WASM, but retries are not supported. \
+                         Configure ClientConfig with retry: None for WASM environments."
+                    );
+                    return Err(Error::new(ErrorKind::Config(
+                        "Retry policies are not supported in WASM environments. \
+                         Please configure ClientConfig with retry: None."
+                            .to_string(),
+                    )));
                 }
-                Err(err) if err.is_retryable() => {
-                    if let Some(ref mut policy) = retry_policy {
-                        if let Some(_delay) = policy.next_delay(err.retry_after()) {
-                            // Note: In WASM we can't easily sleep, so we just retry immediately
-                            // This is a limitation of the synchronous WASM environment
-                            warn!(
-                                attempt = policy.attempt(),
-                                error = %err,
-                                "Request failed, retrying (no delay in WASM)"
-                            );
-                            continue;
-                        }
 
-                        // Exhausted retries
-                        return Err(Error::new(ErrorKind::RetriesExhausted {
-                            attempts: policy.attempt(),
-                        }));
-                    }
-
-                    // No retry policy configured
-                    return Err(err);
-                }
-                Err(err) => {
-                    // Non-retryable error
-                    return Err(err);
-                }
+                // No retry policy configured, return the error
+                Err(err)
+            }
+            Err(err) => {
+                // Non-retryable error
+                Err(err)
             }
         }
     }

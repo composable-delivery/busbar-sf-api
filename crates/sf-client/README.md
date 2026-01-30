@@ -31,10 +31,11 @@ cargo build --target wasm32-unknown-unknown --features wasm --no-default-feature
 - **WASM builds**: Use `SfHttpClient` directly with synchronous methods (no `.await`)
 - `SalesforceClient` is currently only available in native builds
 - The `Response` type automatically adapts its methods (async for native, sync for WASM)
+- **WASM limitation**: Retry policies are not supported in WASM due to the inability to sleep between retries. Configure your `ClientConfig` with `retry: None` for WASM environments.
 
 ### Example (Native)
 
-```rust
+```rust,no_run
 use busbar_sf_client::{SfHttpClient, ClientConfig};
 
 #[tokio::main]
@@ -51,7 +52,7 @@ async fn main() {
 
 ### Example (WASM)
 
-```rust
+```rust,no_run
 use busbar_sf_client::{SfHttpClient, ClientConfig};
 
 fn main() {
