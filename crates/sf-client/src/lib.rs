@@ -60,6 +60,13 @@
 //! }
 //! ```
 
+// Compile-time check: ensure exactly one backend is enabled
+#[cfg(all(feature = "native", feature = "wasm"))]
+compile_error!("Cannot enable both 'native' and 'wasm' features simultaneously. Please enable only one.");
+
+#[cfg(not(any(feature = "native", feature = "wasm")))]
+compile_error!("At least one backend feature must be enabled: 'native' or 'wasm'.");
+
 mod client;
 mod config;
 mod error;
