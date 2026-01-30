@@ -49,12 +49,15 @@ async fn example_revoke_with_oauth_client() -> Result<(), Box<dyn std::error::Er
     }
 
     // Determine login URL (production or sandbox)
-    let login_url = std::env::var("SF_LOGIN_URL").unwrap_or_else(|_| PRODUCTION_LOGIN_URL.to_string());
+    let login_url =
+        std::env::var("SF_LOGIN_URL").unwrap_or_else(|_| PRODUCTION_LOGIN_URL.to_string());
 
     match client.revoke_token(&token, &login_url).await {
         Ok(_) => {
             println!("✓ Token successfully revoked");
-            println!("  Note: This is idempotent - revoking an already invalid token also succeeds");
+            println!(
+                "  Note: This is idempotent - revoking an already invalid token also succeeds"
+            );
         }
         Err(e) => {
             println!("✗ Failed to revoke token: {}", e);
