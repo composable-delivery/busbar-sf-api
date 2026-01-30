@@ -8,6 +8,9 @@ members = [
     "crates/sf-metadata",
     "crates/sf-tooling",
 ]
+exclude = [
+    "crates/sf-client/tests/wasm-plugin",
+]
 
 # Root package for integration tests
 [package]

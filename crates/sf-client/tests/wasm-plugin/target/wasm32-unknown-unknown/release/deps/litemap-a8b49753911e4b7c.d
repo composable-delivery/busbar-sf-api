@@ -1,0 +1,10 @@
+/home/runner/work/busbar-sf-api/busbar-sf-api/crates/sf-client/tests/wasm-plugin/target/wasm32-unknown-unknown/release/deps/litemap-a8b49753911e4b7c.d: /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/lib.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/map.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/mod.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/slice_impl.rs
+
+/home/runner/work/busbar-sf-api/busbar-sf-api/crates/sf-client/tests/wasm-plugin/target/wasm32-unknown-unknown/release/deps/liblitemap-a8b49753911e4b7c.rlib: /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/lib.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/map.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/mod.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/slice_impl.rs
+
+/home/runner/work/busbar-sf-api/busbar-sf-api/crates/sf-client/tests/wasm-plugin/target/wasm32-unknown-unknown/release/deps/liblitemap-a8b49753911e4b7c.rmeta: /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/lib.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/map.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/mod.rs /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/slice_impl.rs
+
+/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/lib.rs:
+/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/map.rs:
+/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/mod.rs:
+/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/litemap-0.8.1/src/store/slice_impl.rs:
