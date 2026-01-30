@@ -1,0 +1,35 @@
+[package]
+name = "busbar-sf-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Extism host bridge for sandboxed WASM access to Salesforce APIs"
+
+[dependencies]
+# Internal crates
+busbar-sf-wasm-types = { workspace = true }
+busbar-sf-rest = { workspace = true }
+busbar-sf-auth = { workspace = true }
+busbar-sf-client = { workspace = true }
+
+# Extism host SDK
+extism = "1"
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+wiremock = { workspace = true }

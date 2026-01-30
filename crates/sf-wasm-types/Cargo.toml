@@ -1,0 +1,12 @@
+[package]
+name = "busbar-sf-wasm-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared ABI types for the busbar-sf WASM bridge"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

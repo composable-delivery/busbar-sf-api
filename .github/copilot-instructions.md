@@ -13,14 +13,19 @@ no wrapper scripts. Documentation belongs in rustdoc (`///` comments) and on doc
 
 ```
 crates/
-  sf-client/     Core HTTP client: retry, compression, rate limiting, conditional requests
-  sf-auth/       Authentication: OAuth 2.0 Web Flow, JWT Bearer, Refresh Token, SFDX CLI
-  sf-rest/       REST API: SObject CRUD, Query, Search, Composite, Collections, Describe
-  sf-bulk/       Bulk API 2.0: Ingest jobs, Query jobs, CSV upload/download
-  sf-metadata/   Metadata API: Deploy, Retrieve, List/Describe metadata (SOAP/XML)
-  sf-tooling/    Tooling API: Execute Apex, Debug Logs, Code Coverage, Tooling Query
+  sf-client/      Core HTTP client: retry, compression, rate limiting, conditional requests
+  sf-auth/        Authentication: OAuth 2.0 Web Flow, JWT Bearer, Refresh Token, SFDX CLI
+  sf-rest/        REST API: SObject CRUD, Query, Search, Composite, Collections, Describe
+  sf-bulk/        Bulk API 2.0: Ingest jobs, Query jobs, CSV upload/download
+  sf-metadata/    Metadata API: Deploy, Retrieve, List/Describe metadata (SOAP/XML)
+  sf-tooling/     Tooling API: Execute Apex, Debug Logs, Code Coverage, Tooling Query
+  sf-wasm-types/  Shared ABI types for the WASM bridge (compiles to native + wasm32)
+  sf-bridge/      Extism host bridge: runs WASM plugins with access to Salesforce APIs
+  sf-guest-sdk/   Extism guest SDK: ergonomic Rust wrappers for WASM plugin authors
 tests/
-  integration/   Real-org integration tests (one file per API module)
+  integration/    Real-org integration tests (one file per API module)
+examples/
+  wasm-guest-plugin/  Example WASM guest plugin demonstrating the guest SDK
 ```
 
 ## Enforcement Rules
@@ -163,3 +168,66 @@ The `codecov.yml` config enforces that coverage does not decrease on any PR.
 - Default API version: `65.0`
 - All clients support version override via `with_api_version()`
 - New endpoints should document the minimum API version they require
+
+## WASM Bridge Architecture
+
+The bridge enables untrusted or declarative code to run in WASM sandboxes while
+accessing Salesforce APIs. The host manages all credentials — WASM guests never
+see access tokens.
+
+### Three-crate design
+
+1. **sf-wasm-types** — Pure serde types shared by host and guest. Compiles to
+   both native and `wasm32-unknown-unknown`. Defines `BridgeResult<T>` (tagged
+   `ok`/`err` enum) for all ABI boundary values.
+
+2. **sf-bridge** (host) — Registers Extism host functions (`sf_query`,
+   `sf_create`, etc.) that wrap the native `SalesforceRestClient`. Each host
+   function callback deserializes a request from guest memory, calls the async
+   Salesforce API via `Handle::block_on()`, and writes a `BridgeResult<T>` back.
+
+3. **sf-guest-sdk** (guest) — Provides ergonomic Rust wrappers (`query()`,
+   `create()`, `get()`, etc.) that call the host function imports and handle
+   serialization. Plugin authors depend only on this crate and `extism-pdk`.
+
+### Workspace membership
+
+`sf-wasm-types` and `sf-bridge` are regular workspace members. `sf-guest-sdk`
+and `examples/wasm-guest-plugin` are **excluded** from the workspace because
+they target `wasm32-unknown-unknown` and depend on `extism-pdk` (guest), not
+`extism` (host). They are built separately with:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo build --manifest-path crates/sf-guest-sdk/Cargo.toml --target wasm32-unknown-unknown
+cargo build --manifest-path examples/wasm-guest-plugin/Cargo.toml --target wasm32-unknown-unknown
+```
+
+### Credential isolation
+
+WASM guests **cannot**:
+- Make raw HTTP calls (no network access in the sandbox)
+- Read environment variables or filesystem
+- Access the access token or refresh token
+
+All Salesforce API calls go through host functions registered by `sf-bridge`.
+The host authenticates using the existing `sf-auth` crate and injects the token
+into requests. Guests only see the API response data.
+
+### Concurrency model
+
+`SfBridge::call()` uses `tokio::task::spawn_blocking()` to run each WASM
+invocation on a blocking thread. Inside host function callbacks,
+`Handle::block_on()` bridges back to the async runtime for Salesforce API calls.
+The underlying `reqwest::Client` connection pool is shared across all concurrent
+guest invocations.
+
+### Adding a new host function
+
+1. Add the request/response types to `sf-wasm-types/src/lib.rs`
+2. Add the host function name constant to `host_fn_names` module
+3. Add the async handler in `sf-bridge/src/host_functions.rs`
+4. Register the host function in `sf-bridge/src/lib.rs` (`create_plugin()`)
+5. Add the `extern "ExtismHost"` import in `sf-guest-sdk/src/lib.rs`
+6. Add the ergonomic wrapper function in `sf-guest-sdk/src/lib.rs`
+7. Add unit tests for any type conversion logic

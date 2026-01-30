@@ -7,6 +7,14 @@ members = [
     "crates/sf-bulk",
     "crates/sf-metadata",
     "crates/sf-tooling",
+    "crates/sf-wasm-types",
+    "crates/sf-bridge",
+    # sf-guest-sdk is excluded: it compiles to wasm32-unknown-unknown only.
+    # See examples/wasm-guest-plugin for usage.
+]
+exclude = [
+    "crates/sf-guest-sdk",
+    "examples/wasm-guest-plugin",
 ]
 
 # Root package for integration tests
@@ -119,6 +127,8 @@ busbar-sf-rest = { version = "0.0.2", path = "crates/sf-rest" }
 busbar-sf-bulk = { version = "0.0.2", path = "crates/sf-bulk" }
 busbar-sf-metadata = { version = "0.0.2", path = "crates/sf-metadata" }
 busbar-sf-tooling = { version = "0.0.2", path = "crates/sf-tooling" }
+busbar-sf-wasm-types = { version = "0.0.2", path = "crates/sf-wasm-types" }
+busbar-sf-bridge = { version = "0.0.2", path = "crates/sf-bridge" }
 
 [profile.release]
 lto = true

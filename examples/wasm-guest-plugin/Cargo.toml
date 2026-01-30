@@ -1,0 +1,14 @@
+[package]
+name = "wasm-guest-plugin"
+version = "0.0.2"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+busbar-sf-guest-sdk = { path = "../../crates/sf-guest-sdk" }
+busbar-sf-wasm-types = { path = "../../crates/sf-wasm-types" }
+extism-pdk = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
