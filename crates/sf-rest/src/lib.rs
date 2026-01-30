@@ -64,7 +64,10 @@ pub use collections::{CollectionRequest, CollectionResult};
 
 // Composite API
 pub use composite::{
-    CompositeRequest, CompositeResponse, CompositeSubrequest, CompositeSubresponse,
+    CompositeBatchRequest, CompositeBatchResponse, CompositeBatchSubrequest,
+    CompositeBatchSubresponse, CompositeRequest, CompositeResponse, CompositeSubrequest,
+    CompositeSubresponse, CompositeTreeAttributes, CompositeTreeError, CompositeTreeRecord,
+    CompositeTreeRequest, CompositeTreeResponse, CompositeTreeResult,
 };
 
 // Describe types

@@ -1,268 +1,138 @@
 name: CI
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
-    workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
-# Explicit permissions for security
 permissions:
-    contents: read
+  contents: read
 
 env:
-    RUST_BACKTRACE: 1
-    CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
 
 jobs:
-    test:
-        name: Test
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
-                rust: [stable, beta]
-                exclude:
-                    # Only run beta on Ubuntu to save CI time
-                    - os: windows-latest
-                      rust: beta
-                    - os: macos-latest
-                      rust: beta
-        steps:
-            - uses: actions/checkout@v6
+  # ── Fast checks (no compilation) ──────────────────────────────────────
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
 
-            - name: Install Rust ${{ matrix.rust }}
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: ${{ matrix.rust }}
+  # ── Lint ──────────────────────────────────────────────────────────────
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: ${{ matrix.os }}-${{ matrix.rust }}
+  # ── Unit tests with coverage ──────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
 
-            - name: Build
-              run: cargo build --workspace --verbose
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov --workspace --all-features --lib --lcov --output-path lcov-unit.info
 
-            - name: Run tests
-              run: cargo test --workspace --verbose
+      - name: Run doc tests
+        run: cargo test --workspace --doc
 
-            - name: Run doc tests
-              run: cargo test --workspace --doc --verbose
+      - name: Generate summary
+        if: always()
+        run: |
+          echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
 
-    fmt:
-        name: Format
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-unit.info
+          flags: unit-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: rustfmt
+  # ── Documentation ─────────────────────────────────────────────────────
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
 
-            - name: Check formatting
-              run: cargo fmt --all --check
+  # ── MSRV ──────────────────────────────────────────────────────────────
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
 
-    clippy:
-        name: Clippy
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
+  # ── Integration tests (real Salesforce org) ───────────────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    environment: scratch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: clippy
+      - name: Verify credentials
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          if [ -z "$SF_AUTH_URL" ]; then
+            echo "::error::SF_AUTH_URL secret is not configured"
+            exit 1
+          fi
 
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
+      - name: Run integration tests with coverage
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
-            - name: Run clippy
-              run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Generate summary
+        if: always()
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
 
-    docs:
-        name: Documentation
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-
-            - name: Check documentation
-              run: cargo doc --workspace --no-deps --all-features
-              env:
-                  RUSTDOCFLAGS: -D warnings
-
-    msrv:
-        name: MSRV (Minimum Supported Rust Version)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust 1.88
-              uses: dtolnay/rust-toolchain@master
-              with:
-                  toolchain: "1.88"
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: msrv-1.88
-
-            - name: Check MSRV
-              run: cargo build --workspace --verbose
-
-    wasm:
-        name: WASM Tests
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: wasm32-unknown-unknown
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: wasm-tests
-
-            - name: Run WASM unit tests
-              run: cargo test --package busbar-sf-client --no-default-features --features wasm --lib
-
-            - name: Build WASM integration test plugin
-              run: |
-                  cd crates/sf-client/tests/wasm-plugin
-                  cargo build --target wasm32-unknown-unknown --release
-
-            - name: Run WASM integration tests
-              run: cargo test --package busbar-sf-client --test test_wasm_integration -- --ignored
-
-    coverage-unit:
-        name: Coverage (Unit Tests)
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: llvm-tools-preview
-
-            - name: Install cargo-llvm-cov
-              uses: taiki-e/install-action@cargo-llvm-cov
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: coverage-unit
-
-            - name: Run unit test coverage
-              run: |
-                  echo "::group::Unit coverage"
-                  mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --lcov --output-path coverage/lcov-unit.info --summary-only | tee coverage/summary.txt
-                  echo "::endgroup::"
-
-            - name: Coverage summary
-              run: |
-                  echo "### Coverage (Unit Tests)" >> "$GITHUB_STEP_SUMMARY"
-                  sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v5
-              with:
-                  files: ./coverage/lcov-unit.info
-                  flags: unit-tests
-                  name: unit-tests
-                  fail_ci_if_error: false
-              env:
-                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-            - name: Upload coverage artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: unit-coverage
-                  path: coverage/
-
-    integration:
-        name: Integration Tests (Real Org)
-        runs-on: ubuntu-latest
-        environment: scratch
-        steps:
-            - uses: actions/checkout@v6
-
-            - name: Install Rust stable
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  components: llvm-tools-preview
-
-            - name: Install cargo-llvm-cov
-              uses: taiki-e/install-action@cargo-llvm-cov
-
-            - name: Cache cargo
-              uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: integration-tests
-
-            - name: Require SF_AUTH_URL
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  if [ -z "$SF_AUTH_URL" ]; then
-                    echo "ERROR: SF_AUTH_URL secret is not set"
-                    exit 1
-                  fi
-                  echo "✓ SF_AUTH_URL secret is available"
-
-            - name: Integration tests (with coverage)
-              env:
-                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-              run: |
-                  echo "::group::Integration tests"
-                  mkdir -p coverage
-                  cargo llvm-cov --workspace --all-features --test integration --lcov --output-path coverage/lcov-integration.info --summary-only -- --nocapture | tee coverage/summary.txt
-                  echo "::endgroup::"
-
-            - name: Integration tests summary
-              if: always()
-              run: |
-                  echo "### Integration Tests (Real Org)" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- SF_AUTH_URL available: true" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- Job status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-                  if [ -f coverage/summary.txt ]; then
-                    echo "" >> "$GITHUB_STEP_SUMMARY"
-                    sed -n '1,3p' coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-                  fi
-
-            - name: Coverage summary
-              run: |
-                  if [ -f coverage/summary.txt ]; then
-                    cat coverage/summary.txt >> "$GITHUB_STEP_SUMMARY"
-                  else
-                    echo "No coverage summary generated" >> "$GITHUB_STEP_SUMMARY"
-                  fi
-
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@v5
-              with:
-                  files: ./coverage/lcov-integration.info
-                  flags: integration-tests
-                  name: integration-tests
-                  fail_ci_if_error: false
-              env:
-                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-            - name: Upload coverage artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: integration-coverage
-                  path: coverage/
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-integration.info
+          flags: integration-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

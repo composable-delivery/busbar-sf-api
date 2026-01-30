@@ -1,6 +1,6 @@
 //! Auth integration tests using SF_AUTH_URL.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL};
 
 // ============================================================================
@@ -10,9 +10,7 @@ use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL
 #[tokio::test]
 #[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_access_token() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     // Determine login URL based on instance URL
     let login_url = if creds.instance_url().contains("test.salesforce.com")
@@ -39,9 +37,7 @@ async fn test_revoke_access_token() {
 #[tokio::test]
 #[ignore] // Requires SF_AUTH_URL to be set with refresh token
 async fn test_revoke_refresh_token() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     // Check if refresh token is available
     if creds.refresh_token().is_none() {
@@ -74,9 +70,7 @@ async fn test_revoke_refresh_token() {
 #[tokio::test]
 #[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_with_oauth_client() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     // Create OAuth client
     let config = OAuthConfig::new("test_revoke_client");
@@ -109,9 +103,7 @@ async fn test_revoke_token_with_oauth_client() {
 #[tokio::test]
 #[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_idempotency() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     // Determine login URL based on instance URL
     let login_url = if creds.instance_url().contains("test.salesforce.com")
@@ -144,9 +136,7 @@ async fn test_revoke_token_idempotency() {
 #[tokio::test]
 #[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_session_without_refresh_token() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
 
     // Create credentials without refresh token
     let creds_no_refresh = busbar_sf_auth::SalesforceCredentials::new(

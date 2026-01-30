@@ -414,4 +414,126 @@ mod tests {
         assert_eq!(usage.remaining(), 0);
         assert!((usage.percentage() - 100.0).abs() < 0.001);
     }
+
+    // =========================================================================
+    // sanitize_error_message tests
+    // =========================================================================
+
+    #[test]
+    fn test_sanitize_redacts_access_tokens() {
+        // Salesforce access tokens start with "00D" (org ID) followed by 13+ chars, "!", then more chars
+        let msg = "Session expired: 00Dxx0000001gEF!AQcAQH3k9s7LKbp_example_token_value.here";
+        let sanitized = sanitize_error_message(msg);
+        assert!(
+            sanitized.contains("[REDACTED_TOKEN]"),
+            "Should redact token: {sanitized}"
+        );
+        assert!(
+            !sanitized.contains("AQcAQH3k9s7LKbp"),
+            "Should not contain token value: {sanitized}"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_redacts_session_ids() {
+        let msg = "Invalid session: sid=abc123def456ghi789jkl012";
+        let sanitized = sanitize_error_message(msg);
+        assert!(
+            sanitized.contains("sid=[REDACTED]"),
+            "Should redact session ID: {sanitized}"
+        );
+        assert!(
+            !sanitized.contains("abc123def456"),
+            "Should not contain session ID value: {sanitized}"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_truncates_long_messages() {
+        let long_msg = "x".repeat(600);
+        let sanitized = sanitize_error_message(&long_msg);
+        assert!(
+            sanitized.len() < 600,
+            "Should be truncated: len={}",
+            sanitized.len()
+        );
+        assert!(
+            sanitized.ends_with("...[truncated]"),
+            "Should end with truncation marker: {sanitized}"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_passes_through_clean_messages() {
+        let msg = "No such column 'foo' on entity 'Account'";
+        assert_eq!(sanitize_error_message(msg), msg);
+    }
+
+    #[test]
+    fn test_sanitize_redacts_multiple_tokens() {
+        let msg = "Token1: 00Dxx0000001gEF!token1_value and Token2: 00Dyy0000002gEF!token2_value";
+        let sanitized = sanitize_error_message(msg);
+        // Both tokens should be redacted
+        assert!(
+            !sanitized.contains("token1_value"),
+            "Should redact first token"
+        );
+        assert!(
+            !sanitized.contains("token2_value"),
+            "Should redact second token"
+        );
+    }
+
+    // =========================================================================
+    // SalesforceErrorResponse deserialization tests
+    // =========================================================================
+
+    #[test]
+    fn test_salesforce_error_response_array_format() {
+        let json = r#"[{"errorCode":"INVALID_FIELD","message":"No such column","fields":["Foo"]}]"#;
+        let errors: Vec<SalesforceErrorResponse> = serde_json::from_str(json).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].error_code, "INVALID_FIELD");
+        assert_eq!(errors[0].message, "No such column");
+        assert_eq!(errors[0].fields, Some(vec!["Foo".to_string()]));
+    }
+
+    #[test]
+    fn test_salesforce_error_response_single_object() {
+        let json = r#"{"errorCode":"NOT_FOUND","message":"The requested resource does not exist"}"#;
+        let err: SalesforceErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error_code, "NOT_FOUND");
+        assert_eq!(err.message, "The requested resource does not exist");
+        assert!(err.fields.is_none());
+    }
+
+    #[test]
+    fn test_salesforce_error_response_with_error_code_alias() {
+        // Salesforce sometimes uses "errorCode" (camelCase)
+        let json = r#"{"errorCode":"MALFORMED_QUERY","message":"unexpected token"}"#;
+        let err: SalesforceErrorResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error_code, "MALFORMED_QUERY");
+    }
+
+    #[test]
+    fn test_salesforce_error_response_empty_array() {
+        let json = "[]";
+        let errors: Vec<SalesforceErrorResponse> = serde_json::from_str(json).unwrap();
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_salesforce_error_response_multiple_errors() {
+        let json = r#"[
+            {"errorCode":"REQUIRED_FIELD_MISSING","message":"Required fields missing","fields":["Name","Email"]},
+            {"errorCode":"FIELD_CUSTOM_VALIDATION_EXCEPTION","message":"Must be positive"}
+        ]"#;
+        let errors: Vec<SalesforceErrorResponse> = serde_json::from_str(json).unwrap();
+        assert_eq!(errors.len(), 2);
+        assert_eq!(
+            errors[0].fields,
+            Some(vec!["Name".to_string(), "Email".to_string()])
+        );
+        assert!(errors[1].fields.is_none());
+    }
 }
