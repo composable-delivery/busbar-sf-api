@@ -1136,4 +1136,263 @@ mod tests {
         assert_eq!(result.object_describe.custom, false);
         assert_eq!(result.recent_items.len(), 1);
     }
+
+    // =========================================================================
+    // Wiremock HTTP Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_deleted_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "deletedRecords": [
+                {"id": "001xx000003DGb2AAG", "deletedDate": "2024-01-15T10:30:00.000+0000"}
+            ],
+            "earliestDateAvailable": "2024-01-01T00:00:00.000+0000",
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/deleted/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_deleted("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await
+            .expect("get_deleted should succeed");
+
+        assert_eq!(result.deleted_records.len(), 1);
+        assert_eq!(result.deleted_records[0].id, "001xx000003DGb2AAG");
+    }
+
+    #[tokio::test]
+    async fn test_get_deleted_invalid_sobject() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_deleted("Bad'; DROP--", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_updated_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "ids": ["001xx000003DGb2AAG", "001xx000003DGb3AAG"],
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/updated/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_updated("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await
+            .expect("get_updated should succeed");
+
+        assert_eq!(result.ids.len(), 2);
+        assert_eq!(result.ids[0], "001xx000003DGb2AAG");
+    }
+
+    #[tokio::test]
+    async fn test_get_updated_invalid_sobject() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_updated("Bad'; DROP--", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let binary_data = vec![0x89, 0x50, 0x4E, 0x47]; // PNG header bytes
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Attachment/001xx000003DGb2AAG/Body"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(binary_data.clone()))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_blob("Attachment", "001xx000003DGb2AAG", "Body")
+            .await
+            .expect("get_blob should succeed");
+
+        assert_eq!(result, binary_data);
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_invalid_id() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.get_blob("Attachment", "bad-id!", "Body").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ID"));
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_invalid_field() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_blob("Attachment", "001xx000003DGb2AAG", "Bad;Field")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_FIELD"));
+    }
+
+    #[tokio::test]
+    async fn test_get_rich_text_image_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let image_data = vec![0xFF, 0xD8, 0xFF, 0xE0]; // JPEG header
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/001xx000003DGb2AAG/richTextImageFields/Description/refId001"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(image_data.clone()))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_rich_text_image(
+                "Account",
+                "001xx000003DGb2AAG",
+                "Description",
+                "refId001",
+            )
+            .await
+            .expect("get_rich_text_image should succeed");
+
+        assert_eq!(result, image_data);
+    }
+
+    #[tokio::test]
+    async fn test_get_rich_text_image_invalid_id() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_rich_text_image("Account", "bad!", "Description", "refId001")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ID"));
+    }
+
+    #[tokio::test]
+    async fn test_get_relationship_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "totalSize": 2,
+            "done": true,
+            "records": [
+                {"Id": "003xx1", "Name": "Contact 1"},
+                {"Id": "003xx2", "Name": "Contact 2"}
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/001xx000003DGb2AAG/Contacts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result: serde_json::Value = client
+            .get_relationship("Account", "001xx000003DGb2AAG", "Contacts")
+            .await
+            .expect("get_relationship should succeed");
+
+        assert_eq!(result["totalSize"], 2);
+        assert_eq!(result["records"][0]["Name"], "Contact 1");
+    }
+
+    #[tokio::test]
+    async fn test_get_relationship_invalid_sobject() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result: std::result::Result<serde_json::Value, _> = client
+            .get_relationship("Bad'; DROP--", "001xx000003DGb2AAG", "Contacts")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_sobject_basic_info_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "objectDescribe": {
+                "name": "Account",
+                "label": "Account",
+                "keyPrefix": "001",
+                "urls": {"sobject": "/services/data/v62.0/sobjects/Account"},
+                "custom": false,
+                "createable": true,
+                "updateable": true,
+                "deletable": true,
+                "queryable": true,
+                "searchable": true
+            },
+            "recentItems": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_sobject_basic_info("Account")
+            .await
+            .expect("get_sobject_basic_info should succeed");
+
+        assert_eq!(result.object_describe.name, "Account");
+        assert!(result.object_describe.queryable);
+        assert!(result.recent_items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_sobject_basic_info_invalid_sobject() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.get_sobject_basic_info("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
 }
