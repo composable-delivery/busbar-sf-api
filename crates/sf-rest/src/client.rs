@@ -852,8 +852,10 @@ impl SalesforceRestClient {
     ///
     /// ```rust,ignore
     /// let rules = client.list_process_rules().await?;
-    /// for rule in rules.rules {
-    ///     println!("{}: {}", rule.id, rule.name);
+    /// for (sobject, rule_list) in &rules.rules {
+    ///     for rule in rule_list {
+    ///         println!("{} - {}: {}", sobject, rule.id, rule.name);
+    ///     }
     /// }
     /// ```
     #[instrument(skip(self))]
@@ -870,8 +872,10 @@ impl SalesforceRestClient {
     ///
     /// ```rust,ignore
     /// let rules = client.list_process_rules_for_sobject("Account").await?;
-    /// for rule in rules.rules {
-    ///     println!("{}: {}", rule.id, rule.name);
+    /// if let Some(account_rules) = rules.rules.get("Account") {
+    ///     for rule in account_rules {
+    ///         println!("{}: {}", rule.id, rule.name);
+    ///     }
     /// }
     /// ```
     #[instrument(skip(self))]
@@ -927,8 +931,10 @@ impl SalesforceRestClient {
     ///
     /// ```rust,ignore
     /// let approvals = client.list_pending_approvals().await?;
-    /// for approval in approvals.approvals {
-    ///     println!("Approval {}: Entity {}", approval.id, approval.entity_id);
+    /// for (entity_type, approval_list) in &approvals.approvals {
+    ///     for approval in approval_list {
+    ///         println!("{} - Approval {}: Entity {}", entity_type, approval.id, approval.entity_id);
+    ///     }
     /// }
     /// ```
     #[instrument(skip(self))]
@@ -1618,14 +1624,16 @@ mod tests {
 
             let mock_server = MockServer::start().await;
             let body = serde_json::json!({
-                "rules": [
-                    {
-                        "id": "01Q000000000001AAA",
-                        "name": "Account Approval",
-                        "sobjectType": "Account",
-                        "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
-                    }
-                ]
+                "rules": {
+                    "Account": [
+                        {
+                            "id": "01Q000000000001AAA",
+                            "name": "Account Approval",
+                            "sobjectType": "Account",
+                            "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
+                        }
+                    ]
+                }
             });
 
             Mock::given(method("GET"))
@@ -1637,7 +1645,12 @@ mod tests {
             let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
             let result = client.list_process_rules().await.expect("should succeed");
             assert_eq!(result.rules.len(), 1);
-            assert_eq!(result.rules[0].name, "Account Approval");
+            let account_rules = result
+                .rules
+                .get("Account")
+                .expect("should have Account rules");
+            assert_eq!(account_rules.len(), 1);
+            assert_eq!(account_rules[0].name, "Account Approval");
         }
 
         #[tokio::test]
@@ -1647,14 +1660,16 @@ mod tests {
 
             let mock_server = MockServer::start().await;
             let body = serde_json::json!({
-                "rules": [
-                    {
-                        "id": "01Q000000000001AAA",
-                        "name": "Account Approval",
-                        "sobjectType": "Account",
-                        "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
-                    }
-                ]
+                "rules": {
+                    "Account": [
+                        {
+                            "id": "01Q000000000001AAA",
+                            "name": "Account Approval",
+                            "sobjectType": "Account",
+                            "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
+                        }
+                    ]
+                }
             });
 
             Mock::given(method("GET"))
@@ -1669,7 +1684,11 @@ mod tests {
                 .await
                 .expect("should succeed");
             assert_eq!(result.rules.len(), 1);
-            assert_eq!(result.rules[0].sobject_type.as_deref(), Some("Account"));
+            let account_rules = result
+                .rules
+                .get("Account")
+                .expect("should have Account rules");
+            assert_eq!(account_rules[0].sobject_type.as_deref(), Some("Account"));
         }
 
         #[tokio::test]
@@ -1708,14 +1727,16 @@ mod tests {
 
             let mock_server = MockServer::start().await;
             let body = serde_json::json!({
-                "approvals": [
-                    {
-                        "id": "04i000000000001AAA",
-                        "entityId": "001xx000003DHP0AAO",
-                        "entityType": "Account",
-                        "processInstanceId": "04g000000000001AAA"
-                    }
-                ]
+                "approvals": {
+                    "Account": [
+                        {
+                            "id": "04i000000000001AAA",
+                            "entityId": "001xx000003DHP0AAO",
+                            "entityType": "Account",
+                            "processInstanceId": "04g000000000001AAA"
+                        }
+                    ]
+                }
             });
 
             Mock::given(method("GET"))
@@ -1730,7 +1751,12 @@ mod tests {
                 .await
                 .expect("should succeed");
             assert_eq!(result.approvals.len(), 1);
-            assert_eq!(result.approvals[0].entity_type, "Account");
+            let account_approvals = result
+                .approvals
+                .get("Account")
+                .expect("should have Account approvals");
+            assert_eq!(account_approvals.len(), 1);
+            assert_eq!(account_approvals[0].entity_type, "Account");
         }
 
         #[tokio::test]
