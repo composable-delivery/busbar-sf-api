@@ -1488,4 +1488,887 @@ mod tests {
         assert!(result["layouts"].is_array());
         assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
+
+    // Quick Actions tests
+    mod quick_actions {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_list_quick_actions_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_quick_actions("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_describe_quick_action_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_quick_action("Invalid;Name", "Action").await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_describe_quick_action_rejects_invalid_action_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .describe_quick_action("Account", "Invalid;Action")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_invoke_quick_action_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .invoke_quick_action("Invalid;Name", "Action", &serde_json::json!({}))
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_list_quick_actions_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!([
+                {"name": "SendEmail", "label": "Send Email", "type": "QuickAction"},
+                {"name": "LogACall", "label": "Log a Call", "type": "QuickAction"}
+            ]);
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/sobjects/Account/quickActions$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .list_quick_actions("Account")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.len(), 2);
+            assert_eq!(result[0].name, "SendEmail");
+            assert_eq!(result[0].label, "Send Email");
+            assert_eq!(result[0].action_type, "QuickAction");
+        }
+
+        #[tokio::test]
+        async fn test_describe_quick_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "name": "SendEmail",
+                "label": "Send Email",
+                "type": "QuickAction",
+                "targetSobjectType": "EmailMessage"
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/sobjects/Account/quickActions/SendEmail"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .describe_quick_action("Account", "SendEmail")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.name, "SendEmail");
+            assert_eq!(result.action_type, "QuickAction");
+            assert_eq!(result.target_sobject_type.as_deref(), Some("EmailMessage"));
+        }
+
+        #[tokio::test]
+        async fn test_invoke_quick_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "id": "001xx000003DHP0AAO",
+                "success": true,
+                "contextId": "001xx000003DHP0AAO"
+            });
+
+            Mock::given(method("POST"))
+                .and(path_regex(".*/sobjects/Account/quickActions/SendEmail"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .invoke_quick_action(
+                    "Account",
+                    "SendEmail",
+                    &serde_json::json!({"Subject": "Hello", "Body": "Test"}),
+                )
+                .await
+                .expect("should succeed");
+            assert!(result.success);
+            assert_eq!(result.id.as_deref(), Some("001xx000003DHP0AAO"));
+        }
+    }
+
+    // List Views tests
+    mod list_views {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_list_views_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_views("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_get_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .get_list_view("Invalid;Name", "00B000000000001AAA")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_get_list_view_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.get_list_view("Account", "invalid_id").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_describe_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client
+                .describe_list_view("Invalid;Name", "00B000000000001AAA")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_execute_list_view_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result: Result<crate::list_views::ListViewResult<serde_json::Value>> = client
+                .execute_list_view("Invalid;Name", "00B000000000001AAA")
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_list_views_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "done": true,
+                "listviews": [
+                    {
+                        "id": "00B000000000001AAA",
+                        "developerName": "AllAccounts",
+                        "label": "All Accounts",
+                        "describeUrl": "/services/data/v62.0/sobjects/Account/listviews/00B000000000001AAA/describe",
+                        "resultsUrl": "/services/data/v62.0/sobjects/Account/listviews/00B000000000001AAA/results",
+                        "sobjectType": "Account"
+                    }
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/sobjects/Account/listviews$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client.list_views("Account").await.expect("should succeed");
+            assert!(result.done);
+            assert_eq!(result.listviews.len(), 1);
+            assert_eq!(result.listviews[0].developer_name, "AllAccounts");
+        }
+
+        #[tokio::test]
+        async fn test_get_list_view_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "id": "00B000000000001AAA",
+                "developerName": "AllAccounts",
+                "label": "All Accounts",
+                "describeUrl": "/services/data/v62.0/sobjects/Account/listviews/00B000000000001AAA/describe",
+                "resultsUrl": "/services/data/v62.0/sobjects/Account/listviews/00B000000000001AAA/results",
+                "sobjectType": "Account"
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(
+                    ".*/sobjects/Account/listviews/00B000000000001AAA$",
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .get_list_view("Account", "00B000000000001AAA")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.id, "00B000000000001AAA");
+            assert_eq!(result.label, "All Accounts");
+            assert_eq!(result.sobject_type, "Account");
+        }
+
+        #[tokio::test]
+        async fn test_describe_list_view_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "id": "00B000000000001AAA",
+                "developerName": "AllAccounts",
+                "label": "All Accounts",
+                "sobjectType": "Account",
+                "query": "SELECT Id, Name FROM Account",
+                "columns": [
+                    {
+                        "fieldNameOrPath": "Name",
+                        "label": "Account Name",
+                        "sortable": true,
+                        "type": "string"
+                    }
+                ],
+                "orderBy": [
+                    {
+                        "fieldNameOrPath": "Name",
+                        "sortDirection": "ascending"
+                    }
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(
+                    ".*/sobjects/Account/listviews/00B000000000001AAA/describe",
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .describe_list_view("Account", "00B000000000001AAA")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.query, "SELECT Id, Name FROM Account");
+            assert_eq!(result.columns.len(), 1);
+            assert_eq!(result.columns[0].field_name_or_path, "Name");
+            assert!(result.columns[0].sortable);
+        }
+
+        #[tokio::test]
+        async fn test_execute_list_view_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "done": true,
+                "id": "00B000000000001AAA",
+                "label": "All Accounts",
+                "developerName": "AllAccounts",
+                "size": 2,
+                "records": [
+                    {"Id": "001xx000003DHP0AAO", "Name": "Acme Corp"},
+                    {"Id": "001xx000003DHP1AAO", "Name": "Globex Inc"}
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(
+                    ".*/sobjects/Account/listviews/00B000000000001AAA/results",
+                ))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result: crate::list_views::ListViewResult<serde_json::Value> = client
+                .execute_list_view("Account", "00B000000000001AAA")
+                .await
+                .expect("should succeed");
+            assert!(result.done);
+            assert_eq!(result.size, 2);
+            assert_eq!(result.records.len(), 2);
+            assert_eq!(result.developer_name, "AllAccounts");
+        }
+    }
+
+    // Process Rules & Approvals tests
+    mod process {
+        use super::*;
+        use crate::process::{ApprovalActionType, ApprovalRequest, ProcessRuleRequest};
+
+        #[tokio::test]
+        async fn test_list_process_rules_for_sobject_rejects_invalid_sobject() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.list_process_rules_for_sobject("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_SOBJECT");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_trigger_process_rules_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = ProcessRuleRequest {
+                context_id: "invalid_id".to_string(),
+            };
+            let result = client.trigger_process_rules(&request).await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_submit_approval_rejects_invalid_id() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = ApprovalRequest {
+                action_type: ApprovalActionType::Submit,
+                context_id: "invalid_id".to_string(),
+                context_actor_id: None,
+                comments: None,
+                next_approver_ids: None,
+                process_definition_name_or_id: None,
+                skip_entry_criteria: None,
+            };
+            let result = client.submit_approval(&request).await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ID");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_list_process_rules_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "rules": {
+                    "Account": [
+                        {
+                            "id": "01Q000000000001AAA",
+                            "name": "Account Approval",
+                            "sobjectType": "Account",
+                            "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
+                        }
+                    ]
+                }
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/process/rules$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client.list_process_rules().await.expect("should succeed");
+            assert_eq!(result.rules.len(), 1);
+            let account_rules = result
+                .rules
+                .get("Account")
+                .expect("should have Account rules");
+            assert_eq!(account_rules.len(), 1);
+            assert_eq!(account_rules[0].name, "Account Approval");
+        }
+
+        #[tokio::test]
+        async fn test_list_process_rules_for_sobject_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "rules": {
+                    "Account": [
+                        {
+                            "id": "01Q000000000001AAA",
+                            "name": "Account Approval",
+                            "sobjectType": "Account",
+                            "url": "/services/data/v62.0/process/rules/01Q000000000001AAA"
+                        }
+                    ]
+                }
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/process/rules/Account"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .list_process_rules_for_sobject("Account")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.rules.len(), 1);
+            let account_rules = result
+                .rules
+                .get("Account")
+                .expect("should have Account rules");
+            assert_eq!(account_rules[0].sobject_type.as_deref(), Some("Account"));
+        }
+
+        #[tokio::test]
+        async fn test_trigger_process_rules_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "success": true,
+                "errors": []
+            });
+
+            Mock::given(method("POST"))
+                .and(path_regex(".*/process/rules$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let request = ProcessRuleRequest {
+                context_id: "001xx000003DHP0AAO".to_string(),
+            };
+            let result = client
+                .trigger_process_rules(&request)
+                .await
+                .expect("should succeed");
+            assert!(result.success);
+            assert!(result.errors.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_list_pending_approvals_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "approvals": {
+                    "Account": [
+                        {
+                            "id": "04i000000000001AAA",
+                            "entityId": "001xx000003DHP0AAO",
+                            "entityType": "Account",
+                            "processInstanceId": "04g000000000001AAA"
+                        }
+                    ]
+                }
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/process/approvals$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .list_pending_approvals()
+                .await
+                .expect("should succeed");
+            assert_eq!(result.approvals.len(), 1);
+            let account_approvals = result
+                .approvals
+                .get("Account")
+                .expect("should have Account approvals");
+            assert_eq!(account_approvals.len(), 1);
+            assert_eq!(account_approvals[0].entity_type, "Account");
+        }
+
+        #[tokio::test]
+        async fn test_submit_approval_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "actorIds": ["005xx000001X8UzAAK"],
+                "entityId": "001xx000003DHP0AAO",
+                "instanceId": "04g000000000001AAA",
+                "instanceStatus": "Approved",
+                "newWorkitemIds": [],
+                "success": true
+            });
+
+            Mock::given(method("POST"))
+                .and(path_regex(".*/process/approvals$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let request = ApprovalRequest {
+                action_type: ApprovalActionType::Approve,
+                context_id: "001xx000003DHP0AAO".to_string(),
+                context_actor_id: None,
+                comments: Some("Approved".to_string()),
+                next_approver_ids: None,
+                process_definition_name_or_id: None,
+                skip_entry_criteria: None,
+            };
+            let result = client
+                .submit_approval(&request)
+                .await
+                .expect("should succeed");
+            assert!(result.success);
+            assert_eq!(result.instance_status, "Approved");
+            assert_eq!(result.entity_id, "001xx000003DHP0AAO");
+        }
+    }
+
+    // Invocable Actions tests
+    mod invocable_actions {
+        use super::*;
+        use crate::actions::InvocableActionRequest;
+
+        #[tokio::test]
+        async fn test_describe_standard_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_standard_action("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ACTION_NAME");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_invoke_standard_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
+            let result = client
+                .invoke_standard_action("Invalid;Name", &request)
+                .await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_describe_custom_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let result = client.describe_custom_action("Invalid;Name").await;
+            assert!(result.is_err());
+            if let Err(e) = result {
+                match &e.kind {
+                    ErrorKind::Salesforce { error_code, .. } => {
+                        assert_eq!(error_code, "INVALID_ACTION_NAME");
+                    }
+                    _ => panic!("Expected Salesforce error"),
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn test_invoke_custom_action_rejects_invalid_name() {
+            let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
+            let result = client.invoke_custom_action("Invalid;Name", &request).await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_list_standard_actions_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "actions": [
+                    {"name": "emailSimple", "label": "Send Email", "type": "INVOCABLEACTION"},
+                    {"name": "chatterPost", "label": "Post to Chatter", "type": "INVOCABLEACTION"}
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/actions/standard$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .list_standard_actions()
+                .await
+                .expect("should succeed");
+            assert_eq!(result.actions.len(), 2);
+            assert_eq!(result.actions[0].name, "emailSimple");
+        }
+
+        #[tokio::test]
+        async fn test_describe_standard_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "name": "emailSimple",
+                "label": "Send Email",
+                "type": "INVOCABLEACTION",
+                "inputs": [
+                    {
+                        "name": "emailAddresses",
+                        "label": "Email Addresses",
+                        "type": "STRING",
+                        "required": true,
+                        "description": "Comma-separated email addresses"
+                    }
+                ],
+                "outputs": [
+                    {
+                        "name": "isSuccess",
+                        "label": "Is Success",
+                        "type": "BOOLEAN",
+                        "required": false
+                    }
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/actions/standard/emailSimple"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .describe_standard_action("emailSimple")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.name, "emailSimple");
+            assert_eq!(result.inputs.len(), 1);
+            assert!(result.inputs[0].required);
+            assert_eq!(result.outputs.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn test_invoke_standard_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "actionName": "emailSimple",
+                "isSuccess": true,
+                "outputValues": {"messageId": "msg_001"}
+            });
+
+            Mock::given(method("POST"))
+                .and(path_regex(".*/actions/standard/emailSimple"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({
+                    "emailAddresses": "test@example.com",
+                    "emailSubject": "Hello",
+                    "emailBody": "Test"
+                })],
+            };
+            let result = client
+                .invoke_standard_action("emailSimple", &request)
+                .await
+                .expect("should succeed");
+            assert!(result.is_success);
+            assert_eq!(result.action_name, "emailSimple");
+            assert!(result.output_values.is_some());
+        }
+
+        #[tokio::test]
+        async fn test_list_custom_actions_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "actions": [
+                    {"name": "MyCustomAction", "label": "My Custom Action", "type": "APEX"}
+                ]
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/actions/custom$"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client.list_custom_actions().await.expect("should succeed");
+            assert_eq!(result.actions.len(), 1);
+            assert_eq!(result.actions[0].name, "MyCustomAction");
+            assert_eq!(result.actions[0].action_type, "APEX");
+        }
+
+        #[tokio::test]
+        async fn test_describe_custom_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "name": "MyCustomAction",
+                "label": "My Custom Action",
+                "type": "APEX",
+                "inputs": [
+                    {"name": "recordId", "label": "Record ID", "type": "STRING", "required": true}
+                ],
+                "outputs": []
+            });
+
+            Mock::given(method("GET"))
+                .and(path_regex(".*/actions/custom/MyCustomAction"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let result = client
+                .describe_custom_action("MyCustomAction")
+                .await
+                .expect("should succeed");
+            assert_eq!(result.name, "MyCustomAction");
+            assert_eq!(result.action_type, "APEX");
+            assert_eq!(result.inputs.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn test_invoke_custom_action_wiremock() {
+            use wiremock::matchers::{method, path_regex};
+            use wiremock::{Mock, MockServer, ResponseTemplate};
+
+            let mock_server = MockServer::start().await;
+            let body = serde_json::json!({
+                "actionName": "MyCustomAction",
+                "isSuccess": true
+            });
+
+            Mock::given(method("POST"))
+                .and(path_regex(".*/actions/custom/MyCustomAction"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+                .mount(&mock_server)
+                .await;
+
+            let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+            let request = InvocableActionRequest {
+                inputs: vec![serde_json::json!({"recordId": "001xx000003DHP0AAO"})],
+            };
+            let result = client
+                .invoke_custom_action("MyCustomAction", &request)
+                .await
+                .expect("should succeed");
+            assert!(result.is_success);
+            assert_eq!(result.action_name, "MyCustomAction");
+        }
+    }
+
+    // Limits test
+    #[tokio::test]
+    async fn test_limits_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "DailyApiRequests": {"Max": 15000, "Remaining": 14998},
+            "DailyBulkApiRequests": {"Max": 10000, "Remaining": 10000}
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/limits$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.limits().await.expect("should succeed");
+        assert!(result.get("DailyApiRequests").is_some());
+        assert_eq!(result["DailyApiRequests"]["Max"].as_u64().unwrap(), 15000);
+    }
 }
