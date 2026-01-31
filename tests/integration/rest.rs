@@ -533,7 +533,6 @@ async fn test_type_safe_query() {
 
 #[tokio::test]
 async fn test_get_deleted_records() {
-
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
