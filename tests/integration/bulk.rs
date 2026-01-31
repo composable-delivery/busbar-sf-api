@@ -210,8 +210,8 @@ async fn test_bulk_query_metadata_component_dependencies() {
 
     let result = client.execute_query(query_builder).await;
 
-    // MetadataComponentDependency may not be available in all orgs or may require specific API version
-    // Handle both success and expected failure cases
+    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
+    // Only skip if we get a specific error about the object not being found
     match result {
         Ok(query_result) => {
             assert!(
@@ -242,14 +242,23 @@ async fn test_bulk_query_metadata_component_dependencies() {
             }
         }
         Err(e) => {
-            // If the query fails, it might be because:
-            // - The org doesn't support MetadataComponentDependency (API version < 49.0)
-            // - The object is not available in this org type
-            println!(
-                "MetadataComponentDependency query failed (this may be expected): {}",
+            let error_msg = e.to_string();
+            // Only skip test if the error is specifically about object not existing or not being supported
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            // Any other error should fail the test
+            panic!(
+                "Unexpected error querying MetadataComponentDependency: {}",
                 e
             );
-            // Don't fail the test - this is expected in some orgs
         }
     }
 }
@@ -276,8 +285,8 @@ async fn test_bulk_query_metadata_component_dependencies_with_filter() {
 
     let result = client.execute_query(query_builder).await;
 
-    // This may fail if there are no ApexClass dependencies in the scratch org,
-    // or succeed with 0 results, both are valid outcomes
+    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
+    // Only skip if we get a specific error about the object not being found
     match result {
         Ok(query_result) => {
             println!(
@@ -286,8 +295,23 @@ async fn test_bulk_query_metadata_component_dependencies_with_filter() {
             );
         }
         Err(e) => {
-            // If it fails, it should be due to no matching records or query limitations
-            println!("Bulk query with filter error (expected): {}", e);
+            let error_msg = e.to_string();
+            // Only skip test if the error is specifically about object not existing or not being supported
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            // Any other error should fail the test
+            panic!(
+                "Unexpected error querying MetadataComponentDependency with filter: {}",
+                e
+            );
         }
     }
 }
@@ -317,7 +341,8 @@ async fn test_bulk_metadata_component_dependency_type_deserialization() {
 
     let result = client.execute_query(query_builder).await;
 
-    // MetadataComponentDependency may not be available in all orgs
+    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
+    // Only skip if we get a specific error about the object not being found
     match result {
         Ok(query_result) => {
             println!(
@@ -326,14 +351,20 @@ async fn test_bulk_metadata_component_dependency_type_deserialization() {
             );
         }
         Err(e) => {
-            // If the query fails, it might be because:
-            // - The org doesn't support MetadataComponentDependency (API version < 49.0)
-            // - The object is not available in this org type
-            println!(
-                "MetadataComponentDependency type deserialization test failed (this may be expected): {}",
-                e
-            );
-            // Don't fail the test - this is expected in some orgs
+            let error_msg = e.to_string();
+            // Only skip test if the error is specifically about object not existing or not being supported
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            // Any other error should fail the test
+            panic!("Unexpected error in type deserialization test: {}", e);
         }
     }
 }
