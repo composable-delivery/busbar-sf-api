@@ -1133,7 +1133,7 @@ mod tests {
         assert_eq!(result.object_describe.name, "Account");
         assert_eq!(result.object_describe.label, "Account");
         assert_eq!(result.object_describe.key_prefix, Some("001".to_string()));
-        assert_eq!(result.object_describe.custom, false);
+        assert!(!result.object_describe.custom);
         assert_eq!(result.recent_items.len(), 1);
     }
 
@@ -1174,10 +1174,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_deleted_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client
-            .get_deleted("Bad'; DROP--", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .get_deleted(
+                "Bad'; DROP--",
+                "2024-01-01T00:00:00Z",
+                "2024-01-31T23:59:59Z",
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
@@ -1213,10 +1216,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_updated_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client
-            .get_updated("Bad'; DROP--", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .get_updated(
+                "Bad'; DROP--",
+                "2024-01-01T00:00:00Z",
+                "2024-01-31T23:59:59Z",
+            )
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
@@ -1247,8 +1253,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_blob_invalid_id() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.get_blob("Attachment", "bad-id!", "Body").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_ID"));
@@ -1256,8 +1261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_blob_invalid_field() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client
             .get_blob("Attachment", "001xx000003DGb2AAG", "Bad;Field")
             .await;
@@ -1274,19 +1278,16 @@ mod tests {
         let image_data = vec![0xFF, 0xD8, 0xFF, 0xE0]; // JPEG header
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Account/001xx000003DGb2AAG/richTextImageFields/Description/refId001"))
+            .and(path_regex(
+                ".*/sobjects/Account/001xx000003DGb2AAG/richTextImageFields/Description/refId001",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(image_data.clone()))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .get_rich_text_image(
-                "Account",
-                "001xx000003DGb2AAG",
-                "Description",
-                "refId001",
-            )
+            .get_rich_text_image("Account", "001xx000003DGb2AAG", "Description", "refId001")
             .await
             .expect("get_rich_text_image should succeed");
 
@@ -1295,8 +1296,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_rich_text_image_invalid_id() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client
             .get_rich_text_image("Account", "bad!", "Description", "refId001")
             .await;
@@ -1321,7 +1321,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Account/001xx000003DGb2AAG/Contacts"))
+            .and(path_regex(
+                ".*/sobjects/Account/001xx000003DGb2AAG/Contacts",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
@@ -1338,8 +1340,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_relationship_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result: std::result::Result<serde_json::Value, _> = client
             .get_relationship("Bad'; DROP--", "001xx000003DGb2AAG", "Contacts")
             .await;
@@ -1389,8 +1390,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_sobject_basic_info_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.get_sobject_basic_info("Bad'; DROP--").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));

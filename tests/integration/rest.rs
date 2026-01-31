@@ -533,9 +533,7 @@ async fn test_type_safe_query() {
 
 #[tokio::test]
 async fn test_get_deleted_records() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -579,9 +577,7 @@ async fn test_get_deleted_records() {
 
 #[tokio::test]
 async fn test_get_updated_records() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -630,9 +626,7 @@ async fn test_get_updated_records() {
 
 #[tokio::test]
 async fn test_get_blob_content() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -692,9 +686,7 @@ async fn test_get_blob_content() {
 
 #[tokio::test]
 async fn test_get_rich_text_image() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -724,9 +716,7 @@ async fn test_get_rich_text_image() {
 
 #[tokio::test]
 async fn test_get_relationship_child() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -771,9 +761,7 @@ async fn test_get_relationship_child() {
 
 #[tokio::test]
 async fn test_get_relationship_parent() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -823,9 +811,7 @@ async fn test_get_relationship_parent() {
 
 #[tokio::test]
 async fn test_get_sobject_basic_info() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
