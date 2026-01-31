@@ -8,7 +8,6 @@ use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL
 // ============================================================================
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_access_token() {
     let creds = get_credentials().await;
 
@@ -35,7 +34,6 @@ async fn test_revoke_access_token() {
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set with refresh token
 async fn test_revoke_refresh_token() {
     let creds = get_credentials().await;
 
@@ -68,7 +66,6 @@ async fn test_revoke_refresh_token() {
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_with_oauth_client() {
     let creds = get_credentials().await;
 
@@ -101,7 +98,6 @@ async fn test_revoke_token_with_oauth_client() {
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_idempotency() {
     let creds = get_credentials().await;
 
@@ -134,7 +130,6 @@ async fn test_revoke_token_idempotency() {
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_session_without_refresh_token() {
     let creds = get_credentials().await;
 
