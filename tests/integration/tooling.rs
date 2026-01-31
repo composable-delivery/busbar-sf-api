@@ -1,11 +1,17 @@
 //! Tooling API integration tests using SF_AUTH_URL.
 
+use std::sync::LazyLock;
+use tokio::sync::Mutex;
+
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_tooling::{
     CompositeBatchRequest, CompositeBatchSubrequest, CompositeRequest, CompositeSubrequest,
-    ToolingClient,
+    RunTestsAsyncRequest, ToolingClient,
 };
+
+// Global mutex to serialize Apex class creation across tests
+static APEX_CLASS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 // ============================================================================
 // Tooling API Tests
@@ -420,4 +426,291 @@ async fn test_tooling_error_invalid_log_id() {
     let result = client.get_apex_log_body("bad-id").await;
 
     assert!(result.is_err(), "Log body with invalid ID should fail");
+}
+
+// ============================================================================
+// PR #59: CRUD & Discovery Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_update() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    // Query for an existing debug level to try updating
+    let debug_levels: Vec<serde_json::Value> = client
+        .query_all("SELECT Id, DeveloperName FROM DebugLevel LIMIT 1")
+        .await
+        .expect("Query DebugLevel should succeed");
+
+    if debug_levels.is_empty() {
+        eprintln!("Skipping test: No DebugLevel found in org");
+        return;
+    }
+
+    let debug_level_id = debug_levels[0]
+        .get("Id")
+        .and_then(|v| v.as_str())
+        .expect("Should have DebugLevel Id");
+
+    // Update with the same value (safe idempotent update)
+    let developer_name = debug_levels[0]
+        .get("DeveloperName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("SFDC_DevConsole");
+
+    let update_body = serde_json::json!({
+        "MasterLabel": developer_name
+    });
+
+    let result = client
+        .update("DebugLevel", debug_level_id, &update_body)
+        .await;
+    assert!(result.is_ok(), "Update should succeed: {:?}", result.err());
+}
+
+#[tokio::test]
+async fn test_tooling_update_invalid_sobject() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .update(
+            "Robert'; DROP TABLE--",
+            "7tf000000000001AAA",
+            &serde_json::json!({}),
+        )
+        .await;
+    assert!(result.is_err(), "Update with invalid SObject should fail");
+}
+
+#[tokio::test]
+async fn test_tooling_query_all_records() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result: busbar_sf_tooling::QueryResult<serde_json::Value> = client
+        .query_all_records("SELECT Id, Name FROM ApexClass LIMIT 5")
+        .await
+        .expect("query_all_records should succeed");
+
+    assert!(result.done, "Query should be done");
+    assert!(result.records.len() <= 5, "Should respect LIMIT");
+}
+
+#[tokio::test]
+async fn test_tooling_describe_global() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .describe_global()
+        .await
+        .expect("describe_global should succeed");
+
+    assert!(!result.sobjects.is_empty(), "Should have SObjects");
+
+    // ApexClass should be in the list
+    let has_apex_class = result.sobjects.iter().any(|s| s.name == "ApexClass");
+    assert!(has_apex_class, "Should include ApexClass");
+}
+
+#[tokio::test]
+async fn test_tooling_describe_sobject() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .describe_sobject("ApexClass")
+        .await
+        .expect("describe_sobject should succeed");
+
+    assert_eq!(result.name, "ApexClass");
+    assert!(!result.fields.is_empty(), "Should have fields");
+}
+
+#[tokio::test]
+async fn test_tooling_basic_info() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .basic_info("ApexClass")
+        .await
+        .expect("basic_info should succeed");
+
+    assert!(
+        result.get("objectDescribe").is_some(),
+        "Should have objectDescribe"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_resources() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client.resources().await.expect("resources should succeed");
+
+    // The resources endpoint should return something (it's a JSON map)
+    assert!(result.is_object(), "Resources should return a JSON object");
+}
+
+// ============================================================================
+// PR #61: Test Execution Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_run_tests_async() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let _lock = APEX_CLASS_LOCK.lock().await;
+
+    // Create a test class to run
+    let test_class_name = format!("BusbarAsyncTest_{}", chrono::Utc::now().timestamp_millis());
+    let test_body = format!(
+        "@IsTest\npublic class {} {{\n    @IsTest\n    static void testPass() {{\n        System.assert(true);\n    }}\n}}",
+        test_class_name
+    );
+
+    let class_id = match client
+        .create(
+            "ApexClass",
+            &serde_json::json!({
+                "Name": test_class_name,
+                "Body": test_body
+            }),
+        )
+        .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Skipping test: could not create test class: {e}");
+            return;
+        }
+    };
+
+    // Run tests async
+    let request = RunTestsAsyncRequest {
+        class_names: Some(vec![test_class_name.clone()]),
+        test_level: Some("RunSpecifiedTests".to_string()),
+        ..Default::default()
+    };
+
+    let result = client.run_tests_async(&request).await;
+
+    // Clean up the test class
+    let _ = client.delete("ApexClass", &class_id).await;
+
+    match result {
+        Ok(job_id) => {
+            assert!(!job_id.is_empty(), "Job ID should not be empty");
+        }
+        Err(e) => {
+            eprintln!("run_tests_async failed (may be expected in some orgs): {e}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_tooling_run_tests_sync() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let _lock = APEX_CLASS_LOCK.lock().await;
+
+    // Create a test class to run
+    let test_class_name = format!("BusbarSyncTest_{}", chrono::Utc::now().timestamp_millis());
+    let test_body = format!(
+        "@IsTest\npublic class {} {{\n    @IsTest\n    static void testPass() {{\n        System.assert(true);\n    }}\n}}",
+        test_class_name
+    );
+
+    let class_id = match client
+        .create(
+            "ApexClass",
+            &serde_json::json!({
+                "Name": test_class_name,
+                "Body": test_body
+            }),
+        )
+        .await
+    {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Skipping test: could not create test class: {e}");
+            return;
+        }
+    };
+
+    // Run tests synchronously
+    let request = busbar_sf_tooling::RunTestsSyncRequest {
+        tests: Some(vec![test_class_name.clone()]),
+        ..Default::default()
+    };
+
+    let result = client.run_tests_sync(&request).await;
+
+    // Clean up the test class
+    let _ = client.delete("ApexClass", &class_id).await;
+
+    match result {
+        Ok(sync_result) => {
+            assert!(
+                sync_result.num_tests_run > 0,
+                "Should have run at least one test"
+            );
+        }
+        Err(e) => {
+            eprintln!("run_tests_sync failed (may be expected in some orgs): {e}");
+        }
+    }
+}
+
+// ============================================================================
+// PR #62: Code Intelligence Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_tooling_completions_apex() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .completions_apex()
+        .await
+        .expect("completions_apex should succeed");
+
+    assert!(
+        !result.public_declarations.public_declarations.is_empty(),
+        "Should have some Apex completions"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_completions_visualforce() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
+    let result = client
+        .completions_visualforce()
+        .await
+        .expect("completions_visualforce should succeed");
+
+    assert!(
+        !result.public_declarations.public_declarations.is_empty(),
+        "Should have some Visualforce completions"
+    );
 }

@@ -67,6 +67,40 @@ impl super::ToolingClient {
         }
     }
 
+    /// Update a Tooling API SObject (partial update).
+    #[instrument(skip(self, record))]
+    pub async fn update<T: serde::Serialize>(
+        &self,
+        sobject: &str,
+        id: &str,
+        record: &T,
+    ) -> Result<()> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        let url = format!(
+            "{}/services/data/v{}/tooling/sobjects/{}/{}",
+            self.client.instance_url(),
+            self.client.api_version(),
+            sobject,
+            id
+        );
+
+        self.client
+            .patch_json(&url, record)
+            .await
+            .map_err(Into::into)
+    }
+
     /// Delete a Tooling API SObject.
     #[instrument(skip(self))]
     pub async fn delete(&self, sobject: &str, id: &str) -> Result<()> {
@@ -101,5 +135,67 @@ impl super::ToolingClient {
                 message: format!("Failed to delete {}: status {}", sobject, response.status()),
             }))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::ToolingClient;
+
+    #[tokio::test]
+    async fn test_update_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(
+                ".*/tooling/sobjects/TraceFlag/7tf000000000001AAA",
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let update_body = serde_json::json!({
+            "ExpirationDate": "2026-12-31T23:59:59.000Z"
+        });
+        let result = client
+            .update("TraceFlag", "7tf000000000001AAA", &update_body)
+            .await;
+        assert!(result.is_ok(), "update should succeed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_update_invalid_sobject() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client
+            .update(
+                "Robert'; DROP TABLE--",
+                "7tf000000000001AAA",
+                &serde_json::json!({}),
+            )
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_SOBJECT"),
+            "Expected INVALID_SOBJECT, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_invalid_id() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client
+            .update("TraceFlag", "not-valid-id!", &serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_ID"),
+            "Expected INVALID_ID, got: {err}"
+        );
     }
 }

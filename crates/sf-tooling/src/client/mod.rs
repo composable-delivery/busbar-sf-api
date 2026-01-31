@@ -8,13 +8,16 @@ use busbar_sf_client::{ClientConfig, SalesforceClient};
 use crate::error::Result;
 
 mod apex;
+mod code_intelligence;
 mod collections;
 mod composite;
 mod coverage;
+mod describe;
 mod execute;
 mod logs;
 mod query;
 mod sobject;
+mod test_execution;
 mod trace_flags;
 
 /// Salesforce Tooling API client.
