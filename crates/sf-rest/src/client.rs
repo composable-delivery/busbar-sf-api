@@ -818,17 +818,151 @@ mod tests {
         assert_eq!(client.api_version(), "60.0");
     }
 
-    #[test]
-    fn test_layout_method_signatures() {
-        // Just verify that the methods exist and have correct signatures
-        // Actual functionality requires integration tests with a real SF org
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
+    // =========================================================================
+    // Wiremock HTTP Tests
+    // =========================================================================
 
-        // Verify the client has the methods by checking that they compile
-        let _ = &client.describe_layouts("Account");
-        let _ = &client.describe_named_layout("Account", "MyLayout");
-        let _ = &client.describe_approval_layouts("Account");
-        let _ = &client.describe_compact_layouts("Account");
-        let _ = &client.describe_global_publisher_layouts();
+    #[tokio::test]
+    async fn test_describe_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "layouts": [{"id": "00h000000000001", "name": "Account Layout"}],
+            "recordTypeMappings": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/describe/layouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_layouts("Account")
+            .await
+            .expect("describe_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Account Layout");
+    }
+
+    #[tokio::test]
+    async fn test_describe_layouts_invalid_sobject() {
+        let client =
+            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.describe_layouts("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_describe_named_layout_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "layouts": [{"detailLayoutSections": [], "editLayoutSections": []}]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/describe/namedLayouts/MyLayout"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_named_layout("Account", "MyLayout")
+            .await
+            .expect("describe_named_layout should succeed");
+
+        assert!(result["layouts"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_describe_approval_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "approvalLayouts": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/describe/approvalLayouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_approval_layouts("Account")
+            .await
+            .expect("describe_approval_layouts should succeed");
+
+        assert!(result["approvalLayouts"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_describe_compact_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "compactLayouts": [{"id": "0AH000000000001", "name": "System Default"}],
+            "defaultCompactLayoutId": "0AH000000000001"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/describe/compactLayouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_compact_layouts("Account")
+            .await
+            .expect("describe_compact_layouts should succeed");
+
+        assert!(result["compactLayouts"].is_array());
+        assert_eq!(result["compactLayouts"][0]["name"], "System Default");
+    }
+
+    #[tokio::test]
+    async fn test_describe_global_publisher_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "layouts": [{"id": "00h000000000002", "name": "Global Layout"}]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Global/describe/layouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_global_publisher_layouts()
+            .await
+            .expect("describe_global_publisher_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
 }
