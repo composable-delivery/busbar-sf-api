@@ -2,10 +2,7 @@
 
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
-use busbar_sf_rest::{
-    CompositeRequest, CompositeSubrequest, ParameterizedSearchRequest, QueryBuilder,
-    SalesforceRestClient, SearchSObjectSpec,
-};
+use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, SalesforceRestClient};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
