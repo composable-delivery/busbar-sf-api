@@ -1698,4 +1698,90 @@ mod tests {
         assert_eq!(parent.name, "Metadata");
         assert_eq!(parent.soap_type, "tns:Metadata");
     }
+
+    #[tokio::test]
+    async fn test_describe_value_type_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let soap_response = r#"<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <describeValueTypeResponse xmlns="http://soap.sforce.com/2006/04/metadata">
+      <result>
+        <valueTypeFields>
+          <name>fullName</name>
+          <soapType>xsd:string</soapType>
+          <isForeignKey>false</isForeignKey>
+          <isNameField>true</isNameField>
+          <minOccurs>1</minOccurs>
+          <maxOccurs>1</maxOccurs>
+        </valueTypeFields>
+        <valueTypeFields>
+          <name>label</name>
+          <soapType>xsd:string</soapType>
+          <isForeignKey>false</isForeignKey>
+          <isNameField>false</isNameField>
+          <minOccurs>0</minOccurs>
+          <maxOccurs>1</maxOccurs>
+        </valueTypeFields>
+      </result>
+    </describeValueTypeResponse>
+  </soapenv:Body>
+</soapenv:Envelope>"#;
+
+        Mock::given(method("POST"))
+            .and(path_regex("/services/Soap/m/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(soap_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = MetadataClient::from_parts(mock_server.uri(), "test-token");
+
+        let result = client
+            .describe_value_type("{http://soap.sforce.com/2006/04/metadata}CustomObject")
+            .await
+            .expect("describe_value_type should succeed");
+
+        assert_eq!(result.value_type_fields.len(), 2);
+        assert_eq!(result.value_type_fields[0].name, "fullName");
+        assert!(result.value_type_fields[0].is_name_field);
+        assert_eq!(result.value_type_fields[1].name, "label");
+        assert!(!result.value_type_fields[1].is_name_field);
+        assert!(result.parent_field.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_describe_value_type_soap_fault() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let fault_response = r#"<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>sf:INVALID_TYPE</faultcode>
+      <faultstring>Invalid type: {http://soap.sforce.com/2006/04/metadata}BadType</faultstring>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>"#;
+
+        Mock::given(method("POST"))
+            .and(path_regex("/services/Soap/m/.*"))
+            .respond_with(ResponseTemplate::new(500).set_body_string(fault_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = MetadataClient::from_parts(mock_server.uri(), "test-token");
+
+        let result = client
+            .describe_value_type("{http://soap.sforce.com/2006/04/metadata}BadType")
+            .await;
+
+        assert!(result.is_err(), "Should fail with SOAP fault");
+    }
 }

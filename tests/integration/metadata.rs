@@ -60,6 +60,38 @@ async fn test_metadata_list_custom_objects() {
 }
 
 // ============================================================================
+// Describe Value Type Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_metadata_describe_value_type() {
+    let creds = get_credentials().await;
+    let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
+
+    let result = client
+        .describe_value_type("{http://soap.sforce.com/2006/04/metadata}CustomObject")
+        .await
+        .expect("describe_value_type for CustomObject should succeed");
+
+    assert!(
+        !result.value_type_fields.is_empty(),
+        "CustomObject should have value type fields"
+    );
+
+    // CustomObject should have well-known fields like fullName and label
+    let field_names: Vec<&str> = result
+        .value_type_fields
+        .iter()
+        .map(|f| f.name.as_str())
+        .collect();
+    assert!(
+        field_names.contains(&"fullName"),
+        "CustomObject should have a fullName field, got: {:?}",
+        field_names
+    );
+}
+
+// ============================================================================
 // Error Handling Tests
 // ============================================================================
 
