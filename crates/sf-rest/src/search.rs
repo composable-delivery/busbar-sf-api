@@ -241,3 +241,86 @@ pub struct SearchLayoutColumn {
     /// Column name.
     pub name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parameterized_search_response_deserialization() {
+        let json = r#"{
+            "searchRecords": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001xx1",
+                    "Name": "Acme Corp"
+                }
+            ],
+            "metadata": {
+                "spellCorrectionApplied": true
+            }
+        }"#;
+
+        let result: ParameterizedSearchResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(result.search_records.len(), 1);
+        assert_eq!(result.search_records[0].attributes.sobject_type, "Account");
+        assert!(result.metadata.spell_correction_applied);
+    }
+
+    #[test]
+    fn test_search_suggestion_result_deserialization() {
+        let json = r#"{
+            "autoSuggestResults": [
+                {
+                    "attributes": {"type": "Account", "url": "/services/data/v62.0/sobjects/Account/001xx1"},
+                    "Id": "001xx1",
+                    "name": "Acme Corp"
+                }
+            ],
+            "hasMoreResults": true
+        }"#;
+
+        let result: SearchSuggestionResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.auto_suggest_results.len(), 1);
+        assert_eq!(result.auto_suggest_results[0].id, "001xx1");
+        assert_eq!(result.auto_suggest_results[0].name, "Acme Corp");
+        assert!(result.has_more_results);
+    }
+
+    #[test]
+    fn test_search_scope_result_deserialization() {
+        let json = r#"{
+            "scopeEntities": [
+                {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
+                {"name": "Contact", "label": "Contacts", "inSearchScope": false, "searchScopeOrder": 2}
+            ]
+        }"#;
+
+        let result: SearchScopeResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.scope_entities.len(), 2);
+        assert_eq!(result.scope_entities[0].name, "Account");
+        assert!(result.scope_entities[0].in_search_scope);
+        assert!(!result.scope_entities[1].in_search_scope);
+    }
+
+    #[test]
+    fn test_search_layout_result_deserialization() {
+        let json = r#"{
+            "searchLayout": [
+                {
+                    "label": "Accounts",
+                    "columns": [
+                        {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
+                        {"field": "Phone", "label": "Phone", "format": "phone", "name": "Phone"}
+                    ]
+                }
+            ]
+        }"#;
+
+        let result: SearchLayoutResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.search_layout.len(), 1);
+        assert_eq!(result.search_layout[0].label, "Accounts");
+        assert_eq!(result.search_layout[0].columns.len(), 2);
+        assert_eq!(result.search_layout[0].columns[1].format, Some("phone".to_string()));
+    }
+}

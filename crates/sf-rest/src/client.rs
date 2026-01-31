@@ -919,4 +919,160 @@ mod tests {
         assert!(!json.contains("\"sobjects\""));
         assert!(!json.contains("\"overallLimit\""));
     }
+
+    // =========================================================================
+    // Wiremock HTTP Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_parameterized_search_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "searchRecords": [
+                {
+                    "attributes": {"type": "Account"},
+                    "Id": "001xx1",
+                    "Name": "Acme Corp"
+                }
+            ],
+            "metadata": {
+                "spellCorrectionApplied": false
+            }
+        });
+
+        Mock::given(method("POST"))
+            .and(path_regex(".*/parameterizedSearch$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+
+        use crate::search::*;
+        let request = ParameterizedSearchRequest {
+            q: "Acme".to_string(),
+            sobjects: vec![SearchSObjectSpec {
+                name: "Account".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let result = client
+            .parameterized_search(&request)
+            .await
+            .expect("parameterized_search should succeed");
+
+        assert_eq!(result.search_records.len(), 1);
+        assert_eq!(result.search_records[0].attributes.sobject_type, "Account");
+        assert!(!result.metadata.spell_correction_applied);
+    }
+
+    #[tokio::test]
+    async fn test_search_suggestions_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "autoSuggestResults": [
+                {
+                    "attributes": {"type": "Account", "url": "/services/data/v62.0/sobjects/Account/001xx1"},
+                    "Id": "001xx1",
+                    "name": "Acme Corp"
+                }
+            ],
+            "hasMoreResults": false
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/search/suggestions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .search_suggestions("Acme", "Account")
+            .await
+            .expect("search_suggestions should succeed");
+
+        assert_eq!(result.auto_suggest_results.len(), 1);
+        assert_eq!(result.auto_suggest_results[0].name, "Acme Corp");
+        assert!(!result.has_more_results);
+    }
+
+    #[tokio::test]
+    async fn test_search_scope_order_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "scopeEntities": [
+                {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
+                {"name": "Contact", "label": "Contacts", "inSearchScope": true, "searchScopeOrder": 2}
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/search/scopeOrder$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .search_scope_order()
+            .await
+            .expect("search_scope_order should succeed");
+
+        assert_eq!(result.scope_entities.len(), 2);
+        assert_eq!(result.scope_entities[0].name, "Account");
+        assert!(result.scope_entities[0].in_search_scope);
+        assert_eq!(result.scope_entities[1].search_scope_order, 2);
+    }
+
+    #[tokio::test]
+    async fn test_search_result_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "searchLayout": [
+                {
+                    "label": "Accounts",
+                    "columns": [
+                        {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
+                        {"field": "Industry", "label": "Industry", "format": null, "name": "Industry"}
+                    ]
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/search/layout"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .search_result_layouts(&["Account"])
+            .await
+            .expect("search_result_layouts should succeed");
+
+        assert_eq!(result.search_layout.len(), 1);
+        assert_eq!(result.search_layout[0].label, "Accounts");
+        assert_eq!(result.search_layout[0].columns.len(), 2);
+        assert_eq!(result.search_layout[0].columns[0].field, "Name");
+    }
 }
