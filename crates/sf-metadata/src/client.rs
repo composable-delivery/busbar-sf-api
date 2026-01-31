@@ -1597,7 +1597,7 @@ impl MetadataClient {
 
         if let Some(obj) = metadata_obj.as_object() {
             for (key, value) in obj {
-                element.push_str(&self.build_xml_field(key, value, 8));
+                element.push_str(&Self::build_xml_field(key, value, 8));
             }
         }
 
@@ -1606,7 +1606,7 @@ impl MetadataClient {
     }
 
     /// Build an XML field for a metadata object.
-    fn build_xml_field(&self, key: &str, value: &serde_json::Value, indent: usize) -> String {
+    fn build_xml_field(key: &str, value: &serde_json::Value, indent: usize) -> String {
         let spaces = " ".repeat(indent);
         let escaped_key = xml::escape(key);
 
@@ -1638,7 +1638,7 @@ impl MetadataClient {
             serde_json::Value::Object(obj) => {
                 let mut result = format!("{}<met:{}>\n", spaces, escaped_key);
                 for (nested_key, nested_value) in obj {
-                    result.push_str(&self.build_xml_field(nested_key, nested_value, indent + 2));
+                    result.push_str(&Self::build_xml_field(nested_key, nested_value, indent + 2));
                 }
                 result.push_str(&format!("{}</met:{}>\n", spaces, escaped_key));
                 result
@@ -1646,7 +1646,7 @@ impl MetadataClient {
             serde_json::Value::Array(arr) => {
                 let mut result = String::new();
                 for item in arr {
-                    result.push_str(&self.build_xml_field(key, item, indent));
+                    result.push_str(&Self::build_xml_field(key, item, indent));
                 }
                 result
             }
@@ -2364,43 +2364,38 @@ mod tests {
 
     #[test]
     fn test_build_xml_field_string() {
-        let client = MetadataClient::from_parts("url", "token");
         let value = serde_json::Value::String("test value".to_string());
-        let field = client.build_xml_field("name", &value, 4);
+        let field = MetadataClient::build_xml_field("name", &value, 4);
         assert_eq!(field, "    <met:name>test value</met:name>\n");
     }
 
     #[test]
     fn test_build_xml_field_number() {
-        let client = MetadataClient::from_parts("url", "token");
         let value = serde_json::Value::Number(42.into());
-        let field = client.build_xml_field("count", &value, 4);
+        let field = MetadataClient::build_xml_field("count", &value, 4);
         assert_eq!(field, "    <met:count>42</met:count>\n");
     }
 
     #[test]
     fn test_build_xml_field_bool() {
-        let client = MetadataClient::from_parts("url", "token");
         let value = serde_json::Value::Bool(true);
-        let field = client.build_xml_field("enabled", &value, 4);
+        let field = MetadataClient::build_xml_field("enabled", &value, 4);
         assert_eq!(field, "    <met:enabled>true</met:enabled>\n");
     }
 
     #[test]
     fn test_build_xml_field_null() {
-        let client = MetadataClient::from_parts("url", "token");
         let value = serde_json::Value::Null;
-        let field = client.build_xml_field("optional", &value, 4);
+        let field = MetadataClient::build_xml_field("optional", &value, 4);
         assert_eq!(field, "    <met:optional xsi:nil=\"true\"/>\n");
     }
 
     #[test]
     fn test_build_xml_field_nested() {
-        let client = MetadataClient::from_parts("url", "token");
         let value = serde_json::json!({
             "inner": "value"
         });
-        let field = client.build_xml_field("outer", &value, 4);
+        let field = MetadataClient::build_xml_field("outer", &value, 4);
         assert!(field.contains("    <met:outer>\n"));
         assert!(field.contains("      <met:inner>value</met:inner>\n"));
         assert!(field.contains("    </met:outer>\n"));

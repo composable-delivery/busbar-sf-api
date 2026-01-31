@@ -80,9 +80,7 @@ async fn test_metadata_error_invalid_token() {
 
 #[tokio::test]
 async fn test_metadata_crud_custom_label_lifecycle() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Use a unique name with timestamp to avoid conflicts
@@ -165,9 +163,7 @@ async fn test_metadata_crud_custom_label_lifecycle() {
 
 #[tokio::test]
 async fn test_metadata_upsert_custom_label() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let timestamp = std::time::SystemTime::now()
@@ -232,9 +228,7 @@ async fn test_metadata_upsert_custom_label() {
 
 #[tokio::test]
 async fn test_metadata_rename_custom_label() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let timestamp = std::time::SystemTime::now()
@@ -282,9 +276,7 @@ async fn test_metadata_rename_custom_label() {
 
 #[tokio::test]
 async fn test_metadata_create_multiple_labels() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let timestamp = std::time::SystemTime::now()
@@ -351,9 +343,7 @@ async fn test_metadata_create_multiple_labels() {
 
 #[tokio::test]
 async fn test_metadata_crud_validation_max_limit() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Try to create more than 10 components (should fail)
@@ -383,9 +373,7 @@ async fn test_metadata_crud_validation_max_limit() {
 
 #[tokio::test]
 async fn test_metadata_read_nonexistent() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Try to read a label that doesn't exist
@@ -400,9 +388,7 @@ async fn test_metadata_read_nonexistent() {
 
 #[tokio::test]
 async fn test_metadata_delete_nonexistent() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Try to delete a label that doesn't exist
@@ -423,9 +409,7 @@ async fn test_metadata_delete_nonexistent() {
 
 #[tokio::test]
 async fn test_metadata_create_with_xml_escaping() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let timestamp = std::time::SystemTime::now()
