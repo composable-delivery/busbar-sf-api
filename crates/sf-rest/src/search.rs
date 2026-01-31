@@ -321,6 +321,9 @@ mod tests {
         assert_eq!(result.search_layout.len(), 1);
         assert_eq!(result.search_layout[0].label, "Accounts");
         assert_eq!(result.search_layout[0].columns.len(), 2);
-        assert_eq!(result.search_layout[0].columns[1].format, Some("phone".to_string()));
+        assert_eq!(
+            result.search_layout[0].columns[1].format,
+            Some("phone".to_string())
+        );
     }
 }
