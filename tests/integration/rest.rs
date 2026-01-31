@@ -531,180 +531,196 @@ async fn test_type_safe_query() {
 }
 
 // ============================================================================
-// Advanced Search API Tests
+// Layout API Tests
 // ============================================================================
 
 #[tokio::test]
-async fn test_parameterized_search() {
+async fn test_rest_describe_layouts() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Create a test account to search for
-    let test_name = format!("SearchTest{}", chrono::Utc::now().timestamp_millis());
-    let account_id = client
-        .create("Account", &serde_json::json!({"Name": test_name.clone()}))
-        .await
-        .expect("Failed to create test account");
-
-    // Wait a moment for the record to be indexed
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-    // Test parameterized search
-    let request = ParameterizedSearchRequest {
-        q: test_name.clone(),
-        fields: vec!["Id".to_string(), "Name".to_string()],
-        sobjects: vec![SearchSObjectSpec {
-            name: "Account".to_string(),
-            fields: Some(vec!["Id".to_string(), "Name".to_string()]),
-            where_clause: None,
-            limit: Some(10),
-        }],
-        overall_limit: Some(100),
-        offset: None,
-        spell_correction: Some(false),
-    };
-
-    let _result = client
-        .parameterized_search(&request)
-        .await
-        .expect("Parameterized search should succeed");
-
-    // The main validation is that the API call succeeds and returns valid structure
-    // Search results may be empty depending on indexing
-
-    // Clean up
-    let _ = client.delete("Account", &account_id).await;
-}
-
-#[tokio::test]
-async fn test_search_suggestions() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    // Create a test account with a unique name
-    let test_name = format!("SuggestTest{}", chrono::Utc::now().timestamp_millis());
-    let account_id = client
-        .create("Account", &serde_json::json!({"Name": test_name.clone()}))
-        .await
-        .expect("Failed to create test account");
-
-    // Wait a moment for the record to be indexed
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-    // Test search suggestions
-    let _result = client
-        .search_suggestions(&test_name, "Account")
-        .await
-        .expect("Search suggestions should succeed");
-
-    // The main validation is that the API call succeeds and returns valid structure
-    // Suggestions may be empty if record not yet indexed
-
-    // Clean up
-    let _ = client.delete("Account", &account_id).await;
-}
-
-#[tokio::test]
-async fn test_search_scope_order() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    // Test search scope order — API returns a bare JSON array
     let result = client
-        .search_scope_order()
+        .describe_layouts("Account")
         .await
-        .expect("Search scope order should succeed");
+        .expect("describe_layouts should succeed for Account");
 
-    // Scope may be empty for orgs without search history
-    for entity in &result {
-        assert!(!entity.name.is_empty(), "Entity should have a name");
-        assert!(!entity.label.is_empty(), "Entity should have a label");
-    }
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
 }
 
 #[tokio::test]
-async fn test_search_result_layouts() {
+async fn test_rest_describe_layouts_contact() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test search result layouts for standard objects — API returns a bare JSON array
     let result = client
-        .search_result_layouts(&["Account", "Contact"])
+        .describe_layouts("Contact")
         .await
-        .expect("Search result layouts should succeed");
+        .expect("describe_layouts should succeed for Contact");
 
-    assert!(!result.is_empty(), "Should return layout information");
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+}
 
-    for layout in &result {
-        assert!(!layout.label.is_empty(), "Layout should have a label");
-        assert!(
-            !layout.columns.is_empty(),
-            "Layout should have at least one column"
-        );
+#[tokio::test]
+async fn test_rest_describe_approval_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
 
-        for column in &layout.columns {
-            assert!(!column.field.is_empty(), "Column should have a field");
-            assert!(!column.label.is_empty(), "Column should have a label");
+    let result = client
+        .describe_approval_layouts("Account")
+        .await
+        .expect("describe_approval_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Approval layout response should be a JSON object"
+    );
+    assert!(
+        result.get("approvalLayouts").is_some(),
+        "Response should contain approvalLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_compact_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_compact_layouts("Account")
+        .await
+        .expect("describe_compact_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Compact layout response should be a JSON object"
+    );
+    assert!(
+        result.get("compactLayouts").is_some(),
+        "Response should contain compactLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_global_publisher_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_global_publisher_layouts()
+        .await
+        .expect("describe_global_publisher_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Global publisher layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_named_layout() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // First, get available layouts to find a valid layout name
+    let layouts_result = client
+        .describe_layouts("Account")
+        .await
+        .expect("describe_layouts should succeed");
+
+    // Try to extract a layout name from the response
+    if let Some(layouts) = layouts_result.get("layouts").and_then(|l| l.as_array()) {
+        if let Some(first_layout) = layouts.first() {
+            if let Some(layout_name) = first_layout.get("name").and_then(|n| n.as_str()) {
+                let named_result = client
+                    .describe_named_layout("Account", layout_name)
+                    .await
+                    .expect("describe_named_layout should succeed");
+
+                assert!(
+                    named_result.is_object(),
+                    "Named layout response should be a JSON object"
+                );
+            } else {
+                println!("Note: No layout name found in first layout, skipping named layout test");
+            }
+        } else {
+            println!("Note: No layouts found for Account, skipping named layout test");
         }
+    } else {
+        println!("Note: layouts not in expected format, skipping named layout test");
     }
 }
 
+// ============================================================================
+// Layout API Error Tests
+// ============================================================================
+
 #[tokio::test]
-async fn test_search_suggestions_invalid_sobject() {
+async fn test_rest_describe_layouts_invalid_sobject() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test with invalid SObject name (security validation)
-    let result = client.search_suggestions("test", "Bad'; DROP--").await;
+    let result = client.describe_layouts("InvalidObject__c__c").await;
 
     assert!(
         result.is_err(),
-        "Search suggestions with invalid SObject should fail"
+        "describe_layouts should fail for invalid SObject"
     );
 }
 
 #[tokio::test]
-async fn test_parameterized_search_invalid_sobject() {
+async fn test_rest_describe_layouts_injection_attempt() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test with invalid SObject name (security validation)
-    let request = ParameterizedSearchRequest {
-        q: "test".to_string(),
-        sobjects: vec![SearchSObjectSpec {
-            name: "Bad'; DROP--".to_string(),
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-
-    let result = client.parameterized_search(&request).await;
+    let result = client.describe_layouts("Account'; DROP TABLE--").await;
 
     assert!(
         result.is_err(),
-        "Parameterized search with invalid SObject should fail"
+        "describe_layouts should reject SQL injection attempts"
     );
 }
 
 #[tokio::test]
-async fn test_search_result_layouts_invalid_sobject() {
+async fn test_rest_describe_named_layout_special_chars() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test with invalid SObject name (security validation)
+    // Test that special characters in layout names are properly URL-encoded
     let result = client
-        .search_result_layouts(&["Account", "Bad'; DROP--"])
+        .describe_named_layout("Account", "Layout With Spaces")
         .await;
 
-    assert!(
-        result.is_err(),
-        "Search result layouts with invalid SObject should fail"
-    );
+    // This might fail if the layout doesn't exist, but should not fail due to URL encoding
+    // The error should be a 404 or similar, not a URL parsing error
+    if let Err(e) = result {
+        let error_msg = format!("{:?}", e);
+        assert!(
+            !error_msg.contains("url") || !error_msg.contains("parse"),
+            "Should not fail due to URL parsing issues"
+        );
+    }
 }

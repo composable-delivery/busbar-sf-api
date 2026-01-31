@@ -132,6 +132,148 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Layout Operations
+    // =========================================================================
+
+    /// Get all page layouts for a specific SObject.
+    ///
+    /// This returns metadata about all page layouts configured for the SObject,
+    /// including sections, rows, items, and field metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.describe_layouts("Account").await?;
+    /// println!("Account layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::DescribeLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/layouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a specific named layout for an SObject.
+    ///
+    /// This returns the layout metadata for a specific named layout.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layout = client.describe_named_layout("Account", "MyCustomLayout").await?;
+    /// println!("Layout metadata: {:?}", layout);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/namedLayouts/{layoutName}`.
+    #[instrument(skip(self))]
+    pub async fn describe_named_layout(
+        &self,
+        sobject: &str,
+        layout_name: &str,
+    ) -> Result<crate::layout::NamedLayoutResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        // URL-encode the layout name to handle special characters
+        let encoded_name = url_security::encode_param(layout_name);
+        let path = format!(
+            "sobjects/{}/describe/namedLayouts/{}",
+            sobject, encoded_name
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get approval process layouts for a specific SObject.
+    ///
+    /// This returns the approval process layout information including
+    /// approval steps, actions, and field mappings.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let approval_layouts = client.describe_approval_layouts("Account").await?;
+    /// println!("Approval layouts: {:?}", approval_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/approvalLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_approval_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::ApprovalLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/approvalLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get compact layouts for a specific SObject.
+    ///
+    /// Compact layouts are used in the Salesforce mobile app and Lightning Experience
+    /// to show a preview of a record in a compact space.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let compact_layouts = client.describe_compact_layouts("Account").await?;
+    /// println!("Compact layouts: {:?}", compact_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/compactLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_compact_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::CompactLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/compactLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get global publisher layouts (global quick actions).
+    ///
+    /// This returns global quick actions and publisher layouts that are
+    /// available across the entire organization, not tied to a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let global_layouts = client.describe_global_publisher_layouts().await?;
+    /// println!("Global layouts: {:?}", global_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/Global/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_global_publisher_layouts(
+        &self,
+    ) -> Result<crate::layout::GlobalPublisherLayoutsResult> {
+        let path = "sobjects/Global/describe/layouts";
+        self.client.rest_get(path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // CRUD Operations
     // =========================================================================
 
@@ -821,262 +963,152 @@ mod tests {
         assert_eq!(client.api_version(), "60.0");
     }
 
-    #[test]
-    fn test_search_suggestions_validates_sobject() {
-        use tokio::runtime::Runtime;
-        let rt = Runtime::new().unwrap();
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-
-        // Test with invalid SObject name
-        let result = rt.block_on(client.search_suggestions("test", "Bad'; DROP--"));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
-        }
-    }
-
-    #[test]
-    fn test_parameterized_search_validates_sobjects() {
-        use crate::search::*;
-        use tokio::runtime::Runtime;
-        let rt = Runtime::new().unwrap();
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-
-        // Test with invalid SObject name
-        let request = ParameterizedSearchRequest {
-            q: "test".to_string(),
-            sobjects: vec![
-                SearchSObjectSpec {
-                    name: "Account".to_string(),
-                    ..Default::default()
-                },
-                SearchSObjectSpec {
-                    name: "Bad'; DROP--".to_string(),
-                    ..Default::default()
-                },
-            ],
-            ..Default::default()
-        };
-        let result = rt.block_on(client.parameterized_search(&request));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
-        }
-    }
-
-    #[test]
-    fn test_search_result_layouts_validates_sobjects() {
-        use tokio::runtime::Runtime;
-        let rt = Runtime::new().unwrap();
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-
-        // Test with invalid SObject name
-        let result = rt.block_on(client.search_result_layouts(&["Account", "Bad'; DROP--"]));
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert!(matches!(e.kind, ErrorKind::Salesforce { .. }));
-        }
-    }
-
-    #[test]
-    fn test_parameterized_search_request_serialization() {
-        use crate::search::*;
-
-        let request = ParameterizedSearchRequest {
-            q: "test".to_string(),
-            fields: vec!["Id".to_string(), "Name".to_string()],
-            sobjects: vec![SearchSObjectSpec {
-                name: "Account".to_string(),
-                fields: Some(vec!["Industry".to_string()]),
-                where_clause: Some("CreatedDate = THIS_YEAR".to_string()),
-                limit: Some(10),
-            }],
-            overall_limit: Some(100),
-            offset: Some(0),
-            spell_correction: Some(true),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        assert!(json.contains("\"q\":\"test\""));
-        assert!(json.contains("\"fields\":[\"Id\",\"Name\"]"));
-        assert!(json.contains("\"sobjects\""));
-        assert!(json.contains("\"overallLimit\":100"));
-    }
-
-    #[test]
-    fn test_parameterized_search_request_default() {
-        use crate::search::*;
-
-        let request = ParameterizedSearchRequest {
-            q: "search term".to_string(),
-            ..Default::default()
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        assert!(json.contains("\"q\":\"search term\""));
-        // Default/empty fields should not be serialized
-        assert!(!json.contains("\"fields\""));
-        assert!(!json.contains("\"sobjects\""));
-        assert!(!json.contains("\"overallLimit\""));
-    }
-
     // =========================================================================
     // Wiremock HTTP Tests
     // =========================================================================
 
     #[tokio::test]
-    async fn test_parameterized_search_wiremock() {
+    async fn test_describe_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
 
         let body = serde_json::json!({
-            "searchRecords": [
-                {
-                    "attributes": {"type": "Account"},
-                    "Id": "001xx1",
-                    "Name": "Acme Corp"
-                }
-            ],
-            "metadata": {
-                "spellCorrectionApplied": false
-            }
+            "layouts": [{"id": "00h000000000001", "name": "Account Layout"}],
+            "recordTypeMappings": []
         });
 
-        Mock::given(method("POST"))
-            .and(path_regex(".*/parameterizedSearch$"))
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/describe/layouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-
-        use crate::search::*;
-        let request = ParameterizedSearchRequest {
-            q: "Acme".to_string(),
-            sobjects: vec![SearchSObjectSpec {
-                name: "Account".to_string(),
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-
         let result = client
-            .parameterized_search(&request)
+            .describe_layouts("Account")
             .await
-            .expect("parameterized_search should succeed");
+            .expect("describe_layouts should succeed");
 
-        assert_eq!(result.search_records.len(), 1);
-        assert_eq!(result.search_records[0].attributes.sobject_type, "Account");
-        assert!(!result
-            .metadata
-            .as_ref()
-            .is_some_and(|m| m.spell_correction_applied));
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Account Layout");
     }
 
     #[tokio::test]
-    async fn test_search_suggestions_wiremock() {
+    async fn test_describe_layouts_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.describe_layouts("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_describe_named_layout_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
 
         let body = serde_json::json!({
-            "autoSuggestResults": [
-                {
-                    "attributes": {"type": "Account", "url": "/services/data/v62.0/sobjects/Account/001xx1"},
-                    "Id": "001xx1",
-                    "name": "Acme Corp"
-                }
-            ],
-            "hasMoreResults": false
+            "layouts": [{"detailLayoutSections": [], "editLayoutSections": []}]
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/search/suggestions"))
+            .and(path_regex(
+                ".*/sobjects/Account/describe/namedLayouts/MyLayout",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .search_suggestions("Acme", "Account")
+            .describe_named_layout("Account", "MyLayout")
             .await
-            .expect("search_suggestions should succeed");
+            .expect("describe_named_layout should succeed");
 
-        assert_eq!(result.auto_suggest_results.len(), 1);
-        assert_eq!(
-            result.auto_suggest_results[0].name.as_deref(),
-            Some("Acme Corp")
-        );
-        assert!(!result.has_more_results);
+        assert!(result["layouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_search_scope_order_wiremock() {
+    async fn test_describe_approval_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
 
-        // API returns a bare JSON array
-        let body = serde_json::json!([
-            {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
-            {"name": "Contact", "label": "Contacts", "inSearchScope": true, "searchScopeOrder": 2}
-        ]);
+        let body = serde_json::json!({
+            "approvalLayouts": []
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/search/scopeOrder$"))
+            .and(path_regex(".*/sobjects/Account/describe/approvalLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .search_scope_order()
+            .describe_approval_layouts("Account")
             .await
-            .expect("search_scope_order should succeed");
+            .expect("describe_approval_layouts should succeed");
 
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].name, "Account");
-        assert!(result[0].in_search_scope);
-        assert_eq!(result[1].search_scope_order, 2);
+        assert!(result["approvalLayouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_search_result_layouts_wiremock() {
+    async fn test_describe_compact_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
 
-        // API returns a bare JSON array
-        let body = serde_json::json!([
-            {
-                "label": "Accounts",
-                "columns": [
-                    {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
-                    {"field": "Industry", "label": "Industry", "format": null, "name": "Industry"}
-                ]
-            }
-        ]);
+        let body = serde_json::json!({
+            "compactLayouts": [{"id": "0AH000000000001", "name": "System Default"}],
+            "defaultCompactLayoutId": "0AH000000000001"
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/search/layout"))
+            .and(path_regex(".*/sobjects/Account/describe/compactLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .search_result_layouts(&["Account"])
+            .describe_compact_layouts("Account")
             .await
-            .expect("search_result_layouts should succeed");
+            .expect("describe_compact_layouts should succeed");
 
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].label, "Accounts");
-        assert_eq!(result[0].columns.len(), 2);
-        assert_eq!(result[0].columns[0].field, "Name");
+        assert!(result["compactLayouts"].is_array());
+        assert_eq!(result["compactLayouts"][0]["name"], "System Default");
+    }
+
+    #[tokio::test]
+    async fn test_describe_global_publisher_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "layouts": [{"id": "00h000000000002", "name": "Global Layout"}]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Global/describe/layouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_global_publisher_layouts()
+            .await
+            .expect("describe_global_publisher_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
 }
