@@ -428,9 +428,7 @@ async fn test_tooling_error_invalid_log_id() {
 
 #[tokio::test]
 async fn test_tooling_update_trace_flag() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -509,9 +507,7 @@ async fn test_tooling_update_trace_flag() {
 
 #[tokio::test]
 async fn test_tooling_query_all_records() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -531,9 +527,7 @@ async fn test_tooling_query_all_records() {
 
 #[tokio::test]
 async fn test_tooling_search_sosl() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -551,9 +545,7 @@ async fn test_tooling_search_sosl() {
 
 #[tokio::test]
 async fn test_tooling_describe_global() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -581,9 +573,7 @@ async fn test_tooling_describe_global() {
 
 #[tokio::test]
 async fn test_tooling_describe_sobject() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -608,9 +598,7 @@ async fn test_tooling_describe_sobject() {
 
 #[tokio::test]
 async fn test_tooling_basic_info() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -634,9 +622,7 @@ async fn test_tooling_basic_info() {
 
 #[tokio::test]
 async fn test_tooling_resources() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -669,9 +655,7 @@ async fn test_tooling_resources() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_sobject_describe() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -685,9 +669,7 @@ async fn test_tooling_error_invalid_sobject_describe() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_sobject_update() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -699,9 +681,7 @@ async fn test_tooling_error_invalid_sobject_update() {
 
 #[tokio::test]
 async fn test_tooling_error_invalid_sosl_search() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
