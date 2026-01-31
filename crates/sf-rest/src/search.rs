@@ -81,14 +81,14 @@ pub struct SearchSObjectSpec {
 }
 
 /// Response from parameterized search.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct ParameterizedSearchResponse {
     /// Search results grouped by SObject.
     pub search_records: Vec<SearchRecordGroup>,
 
-    /// Metadata about the search.
-    pub metadata: SearchMetadata,
+    /// Metadata about the search (may be absent depending on API version).
+    pub metadata: Option<SearchMetadata>,
 }
 
 /// Search results for a specific SObject.
@@ -129,8 +129,8 @@ pub struct SearchMetadata {
 // =========================================================================
 
 /// Response from search suggestions API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct SearchSuggestionResult {
     /// List of suggested results.
     pub auto_suggest_results: Vec<Suggestion>,
@@ -140,18 +140,20 @@ pub struct SearchSuggestionResult {
 }
 
 /// A single search suggestion.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Suggestion {
     /// SObject type attributes.
-    pub attributes: SuggestionAttributes,
+    pub attributes: Option<SuggestionAttributes>,
 
     /// Suggested record ID.
     #[serde(rename = "Id")]
     pub id: String,
 
     /// Display value for the suggestion.
-    pub name: String,
+    /// Salesforce returns "Name" (PascalCase) for standard fields.
+    #[serde(alias = "Name")]
+    pub name: Option<String>,
 
     /// Additional fields returned for the suggestion.
     #[serde(flatten)]
@@ -173,17 +175,11 @@ pub struct SuggestionAttributes {
 // Search Scope Order
 // =========================================================================
 
-/// Response from search scope order API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchScopeResult {
-    /// Ordered list of SObjects the user searches most.
-    pub scope_entities: Vec<ScopeEntity>,
-}
-
 /// An SObject in the user's search scope.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+///
+/// The `/search/scopeOrder` endpoint returns a JSON array of these directly.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct ScopeEntity {
     /// SObject name.
     pub name: String,
@@ -202,22 +198,17 @@ pub struct ScopeEntity {
 // Search Result Layouts
 // =========================================================================
 
-/// Response from search result layouts API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SearchLayoutResult {
-    /// Layout information for each requested SObject.
-    pub search_layout: Vec<SearchLayoutInfo>,
-}
-
 /// Layout information for a specific SObject.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+///
+/// The `/search/layout` endpoint returns a JSON array of these directly.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct SearchLayoutInfo {
     /// Display label for the SObject (e.g., "Accounts", "Contacts").
     pub label: String,
 
     /// List of columns to display in search results.
+    #[serde(alias = "searchColumns")]
     pub columns: Vec<SearchLayoutColumn>,
 
     /// Additional layout metadata.
@@ -226,8 +217,8 @@ pub struct SearchLayoutInfo {
 }
 
 /// A column in the search result layout.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct SearchLayoutColumn {
     /// Field name.
     pub field: String,
@@ -264,7 +255,18 @@ mod tests {
         let result: ParameterizedSearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(result.search_records.len(), 1);
         assert_eq!(result.search_records[0].attributes.sobject_type, "Account");
-        assert!(result.metadata.spell_correction_applied);
+        assert!(result.metadata.as_ref().unwrap().spell_correction_applied);
+    }
+
+    #[test]
+    fn test_parameterized_search_response_no_metadata() {
+        let json = r#"{
+            "searchRecords": []
+        }"#;
+
+        let result: ParameterizedSearchResponse = serde_json::from_str(json).unwrap();
+        assert!(result.search_records.is_empty());
+        assert!(result.metadata.is_none());
     }
 
     #[test]
@@ -274,7 +276,7 @@ mod tests {
                 {
                     "attributes": {"type": "Account", "url": "/services/data/v62.0/sobjects/Account/001xx1"},
                     "Id": "001xx1",
-                    "name": "Acme Corp"
+                    "Name": "Acme Corp"
                 }
             ],
             "hasMoreResults": true
@@ -283,47 +285,50 @@ mod tests {
         let result: SearchSuggestionResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.auto_suggest_results.len(), 1);
         assert_eq!(result.auto_suggest_results[0].id, "001xx1");
-        assert_eq!(result.auto_suggest_results[0].name, "Acme Corp");
+        assert_eq!(
+            result.auto_suggest_results[0].name.as_deref(),
+            Some("Acme Corp")
+        );
         assert!(result.has_more_results);
     }
 
     #[test]
     fn test_search_scope_result_deserialization() {
-        let json = r#"{
-            "scopeEntities": [
-                {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
-                {"name": "Contact", "label": "Contacts", "inSearchScope": false, "searchScopeOrder": 2}
-            ]
-        }"#;
+        let json = r#"[
+            {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
+            {"name": "Contact", "label": "Contacts", "inSearchScope": false, "searchScopeOrder": 2}
+        ]"#;
 
-        let result: SearchScopeResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.scope_entities.len(), 2);
-        assert_eq!(result.scope_entities[0].name, "Account");
-        assert!(result.scope_entities[0].in_search_scope);
-        assert!(!result.scope_entities[1].in_search_scope);
+        let result: Vec<ScopeEntity> = serde_json::from_str(json).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "Account");
+        assert!(result[0].in_search_scope);
+        assert!(!result[1].in_search_scope);
+    }
+
+    #[test]
+    fn test_search_scope_empty_array() {
+        let json = "[]";
+        let result: Vec<ScopeEntity> = serde_json::from_str(json).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]
     fn test_search_layout_result_deserialization() {
-        let json = r#"{
-            "searchLayout": [
-                {
-                    "label": "Accounts",
-                    "columns": [
-                        {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
-                        {"field": "Phone", "label": "Phone", "format": "phone", "name": "Phone"}
-                    ]
-                }
-            ]
-        }"#;
+        let json = r#"[
+            {
+                "label": "Accounts",
+                "columns": [
+                    {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
+                    {"field": "Phone", "label": "Phone", "format": "phone", "name": "Phone"}
+                ]
+            }
+        ]"#;
 
-        let result: SearchLayoutResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.search_layout.len(), 1);
-        assert_eq!(result.search_layout[0].label, "Accounts");
-        assert_eq!(result.search_layout[0].columns.len(), 2);
-        assert_eq!(
-            result.search_layout[0].columns[1].format,
-            Some("phone".to_string())
-        );
+        let result: Vec<SearchLayoutInfo> = serde_json::from_str(json).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "Accounts");
+        assert_eq!(result[0].columns.len(), 2);
+        assert_eq!(result[0].columns[1].format, Some("phone".to_string()));
     }
 }

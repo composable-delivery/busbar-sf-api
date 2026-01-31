@@ -612,19 +612,14 @@ async fn test_search_scope_order() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test search scope order
+    // Test search scope order — API returns a bare JSON array
     let result = client
         .search_scope_order()
         .await
         .expect("Search scope order should succeed");
 
-    assert!(
-        !result.scope_entities.is_empty(),
-        "Should return at least one scope entity"
-    );
-
-    // Verify structure of scope entities
-    for entity in &result.scope_entities {
+    // Scope may be empty for orgs without search history
+    for entity in &result {
         assert!(!entity.name.is_empty(), "Entity should have a name");
         assert!(!entity.label.is_empty(), "Entity should have a label");
     }
@@ -636,26 +631,21 @@ async fn test_search_result_layouts() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Test search result layouts for standard objects
+    // Test search result layouts for standard objects — API returns a bare JSON array
     let result = client
         .search_result_layouts(&["Account", "Contact"])
         .await
         .expect("Search result layouts should succeed");
 
-    assert!(
-        !result.search_layout.is_empty(),
-        "Should return layout information"
-    );
+    assert!(!result.is_empty(), "Should return layout information");
 
-    // Verify structure of layout info
-    for layout in &result.search_layout {
+    for layout in &result {
         assert!(!layout.label.is_empty(), "Layout should have a label");
         assert!(
             !layout.columns.is_empty(),
             "Layout should have at least one column"
         );
 
-        // Verify column structure
         for column in &layout.columns {
             assert!(!column.field.is_empty(), "Column should have a field");
             assert!(!column.label.is_empty(), "Column should have a label");

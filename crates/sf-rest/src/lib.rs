@@ -90,9 +90,8 @@ pub use query_builder::QueryBuilder;
 // Search types
 pub use search::{
     ParameterizedSearchRequest, ParameterizedSearchResponse, ScopeEntity, SearchLayoutColumn,
-    SearchLayoutInfo, SearchLayoutResult, SearchMetadata, SearchRecordAttributes,
-    SearchRecordGroup, SearchSObjectSpec, SearchScopeResult, SearchSuggestionResult, Suggestion,
-    SuggestionAttributes,
+    SearchLayoutInfo, SearchMetadata, SearchRecordAttributes, SearchRecordGroup, SearchSObjectSpec,
+    SearchSuggestionResult, Suggestion, SuggestionAttributes,
 };
 
 // SObject CRUD types

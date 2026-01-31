@@ -19,7 +19,7 @@ use crate::describe::{DescribeGlobalResult, DescribeSObjectResult};
 use crate::error::{Error, ErrorKind, Result};
 use crate::query::QueryResult;
 use crate::search::{
-    ParameterizedSearchRequest, ParameterizedSearchResponse, SearchLayoutResult, SearchScopeResult,
+    ParameterizedSearchRequest, ParameterizedSearchResponse, ScopeEntity, SearchLayoutInfo,
     SearchSuggestionResult,
 };
 use crate::sobject::{CreateResult, UpsertResult};
@@ -489,12 +489,12 @@ impl SalesforceRestClient {
     ///
     /// ```rust,ignore
     /// let scope = client.search_scope_order().await?;
-    /// for entity in scope.scope_entities {
+    /// for entity in &scope {
     ///     println!("{}: {}", entity.label, entity.search_scope_order);
     /// }
     /// ```
     #[instrument(skip(self))]
-    pub async fn search_scope_order(&self) -> Result<SearchScopeResult> {
+    pub async fn search_scope_order(&self) -> Result<Vec<ScopeEntity>> {
         let url = format!(
             "{}/services/data/v{}/search/scopeOrder",
             self.client.instance_url(),
@@ -515,7 +515,7 @@ impl SalesforceRestClient {
     ///     .await?;
     /// ```
     #[instrument(skip(self))]
-    pub async fn search_result_layouts(&self, sobjects: &[&str]) -> Result<SearchLayoutResult> {
+    pub async fn search_result_layouts(&self, sobjects: &[&str]) -> Result<Vec<SearchLayoutInfo>> {
         // Validate all SObject names
         for sobject in sobjects {
             if !soql::is_safe_sobject_name(sobject) {
@@ -969,7 +969,10 @@ mod tests {
 
         assert_eq!(result.search_records.len(), 1);
         assert_eq!(result.search_records[0].attributes.sobject_type, "Account");
-        assert!(!result.metadata.spell_correction_applied);
+        assert!(!result
+            .metadata
+            .as_ref()
+            .is_some_and(|m| m.spell_correction_applied));
     }
 
     #[tokio::test]
@@ -1003,7 +1006,10 @@ mod tests {
             .expect("search_suggestions should succeed");
 
         assert_eq!(result.auto_suggest_results.len(), 1);
-        assert_eq!(result.auto_suggest_results[0].name, "Acme Corp");
+        assert_eq!(
+            result.auto_suggest_results[0].name.as_deref(),
+            Some("Acme Corp")
+        );
         assert!(!result.has_more_results);
     }
 
@@ -1014,12 +1020,11 @@ mod tests {
 
         let mock_server = MockServer::start().await;
 
-        let body = serde_json::json!({
-            "scopeEntities": [
-                {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
-                {"name": "Contact", "label": "Contacts", "inSearchScope": true, "searchScopeOrder": 2}
-            ]
-        });
+        // API returns a bare JSON array
+        let body = serde_json::json!([
+            {"name": "Account", "label": "Accounts", "inSearchScope": true, "searchScopeOrder": 1},
+            {"name": "Contact", "label": "Contacts", "inSearchScope": true, "searchScopeOrder": 2}
+        ]);
 
         Mock::given(method("GET"))
             .and(path_regex(".*/search/scopeOrder$"))
@@ -1033,10 +1038,10 @@ mod tests {
             .await
             .expect("search_scope_order should succeed");
 
-        assert_eq!(result.scope_entities.len(), 2);
-        assert_eq!(result.scope_entities[0].name, "Account");
-        assert!(result.scope_entities[0].in_search_scope);
-        assert_eq!(result.scope_entities[1].search_scope_order, 2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "Account");
+        assert!(result[0].in_search_scope);
+        assert_eq!(result[1].search_scope_order, 2);
     }
 
     #[tokio::test]
@@ -1046,17 +1051,16 @@ mod tests {
 
         let mock_server = MockServer::start().await;
 
-        let body = serde_json::json!({
-            "searchLayout": [
-                {
-                    "label": "Accounts",
-                    "columns": [
-                        {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
-                        {"field": "Industry", "label": "Industry", "format": null, "name": "Industry"}
-                    ]
-                }
-            ]
-        });
+        // API returns a bare JSON array
+        let body = serde_json::json!([
+            {
+                "label": "Accounts",
+                "columns": [
+                    {"field": "Name", "label": "Account Name", "format": null, "name": "Name"},
+                    {"field": "Industry", "label": "Industry", "format": null, "name": "Industry"}
+                ]
+            }
+        ]);
 
         Mock::given(method("GET"))
             .and(path_regex(".*/search/layout"))
@@ -1070,9 +1074,9 @@ mod tests {
             .await
             .expect("search_result_layouts should succeed");
 
-        assert_eq!(result.search_layout.len(), 1);
-        assert_eq!(result.search_layout[0].label, "Accounts");
-        assert_eq!(result.search_layout[0].columns.len(), 2);
-        assert_eq!(result.search_layout[0].columns[0].field, "Name");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].label, "Accounts");
+        assert_eq!(result[0].columns.len(), 2);
+        assert_eq!(result[0].columns[0].field, "Name");
     }
 }
