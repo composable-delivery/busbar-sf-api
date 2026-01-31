@@ -33,6 +33,20 @@
 //!     Ok(Json(accounts.records))
 //! }
 //! ```
+//!
+//! ## Testing Strategy
+//!
+//! Traditional unit tests are not feasible for this crate because:
+//! 1. It depends on extism-pdk which requires the Extism WASM runtime
+//! 2. The host functions (sf_query, sf_create, etc.) are only available
+//!    when running inside a WASM plugin loaded by the bridge
+//! 3. The helper functions (call_host_fn, call_host_fn_no_input) require
+//!    these host functions to be present
+//!
+//! This crate is thoroughly tested via:
+//! - Integration tests in sf-bridge that load actual WASM plugins
+//! - The example wasm-guest-plugin that exercises all APIs
+//! - Type safety enforced by the compiler (shared types with sf-wasm-types)
 
 pub use busbar_sf_wasm_types::*;
 use extism_pdk::*;
@@ -641,22 +655,3 @@ where
         .into_result()
         .map_err(|e| Error::msg(e.to_string()))
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
-//
-// Note: Traditional unit tests are not feasible for this crate because:
-// 1. It depends on extism-pdk which requires the Extism WASM runtime
-// 2. The host functions (sf_query, sf_create, etc.) are only available
-//    when running inside a WASM plugin loaded by the bridge
-// 3. The helper functions (call_host_fn, call_host_fn_no_input) require
-//    these host functions to be present
-//
-// This crate is thoroughly tested via:
-// - Integration tests in sf-bridge that load actual WASM plugins
-// - The example wasm-guest-plugin that exercises all APIs
-// - Type safety enforced by the compiler (shared types with sf-wasm-types)
-//
-// If unit testing becomes necessary, it would require mocking the entire
-// extism-pdk runtime environment, which is beyond the scope of this library.

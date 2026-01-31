@@ -39,20 +39,15 @@ async fn test_bridge_rejects_invalid_wasm() {
     let invalid_wasm = vec![0x01, 0x02, 0x03, 0x04];
 
     // Attempt to create a bridge with invalid WASM
+    // Extism/Wasmtime validates WASM at plugin creation time
     let result = SfBridge::new(invalid_wasm, client);
 
-    // The bridge should reject invalid WASM
-    // Note: This test documents expected behavior - Extism may or may not
-    // validate the module at construction time. The key is that it doesn't panic.
-    match result {
-        Ok(_) => {
-            // Some WASM runtimes delay validation until execution
-            // This is acceptable behavior
-        }
-        Err(_) => {
-            // Rejecting invalid WASM at construction is also acceptable
-        }
-    }
+    // Document current behavior: Extism rejects invalid WASM at construction
+    // If this test starts failing, it means Extism changed its validation strategy
+    assert!(
+        result.is_err(),
+        "Bridge should reject invalid WASM at construction time"
+    );
 }
 
 // Note: Full end-to-end tests that actually call host functions require
