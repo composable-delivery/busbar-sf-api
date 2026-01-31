@@ -595,6 +595,63 @@ impl MetadataClient {
         Ok(types)
     }
 
+    /// Describe the fields and structure of a specific metadata value type.
+    ///
+    /// The `type_name` parameter must be a fully namespace-qualified type name
+    /// in the format `{http://soap.sforce.com/2006/04/metadata}TypeName`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let result = client.describe_value_type(
+    ///     "{http://soap.sforce.com/2006/04/metadata}CustomObject"
+    /// ).await?;
+    ///
+    /// for field in &result.value_type_fields {
+    ///     println!("Field: {} ({})", field.name, field.soap_type);
+    /// }
+    /// ```
+    ///
+    /// Available since API v30.0.
+    pub async fn describe_value_type(
+        &self,
+        type_name: &str,
+    ) -> Result<crate::describe::DescribeValueTypeResult> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:met="http://soap.sforce.com/2006/04/metadata">
+  <soapenv:Header>
+    <met:SessionHeader>
+      <met:sessionId>{session_id}</met:sessionId>
+    </met:SessionHeader>
+  </soapenv:Header>
+  <soapenv:Body>
+    <met:describeValueType>
+      <met:type>{type_name}</met:type>
+    </met:describeValueType>
+  </soapenv:Body>
+</soapenv:Envelope>"#,
+            session_id = xml::escape(&self.access_token),
+            type_name = xml::escape(type_name),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("describeValueType"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_describe_value_type_result(&response_text)
+    }
+
     // ========================================================================
     // Private Helper Methods
     // ========================================================================
@@ -1066,6 +1123,247 @@ impl MetadataClient {
             test_required,
         })
     }
+
+    /// Parse describe value type result from XML.
+    fn parse_describe_value_type_result(
+        &self,
+        xml: &str,
+    ) -> Result<crate::describe::DescribeValueTypeResult> {
+        // Extract all top-level valueTypeFields
+        let value_type_fields = self.parse_value_type_fields(xml, "valueTypeFields");
+
+        // Extract the optional parentField
+        let parent_field = if xml.contains("<parentField>") {
+            self.parse_single_value_type_field(xml, "parentField")
+        } else {
+            None
+        };
+
+        Ok(crate::describe::DescribeValueTypeResult {
+            value_type_fields,
+            parent_field,
+        })
+    }
+
+    /// Parse all ValueTypeField elements with a specific tag.
+    fn parse_value_type_fields(
+        &self,
+        xml: &str,
+        tag: &str,
+    ) -> Vec<crate::describe::ValueTypeField> {
+        let mut fields = Vec::new();
+        let start_tag = format!("<{}>", tag);
+        let end_tag = format!("</{}>", tag);
+
+        let mut search_from = xml;
+        while let Some(start_idx) = search_from.find(&start_tag) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            // Find the matching closing tag by counting depth
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(&start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(&end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                // Extract the content within this field (without the tags)
+                let field_content = &remaining[..end_pos];
+
+                // Parse this field
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
+                    fields.push(field);
+                }
+
+                // Move past this field to find more siblings
+                search_from = &remaining[end_pos + end_tag.len()..];
+            } else {
+                // No matching closing tag found, stop searching
+                break;
+            }
+        }
+        fields
+    }
+
+    /// Parse a single ValueTypeField with a specific tag (e.g., "parentField").
+    fn parse_single_value_type_field(
+        &self,
+        xml: &str,
+        tag: &str,
+    ) -> Option<crate::describe::ValueTypeField> {
+        let start_tag = format!("<{}>", tag);
+        let end_tag = format!("</{}>", tag);
+
+        if let Some(start_idx) = xml.find(&start_tag) {
+            let remaining = &xml[start_idx + start_tag.len()..];
+            if let Some(end_idx) = remaining.find(&end_tag) {
+                let content = &remaining[..end_idx];
+                return self.parse_value_type_field_from_content(content);
+            }
+        }
+        None
+    }
+
+    /// Parse nested ValueTypeField elements within a parent field block.
+    /// This handles the recursive structure where fields can contain other fields.
+    fn parse_nested_value_type_fields_in_block(
+        &self,
+        block: &str,
+    ) -> Vec<crate::describe::ValueTypeField> {
+        let mut nested_fields = Vec::new();
+        let start_tag = "<valueTypeFields>";
+        let end_tag = "</valueTypeFields>";
+
+        // Find the first occurrence of the start tag - this would be a nested field
+        // (the outer field's opening tag would be before 'block')
+        let mut search_from = block;
+
+        while let Some(start_idx) = search_from.find(start_tag) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            // Find the matching closing tag by counting depth
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                // Extract the content within this nested field
+                let field_content = &remaining[..end_pos];
+
+                // Parse this nested field recursively
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
+                    nested_fields.push(field);
+                }
+
+                // Move past this field to find more siblings
+                search_from = &remaining[end_pos + end_tag.len()..];
+            } else {
+                // No matching closing tag found, stop searching
+                break;
+            }
+        }
+
+        nested_fields
+    }
+
+    /// Parse a ValueTypeField from the content (without the wrapping tags).
+    fn parse_value_type_field_from_content(
+        &self,
+        content: &str,
+    ) -> Option<crate::describe::ValueTypeField> {
+        let name = self.extract_element(content, "name")?;
+        let soap_type = self.extract_element(content, "soapType")?;
+
+        let is_foreign_key = self
+            .extract_element(content, "isForeignKey")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        let foreign_key_domain = self.extract_element(content, "foreignKeyDomain");
+
+        let is_name_field = self
+            .extract_element(content, "isNameField")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        let min_occurs = self
+            .extract_element(content, "minOccurs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let max_occurs = self
+            .extract_element(content, "maxOccurs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+
+        // Parse picklist values
+        let picklist_values = self.parse_picklist_entries(content);
+
+        // Recursively parse nested fields
+        let fields = self.parse_nested_value_type_fields_in_block(content);
+
+        Some(crate::describe::ValueTypeField {
+            name,
+            soap_type,
+            is_foreign_key,
+            foreign_key_domain,
+            is_name_field,
+            min_occurs,
+            max_occurs,
+            fields,
+            picklist_values,
+        })
+    }
+
+    /// Parse all PicklistEntry elements from XML.
+    fn parse_picklist_entries(&self, xml: &str) -> Vec<crate::describe::PicklistEntry> {
+        let mut entries = Vec::new();
+        let start_tag = "<picklistValues>";
+        let end_tag = "</picklistValues>";
+
+        let mut search_from = xml;
+        while let Some(start_idx) = search_from.find(start_tag) {
+            let remaining = &search_from[start_idx..];
+            if let Some(end_idx) = remaining.find(end_tag) {
+                let block = &remaining[..end_idx + end_tag.len()];
+
+                let active = self
+                    .extract_element(block, "active")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+
+                let default_value = self
+                    .extract_element(block, "defaultValue")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+
+                let label = self.extract_element(block, "label").unwrap_or_default();
+                let value = self.extract_element(block, "value").unwrap_or_default();
+
+                entries.push(crate::describe::PicklistEntry {
+                    active,
+                    default_value,
+                    label,
+                    value,
+                });
+
+                search_from = &remaining[end_idx + end_tag.len()..];
+            } else {
+                break;
+            }
+        }
+        entries
+    }
 }
 
 #[cfg(test)]
@@ -1382,5 +1680,237 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].file_name, "classes/OldClass.cls");
         assert_eq!(result.messages[0].problem, "Entity is deleted");
+    }
+
+    #[test]
+    fn test_parse_describe_value_type_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <describeValueTypeResponse>
+                <result>
+                    <valueTypeFields>
+                        <name>fullName</name>
+                        <soapType>xsd:string</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>true</isNameField>
+                        <minOccurs>1</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </valueTypeFields>
+                    <valueTypeFields>
+                        <name>label</name>
+                        <soapType>xsd:string</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>1</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </valueTypeFields>
+                    <valueTypeFields>
+                        <name>deploymentStatus</name>
+                        <soapType>tns:DeploymentStatus</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                        <picklistValues>
+                            <active>true</active>
+                            <defaultValue>false</defaultValue>
+                            <label>In Development</label>
+                            <value>InDevelopment</value>
+                        </picklistValues>
+                        <picklistValues>
+                            <active>true</active>
+                            <defaultValue>true</defaultValue>
+                            <label>Deployed</label>
+                            <value>Deployed</value>
+                        </picklistValues>
+                    </valueTypeFields>
+                    <parentField>
+                        <name>Metadata</name>
+                        <soapType>tns:Metadata</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </parentField>
+                </result>
+            </describeValueTypeResponse>
+        "#;
+
+        let result = client.parse_describe_value_type_result(xml).unwrap();
+
+        // Check value type fields
+        assert_eq!(result.value_type_fields.len(), 3);
+
+        // Check first field (fullName)
+        assert_eq!(result.value_type_fields[0].name, "fullName");
+        assert_eq!(result.value_type_fields[0].soap_type, "xsd:string");
+        assert!(result.value_type_fields[0].is_name_field);
+        assert!(!result.value_type_fields[0].is_foreign_key);
+        assert_eq!(result.value_type_fields[0].min_occurs, 1);
+        assert_eq!(result.value_type_fields[0].max_occurs, 1);
+
+        // Check second field (label)
+        assert_eq!(result.value_type_fields[1].name, "label");
+        assert!(!result.value_type_fields[1].is_name_field);
+
+        // Check third field (deploymentStatus) with picklist values
+        assert_eq!(result.value_type_fields[2].name, "deploymentStatus");
+        assert_eq!(result.value_type_fields[2].picklist_values.len(), 2);
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[0].label,
+            "In Development"
+        );
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[0].value,
+            "InDevelopment"
+        );
+        assert!(!result.value_type_fields[2].picklist_values[0].default_value);
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[1].label,
+            "Deployed"
+        );
+        assert!(result.value_type_fields[2].picklist_values[1].default_value);
+
+        // Check parent field
+        assert!(result.parent_field.is_some());
+        let parent = result.parent_field.unwrap();
+        assert_eq!(parent.name, "Metadata");
+        assert_eq!(parent.soap_type, "tns:Metadata");
+    }
+
+    #[test]
+    fn test_parse_describe_value_type_result_with_nested_fields() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <describeValueTypeResponse>
+                <result>
+                    <valueTypeFields>
+                        <name>address</name>
+                        <soapType>tns:Address</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                        <valueTypeFields>
+                            <name>street</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                        <valueTypeFields>
+                            <name>city</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                    </valueTypeFields>
+                </result>
+            </describeValueTypeResponse>
+        "#;
+
+        let result = client.parse_describe_value_type_result(xml).unwrap();
+
+        // Check that we have the parent field
+        assert_eq!(result.value_type_fields.len(), 1);
+        let address_field = &result.value_type_fields[0];
+        assert_eq!(address_field.name, "address");
+        assert_eq!(address_field.soap_type, "tns:Address");
+
+        // Check that nested fields are parsed
+        assert_eq!(address_field.fields.len(), 2);
+        assert_eq!(address_field.fields[0].name, "street");
+        assert_eq!(address_field.fields[0].soap_type, "xsd:string");
+        assert_eq!(address_field.fields[1].name, "city");
+        assert_eq!(address_field.fields[1].soap_type, "xsd:string");
+    }
+
+    #[tokio::test]
+    async fn test_describe_value_type_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let soap_response = r#"<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <describeValueTypeResponse xmlns="http://soap.sforce.com/2006/04/metadata">
+      <result>
+        <valueTypeFields>
+          <name>fullName</name>
+          <soapType>xsd:string</soapType>
+          <isForeignKey>false</isForeignKey>
+          <isNameField>true</isNameField>
+          <minOccurs>1</minOccurs>
+          <maxOccurs>1</maxOccurs>
+        </valueTypeFields>
+        <valueTypeFields>
+          <name>label</name>
+          <soapType>xsd:string</soapType>
+          <isForeignKey>false</isForeignKey>
+          <isNameField>false</isNameField>
+          <minOccurs>0</minOccurs>
+          <maxOccurs>1</maxOccurs>
+        </valueTypeFields>
+      </result>
+    </describeValueTypeResponse>
+  </soapenv:Body>
+</soapenv:Envelope>"#;
+
+        Mock::given(method("POST"))
+            .and(path_regex("/services/Soap/m/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(soap_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = MetadataClient::from_parts(mock_server.uri(), "test-token");
+
+        let result = client
+            .describe_value_type("{http://soap.sforce.com/2006/04/metadata}CustomObject")
+            .await
+            .expect("describe_value_type should succeed");
+
+        assert_eq!(result.value_type_fields.len(), 2);
+        assert_eq!(result.value_type_fields[0].name, "fullName");
+        assert!(result.value_type_fields[0].is_name_field);
+        assert_eq!(result.value_type_fields[1].name, "label");
+        assert!(!result.value_type_fields[1].is_name_field);
+        assert!(result.parent_field.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_describe_value_type_soap_fault() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let fault_response = r#"<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>sf:INVALID_TYPE</faultcode>
+      <faultstring>Invalid type: {http://soap.sforce.com/2006/04/metadata}BadType</faultstring>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>"#;
+
+        Mock::given(method("POST"))
+            .and(path_regex("/services/Soap/m/.*"))
+            .respond_with(ResponseTemplate::new(500).set_body_string(fault_response))
+            .mount(&mock_server)
+            .await;
+
+        let client = MetadataClient::from_parts(mock_server.uri(), "test-token");
+
+        let result = client
+            .describe_value_type("{http://soap.sforce.com/2006/04/metadata}BadType")
+            .await;
+
+        assert!(result.is_err(), "Should fail with SOAP fault");
     }
 }
