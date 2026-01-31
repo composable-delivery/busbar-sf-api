@@ -536,9 +536,7 @@ async fn test_type_safe_query() {
 
 #[tokio::test]
 async fn test_parameterized_search() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -581,9 +579,7 @@ async fn test_parameterized_search() {
 
 #[tokio::test]
 async fn test_search_suggestions() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -612,9 +608,7 @@ async fn test_search_suggestions() {
 
 #[tokio::test]
 async fn test_search_scope_order() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -638,9 +632,7 @@ async fn test_search_scope_order() {
 
 #[tokio::test]
 async fn test_search_result_layouts() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -673,9 +665,7 @@ async fn test_search_result_layouts() {
 
 #[tokio::test]
 async fn test_search_suggestions_invalid_sobject() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -690,9 +680,7 @@ async fn test_search_suggestions_invalid_sobject() {
 
 #[tokio::test]
 async fn test_parameterized_search_invalid_sobject() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -716,9 +704,7 @@ async fn test_parameterized_search_invalid_sobject() {
 
 #[tokio::test]
 async fn test_search_result_layouts_invalid_sobject() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
