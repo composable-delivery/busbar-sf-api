@@ -68,6 +68,7 @@ mod response;
 mod retry;
 mod salesforce_client;
 pub mod security;
+pub mod types;
 
 pub use client::SfHttpClient;
 pub use config::{ClientConfig, ClientConfigBuilder, CompressionConfig};
@@ -76,6 +77,9 @@ pub use request::{RequestBuilder, RequestMethod};
 pub use response::{ApiUsage, Response, ResponseExt};
 pub use retry::{BackoffStrategy, RetryConfig, RetryPolicy};
 pub use salesforce_client::{QueryResult, SalesforceClient};
+
+#[cfg(feature = "dependencies")]
+pub use types::MetadataComponentDependency;
 
 /// Default Salesforce API version
 pub const DEFAULT_API_VERSION: &str = "62.0";

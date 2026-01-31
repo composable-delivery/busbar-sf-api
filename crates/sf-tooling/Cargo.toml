@@ -12,6 +12,10 @@ rust-version.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = []
+dependencies = ["busbar-sf-client/dependencies"]
+
 [dependencies]
 busbar-sf-client.workspace = true
 busbar-sf-auth.workspace = true

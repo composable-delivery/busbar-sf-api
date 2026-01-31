@@ -34,6 +34,13 @@ bulk = ["auth", "dep:busbar-sf-bulk"]
 metadata = ["auth", "dep:busbar-sf-metadata"]
 tooling = ["auth", "dep:busbar-sf-tooling"]
 
+# Optional feature for MetadataComponentDependency support in tooling and bulk APIs
+dependencies = [
+    "busbar-sf-client/dependencies",
+    "busbar-sf-tooling/dependencies",
+    "busbar-sf-bulk/dependencies"
+]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

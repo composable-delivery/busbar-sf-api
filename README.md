@@ -238,6 +238,7 @@ See the [examples](examples) directory for comprehensive examples:
 - **[queries.rs](examples/queries.rs)** - SOQL queries with security best practices
 - **[error_handling.rs](examples/error_handling.rs)** - Error handling patterns and retry logic
 - **[bulk_operations.rs](examples/bulk_operations.rs)** - Bulk API 2.0 insert, update, and query operations
+- **[dependencies.rs](examples/dependencies.rs)** - MetadataComponentDependency queries (requires `dependencies` feature)
 
 Run any example with:
 
@@ -246,7 +247,19 @@ Run any example with:
 cargo run --example basic_auth
 cargo run --example rest_crud
 cargo run --example queries
+cargo run --example dependencies --features dependencies
 ```
+
+## Optional Features
+
+The main `busbar-sf-api` crate supports the following optional features:
+
+- **`dependencies`** - Enables MetadataComponentDependency (Beta) support in Tooling API and Bulk API
+  - Tooling API: Query up to 2,000 dependency relationships per query
+  - Bulk API: Query up to 100,000 dependency relationships per query
+  - Example: `cargo run --example dependencies --features dependencies`
+
+Individual crates also support granular feature flags. See each crate's README for details.
 
 ## Security
 
