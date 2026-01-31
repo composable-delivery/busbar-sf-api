@@ -6,6 +6,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT
 use crate::error::Result;
 use crate::types::DEFAULT_API_VERSION;
 
+mod crud_sync;
 mod deploy;
 mod describe;
 mod list;

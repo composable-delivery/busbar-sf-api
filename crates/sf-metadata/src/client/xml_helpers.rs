@@ -3,7 +3,11 @@ use crate::describe::{DescribeMetadataResult, MetadataType};
 use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
 use crate::retrieve::{RetrieveMessage, RetrieveResult, RetrieveStatus};
-use crate::types::{ComponentSuccess, FileProperties, SoapFault, TestFailure};
+use crate::types::{
+    ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
+    SoapFault, TestFailure, UpsertResult,
+};
+use busbar_sf_client::security::xml;
 
 impl super::MetadataClient {
     /// Parse a SOAP fault from the response.
@@ -476,6 +480,501 @@ impl super::MetadataClient {
             test_required,
         })
     }
+
+    /// Parse describe value type result from XML.
+    pub(crate) fn parse_describe_value_type_result(
+        &self,
+        xml: &str,
+    ) -> Result<crate::describe::DescribeValueTypeResult> {
+        let value_type_fields = self.parse_value_type_fields(xml, "valueTypeFields");
+
+        let parent_field = if xml.contains("<parentField>") {
+            self.parse_single_value_type_field(xml, "parentField")
+        } else {
+            None
+        };
+
+        Ok(crate::describe::DescribeValueTypeResult {
+            value_type_fields,
+            parent_field,
+        })
+    }
+
+    /// Parse all ValueTypeField elements with a specific tag.
+    pub(crate) fn parse_value_type_fields(
+        &self,
+        xml: &str,
+        tag: &str,
+    ) -> Vec<crate::describe::ValueTypeField> {
+        let mut fields = Vec::new();
+        let start_tag = format!("<{}>", tag);
+        let end_tag = format!("</{}>", tag);
+
+        let mut search_from = xml;
+        while let Some(start_idx) = search_from.find(&start_tag) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(&start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(&end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                let field_content = &remaining[..end_pos];
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
+                    fields.push(field);
+                }
+                search_from = &remaining[end_pos + end_tag.len()..];
+            } else {
+                break;
+            }
+        }
+        fields
+    }
+
+    /// Parse a single ValueTypeField with a specific tag.
+    pub(crate) fn parse_single_value_type_field(
+        &self,
+        xml: &str,
+        tag: &str,
+    ) -> Option<crate::describe::ValueTypeField> {
+        let start_tag = format!("<{}>", tag);
+        let end_tag = format!("</{}>", tag);
+
+        if let Some(start_idx) = xml.find(&start_tag) {
+            let remaining = &xml[start_idx + start_tag.len()..];
+            if let Some(end_idx) = remaining.find(&end_tag) {
+                let content = &remaining[..end_idx];
+                return self.parse_value_type_field_from_content(content);
+            }
+        }
+        None
+    }
+
+    /// Parse nested ValueTypeField elements within a parent field block.
+    pub(crate) fn parse_nested_value_type_fields_in_block(
+        &self,
+        block: &str,
+    ) -> Vec<crate::describe::ValueTypeField> {
+        let mut nested_fields = Vec::new();
+        let start_tag = "<valueTypeFields>";
+        let end_tag = "</valueTypeFields>";
+
+        let mut search_from = block;
+
+        while let Some(start_idx) = search_from.find(start_tag) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                let field_content = &remaining[..end_pos];
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
+                    nested_fields.push(field);
+                }
+                search_from = &remaining[end_pos + end_tag.len()..];
+            } else {
+                break;
+            }
+        }
+
+        nested_fields
+    }
+
+    /// Parse a ValueTypeField from the content (without the wrapping tags).
+    pub(crate) fn parse_value_type_field_from_content(
+        &self,
+        content: &str,
+    ) -> Option<crate::describe::ValueTypeField> {
+        let name = self.extract_element(content, "name")?;
+        let soap_type = self.extract_element(content, "soapType")?;
+
+        let is_foreign_key = self
+            .extract_element(content, "isForeignKey")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        let foreign_key_domain = self.extract_element(content, "foreignKeyDomain");
+
+        let is_name_field = self
+            .extract_element(content, "isNameField")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        let min_occurs = self
+            .extract_element(content, "minOccurs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
+        let max_occurs = self
+            .extract_element(content, "maxOccurs")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+
+        let picklist_values = self.parse_picklist_entries(content);
+        let fields = self.parse_nested_value_type_fields_in_block(content);
+
+        Some(crate::describe::ValueTypeField {
+            name,
+            soap_type,
+            is_foreign_key,
+            foreign_key_domain,
+            is_name_field,
+            min_occurs,
+            max_occurs,
+            fields,
+            picklist_values,
+        })
+    }
+
+    /// Parse all PicklistEntry elements from XML.
+    pub(crate) fn parse_picklist_entries(&self, xml: &str) -> Vec<crate::describe::PicklistEntry> {
+        let mut entries = Vec::new();
+        let start_tag = "<picklistValues>";
+        let end_tag = "</picklistValues>";
+
+        let mut search_from = xml;
+        while let Some(start_idx) = search_from.find(start_tag) {
+            let remaining = &search_from[start_idx..];
+            if let Some(end_idx) = remaining.find(end_tag) {
+                let block = &remaining[..end_idx + end_tag.len()];
+
+                let active = self
+                    .extract_element(block, "active")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+
+                let default_value = self
+                    .extract_element(block, "defaultValue")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+
+                let label = self.extract_element(block, "label").unwrap_or_default();
+                let value = self.extract_element(block, "value").unwrap_or_default();
+
+                entries.push(crate::describe::PicklistEntry {
+                    active,
+                    default_value,
+                    label,
+                    value,
+                });
+
+                search_from = &remaining[end_idx + end_tag.len()..];
+            } else {
+                break;
+            }
+        }
+        entries
+    }
+
+    /// Parse cancel deploy result from XML.
+    pub(crate) fn parse_cancel_deploy_result(
+        &self,
+        xml: &str,
+    ) -> Result<crate::deploy::CancelDeployResult> {
+        let id = self
+            .extract_element(xml, "id")
+            .ok_or_else(|| Error::new(ErrorKind::InvalidResponse("Missing id".to_string())))?;
+
+        let done = self
+            .extract_element(xml, "done")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        Ok(crate::deploy::CancelDeployResult { id, done })
+    }
+
+    /// Build a metadata element for SOAP body.
+    pub(crate) fn build_metadata_element(
+        &self,
+        metadata_type: &str,
+        metadata_obj: &serde_json::Value,
+    ) -> String {
+        let mut element = format!(
+            "      <met:metadata xsi:type=\"met:{}\">\n",
+            xml::escape(metadata_type)
+        );
+
+        if let Some(obj) = metadata_obj.as_object() {
+            for (key, value) in obj {
+                element.push_str(&Self::build_xml_field(key, value, 8));
+            }
+        }
+
+        element.push_str("      </met:metadata>");
+        element
+    }
+
+    /// Build an XML field for a metadata object.
+    pub(crate) fn build_xml_field(key: &str, value: &serde_json::Value, indent: usize) -> String {
+        let spaces = " ".repeat(indent);
+        let escaped_key = xml::escape(key);
+
+        match value {
+            serde_json::Value::String(s) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces,
+                    escaped_key,
+                    xml::escape(s),
+                    escaped_key
+                )
+            }
+            serde_json::Value::Number(n) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces, escaped_key, n, escaped_key
+                )
+            }
+            serde_json::Value::Bool(b) => {
+                format!(
+                    "{}<met:{}>{}</met:{}>\n",
+                    spaces, escaped_key, b, escaped_key
+                )
+            }
+            serde_json::Value::Null => {
+                format!("{}<met:{} xsi:nil=\"true\"/>\n", spaces, escaped_key)
+            }
+            serde_json::Value::Object(obj) => {
+                let mut result = format!("{}<met:{}>\n", spaces, escaped_key);
+                for (nested_key, nested_value) in obj {
+                    result.push_str(&Self::build_xml_field(nested_key, nested_value, indent + 2));
+                }
+                result.push_str(&format!("{}</met:{}>\n", spaces, escaped_key));
+                result
+            }
+            serde_json::Value::Array(arr) => {
+                let mut result = String::new();
+                for item in arr {
+                    result.push_str(&Self::build_xml_field(key, item, indent));
+                }
+                result
+            }
+        }
+    }
+
+    /// Parse SaveResult elements from SOAP response.
+    pub(crate) fn parse_save_results(&self, xml: &str) -> Result<Vec<SaveResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(SaveResult {
+                    full_name,
+                    success,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse UpsertResult elements from SOAP response.
+    pub(crate) fn parse_upsert_results(&self, xml: &str) -> Result<Vec<UpsertResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let created = self
+                    .extract_element(block, "created")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(UpsertResult {
+                    full_name,
+                    success,
+                    created,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse DeleteResult elements from SOAP response.
+    pub(crate) fn parse_delete_results(&self, xml: &str) -> Result<Vec<DeleteResult>> {
+        let mut results = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let full_name = self.extract_element(block, "fullName").unwrap_or_default();
+                let success = self
+                    .extract_element(block, "success")
+                    .map(|s| s == "true")
+                    .unwrap_or(false);
+                let errors = self.parse_metadata_errors(block);
+
+                results.push(DeleteResult {
+                    full_name,
+                    success,
+                    errors,
+                });
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(results)
+    }
+
+    /// Parse ReadResult from SOAP response.
+    pub(crate) fn parse_read_result(&self, xml: &str) -> Result<ReadResult> {
+        let mut records = Vec::new();
+        let pattern = "<result";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</result>") {
+                let block = &remaining[..end + "</result>".len()];
+
+                let mut metadata_obj = serde_json::Map::new();
+
+                if let Some(full_name) = self.extract_element(block, "fullName") {
+                    metadata_obj
+                        .insert("fullName".to_string(), serde_json::Value::String(full_name));
+                }
+
+                if let Some(label) = self.extract_element(block, "label") {
+                    metadata_obj.insert("label".to_string(), serde_json::Value::String(label));
+                }
+
+                metadata_obj.insert(
+                    "_rawXml".to_string(),
+                    serde_json::Value::String(block.to_string()),
+                );
+
+                records.push(serde_json::Value::Object(metadata_obj));
+
+                search_from = &remaining[end + "</result>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        Ok(ReadResult { records })
+    }
+
+    /// Parse single SaveResult from rename operation.
+    pub(crate) fn parse_rename_result(&self, xml: &str) -> Result<SaveResult> {
+        let full_name = self.extract_element(xml, "fullName").unwrap_or_default();
+        let success = self
+            .extract_element(xml, "success")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+        let errors = self.parse_metadata_errors(xml);
+
+        Ok(SaveResult {
+            full_name,
+            success,
+            errors,
+        })
+    }
+
+    /// Parse MetadataError elements from a result block.
+    pub(crate) fn parse_metadata_errors(&self, xml: &str) -> Vec<MetadataError> {
+        let mut errors = Vec::new();
+        let pattern = "<errors>";
+        let mut search_from = xml;
+
+        while let Some(start) = search_from.find(pattern) {
+            let remaining = &search_from[start..];
+            if let Some(end) = remaining.find("</errors>") {
+                let block = &remaining[..end + "</errors>".len()];
+
+                let status_code = self
+                    .extract_element(block, "statusCode")
+                    .unwrap_or_default();
+                let message = self.extract_element(block, "message").unwrap_or_default();
+                let fields = self.extract_elements(block, "fields");
+
+                errors.push(MetadataError {
+                    status_code,
+                    message,
+                    fields,
+                });
+
+                search_from = &remaining[end + "</errors>".len()..];
+            } else {
+                break;
+            }
+        }
+
+        errors
+    }
 }
 
 #[cfg(test)]
@@ -756,5 +1255,325 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].file_name, "classes/OldClass.cls");
         assert_eq!(result.messages[0].problem, "Entity is deleted");
+    }
+
+    #[test]
+    fn test_parse_describe_value_type_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <describeValueTypeResponse>
+                <result>
+                    <valueTypeFields>
+                        <name>fullName</name>
+                        <soapType>xsd:string</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>true</isNameField>
+                        <minOccurs>1</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </valueTypeFields>
+                    <valueTypeFields>
+                        <name>label</name>
+                        <soapType>xsd:string</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>1</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </valueTypeFields>
+                    <valueTypeFields>
+                        <name>deploymentStatus</name>
+                        <soapType>tns:DeploymentStatus</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                        <picklistValues>
+                            <active>true</active>
+                            <defaultValue>false</defaultValue>
+                            <label>In Development</label>
+                            <value>InDevelopment</value>
+                        </picklistValues>
+                        <picklistValues>
+                            <active>true</active>
+                            <defaultValue>true</defaultValue>
+                            <label>Deployed</label>
+                            <value>Deployed</value>
+                        </picklistValues>
+                    </valueTypeFields>
+                    <parentField>
+                        <name>Metadata</name>
+                        <soapType>tns:Metadata</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                    </parentField>
+                </result>
+            </describeValueTypeResponse>
+        "#;
+
+        let result = client.parse_describe_value_type_result(xml).unwrap();
+        assert_eq!(result.value_type_fields.len(), 3);
+        assert_eq!(result.value_type_fields[0].name, "fullName");
+        assert_eq!(result.value_type_fields[0].soap_type, "xsd:string");
+        assert!(result.value_type_fields[0].is_name_field);
+        assert!(!result.value_type_fields[0].is_foreign_key);
+        assert_eq!(result.value_type_fields[0].min_occurs, 1);
+        assert_eq!(result.value_type_fields[0].max_occurs, 1);
+        assert_eq!(result.value_type_fields[1].name, "label");
+        assert!(!result.value_type_fields[1].is_name_field);
+        assert_eq!(result.value_type_fields[2].name, "deploymentStatus");
+        assert_eq!(result.value_type_fields[2].picklist_values.len(), 2);
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[0].label,
+            "In Development"
+        );
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[0].value,
+            "InDevelopment"
+        );
+        assert!(!result.value_type_fields[2].picklist_values[0].default_value);
+        assert_eq!(
+            result.value_type_fields[2].picklist_values[1].label,
+            "Deployed"
+        );
+        assert!(result.value_type_fields[2].picklist_values[1].default_value);
+        assert!(result.parent_field.is_some());
+        let parent = result.parent_field.unwrap();
+        assert_eq!(parent.name, "Metadata");
+        assert_eq!(parent.soap_type, "tns:Metadata");
+    }
+
+    #[test]
+    fn test_parse_describe_value_type_result_with_nested_fields() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <describeValueTypeResponse>
+                <result>
+                    <valueTypeFields>
+                        <name>address</name>
+                        <soapType>tns:Address</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                        <valueTypeFields>
+                            <name>street</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                        <valueTypeFields>
+                            <name>city</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                    </valueTypeFields>
+                </result>
+            </describeValueTypeResponse>
+        "#;
+
+        let result = client.parse_describe_value_type_result(xml).unwrap();
+        assert_eq!(result.value_type_fields.len(), 1);
+        let address_field = &result.value_type_fields[0];
+        assert_eq!(address_field.name, "address");
+        assert_eq!(address_field.soap_type, "tns:Address");
+        assert_eq!(address_field.fields.len(), 2);
+        assert_eq!(address_field.fields[0].name, "street");
+        assert_eq!(address_field.fields[0].soap_type, "xsd:string");
+        assert_eq!(address_field.fields[1].name, "city");
+        assert_eq!(address_field.fields[1].soap_type, "xsd:string");
+    }
+
+    #[test]
+    fn test_parse_cancel_deploy_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <cancelDeployResponse>
+                <result>
+                    <id>0Af123456789ABC</id>
+                    <done>true</done>
+                </result>
+            </cancelDeployResponse>
+        "#;
+
+        let result = client.parse_cancel_deploy_result(xml).unwrap();
+        assert_eq!(result.id, "0Af123456789ABC");
+        assert!(result.done);
+    }
+
+    #[test]
+    fn test_parse_cancel_deploy_result_not_done() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <cancelDeployResponse>
+                <result>
+                    <id>0Af123456789ABC</id>
+                    <done>false</done>
+                </result>
+            </cancelDeployResponse>
+        "#;
+
+        let result = client.parse_cancel_deploy_result(xml).unwrap();
+        assert_eq!(result.id, "0Af123456789ABC");
+        assert!(!result.done);
+    }
+
+    #[test]
+    fn test_parse_save_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <createMetadataResponse>
+                <result>
+                    <fullName>MyObject__c</fullName>
+                    <success>true</success>
+                </result>
+                <result>
+                    <fullName>FailedObject__c</fullName>
+                    <success>false</success>
+                    <errors>
+                        <statusCode>INVALID_FIELD</statusCode>
+                        <message>Invalid field name</message>
+                        <fields>Name</fields>
+                    </errors>
+                </result>
+            </createMetadataResponse>
+        "#;
+
+        let results = client.parse_save_results(xml).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].full_name, "MyObject__c");
+        assert!(results[0].success);
+        assert_eq!(results[0].errors.len(), 0);
+        assert_eq!(results[1].full_name, "FailedObject__c");
+        assert!(!results[1].success);
+        assert_eq!(results[1].errors.len(), 1);
+        assert_eq!(results[1].errors[0].status_code, "INVALID_FIELD");
+        assert_eq!(results[1].errors[0].message, "Invalid field name");
+        assert_eq!(results[1].errors[0].fields, vec!["Name"]);
+    }
+
+    #[test]
+    fn test_parse_upsert_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <upsertMetadataResponse>
+                <result>
+                    <fullName>CreatedObject__c</fullName>
+                    <success>true</success>
+                    <created>true</created>
+                </result>
+                <result>
+                    <fullName>UpdatedObject__c</fullName>
+                    <success>true</success>
+                    <created>false</created>
+                </result>
+            </upsertMetadataResponse>
+        "#;
+
+        let results = client.parse_upsert_results(xml).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].full_name, "CreatedObject__c");
+        assert!(results[0].success);
+        assert!(results[0].created);
+        assert_eq!(results[1].full_name, "UpdatedObject__c");
+        assert!(results[1].success);
+        assert!(!results[1].created);
+    }
+
+    #[test]
+    fn test_parse_delete_results() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <deleteMetadataResponse>
+                <result>
+                    <fullName>DeletedObject__c</fullName>
+                    <success>true</success>
+                </result>
+            </deleteMetadataResponse>
+        "#;
+
+        let results = client.parse_delete_results(xml).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].full_name, "DeletedObject__c");
+        assert!(results[0].success);
+    }
+
+    #[test]
+    fn test_parse_read_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <readMetadataResponse>
+                <result>
+                    <fullName>Account</fullName>
+                    <label>Account</label>
+                </result>
+                <result>
+                    <fullName>Contact</fullName>
+                    <label>Contact</label>
+                </result>
+            </readMetadataResponse>
+        "#;
+
+        let result = client.parse_read_result(xml).unwrap();
+        assert_eq!(result.records.len(), 2);
+        if let Some(obj) = result.records[0].as_object() {
+            assert_eq!(
+                obj.get("fullName").and_then(|v| v.as_str()),
+                Some("Account")
+            );
+            assert_eq!(obj.get("label").and_then(|v| v.as_str()), Some("Account"));
+        } else {
+            panic!("Expected object");
+        }
+    }
+
+    #[test]
+    fn test_parse_rename_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <renameMetadataResponse>
+                <result>
+                    <fullName>NewName__c</fullName>
+                    <success>true</success>
+                </result>
+            </renameMetadataResponse>
+        "#;
+
+        let result = client.parse_rename_result(xml).unwrap();
+        assert_eq!(result.full_name, "NewName__c");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_parse_metadata_errors() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <result>
+                <errors>
+                    <statusCode>INVALID_FIELD</statusCode>
+                    <message>Invalid field</message>
+                    <fields>Name</fields>
+                    <fields>Type</fields>
+                </errors>
+                <errors>
+                    <statusCode>DUPLICATE_VALUE</statusCode>
+                    <message>Duplicate value found</message>
+                </errors>
+            </result>
+        "#;
+
+        let errors = client.parse_metadata_errors(xml);
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0].status_code, "INVALID_FIELD");
+        assert_eq!(errors[0].message, "Invalid field");
+        assert_eq!(errors[0].fields, vec!["Name", "Type"]);
+        assert_eq!(errors[1].status_code, "DUPLICATE_VALUE");
+        assert_eq!(errors[1].message, "Duplicate value found");
+        assert_eq!(errors[1].fields.len(), 0);
     }
 }

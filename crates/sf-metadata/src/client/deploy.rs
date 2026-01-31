@@ -183,4 +183,98 @@ impl super::MetadataClient {
         self.poll_deploy_status(&async_id, timeout, poll_interval)
             .await
     }
+
+    /// Cancel an in-progress deployment.
+    ///
+    /// Requests cancellation of a deployment identified by its async process ID.
+    /// Note that cancellation is asynchronous — this method returns immediately,
+    /// but you must call `check_deploy_status()` to see when the deployment
+    /// actually reaches `Canceled` or `Canceling` status.
+    ///
+    /// Available since API v30.0.
+    pub async fn cancel_deploy(
+        &self,
+        async_process_id: &str,
+    ) -> Result<crate::deploy::CancelDeployResult> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Header>
+    <SessionHeader xmlns="http://soap.sforce.com/2006/04/metadata">
+      <sessionId>{session_id}</sessionId>
+    </SessionHeader>
+  </soap:Header>
+  <soap:Body>
+    <cancelDeploy xmlns="http://soap.sforce.com/2006/04/metadata">
+      <String>{process_id}</String>
+    </cancelDeploy>
+  </soap:Body>
+</soap:Envelope>"#,
+            session_id = self.access_token,
+            process_id = xml::escape(async_process_id),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("cancelDeploy"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_cancel_deploy_result(&response_text)
+    }
+
+    /// Quick-deploy a recently validated deployment without re-running Apex tests.
+    ///
+    /// First deploy with `checkOnly=true` to validate and run tests. If validation
+    /// succeeds, call this method with the validation deploy ID to quick-deploy
+    /// without re-running tests.
+    ///
+    /// Available since API v33.0.
+    pub async fn deploy_recent_validation(&self, validation_id: &str) -> Result<String> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Header>
+    <SessionHeader xmlns="http://soap.sforce.com/2006/04/metadata">
+      <sessionId>{session_id}</sessionId>
+    </SessionHeader>
+  </soap:Header>
+  <soap:Body>
+    <deployRecentValidation xmlns="http://soap.sforce.com/2006/04/metadata">
+      <validationId>{validation_id}</validationId>
+    </deployRecentValidation>
+  </soap:Body>
+</soap:Envelope>"#,
+            session_id = self.access_token,
+            validation_id = xml::escape(validation_id),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("deployRecentValidation"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.extract_element(&response_text, "id").ok_or_else(|| {
+            Error::new(ErrorKind::InvalidResponse(
+                "No async process ID in deployRecentValidation response".to_string(),
+            ))
+        })
+    }
 }
