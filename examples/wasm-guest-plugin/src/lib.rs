@@ -90,7 +90,7 @@ pub fn create_account_with_contact(input: String) -> FnResult<Json<CompositeResp
         subrequests: vec![
             CompositeSubrequest {
                 method: "POST".to_string(),
-                url: "/services/data/v62.0/sobjects/Account".to_string(),
+                url: "/services/data/v65.0/sobjects/Account".to_string(),
                 reference_id: "NewAccount".to_string(),
                 body: Some(serde_json::json!({
                     "Name": account_name
@@ -98,7 +98,7 @@ pub fn create_account_with_contact(input: String) -> FnResult<Json<CompositeResp
             },
             CompositeSubrequest {
                 method: "POST".to_string(),
-                url: "/services/data/v62.0/sobjects/Contact".to_string(),
+                url: "/services/data/v65.0/sobjects/Contact".to_string(),
                 reference_id: "NewContact".to_string(),
                 body: Some(serde_json::json!({
                     "LastName": contact_name,

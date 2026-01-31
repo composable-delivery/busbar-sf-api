@@ -8,7 +8,9 @@
 //! ## Security
 //!
 //! - Credentials never cross the WASM boundary
-//! - All inputs are validated using sf-client's security utilities
+//! - WASM guests are responsible for SOQL injection prevention in queries
+//!   they construct (using sf-guest-sdk's security utilities or QueryBuilder)
+//! - IDs, SObject names, and field names in structured requests are validated
 //! - Errors are sanitized before returning to the guest
 
 use base64::{engine::general_purpose, Engine as _};
@@ -17,6 +19,90 @@ use busbar_sf_metadata::MetadataClient;
 use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_tooling::ToolingClient;
 use busbar_sf_wasm_types::*;
+
+// =============================================================================
+// Error Sanitization
+// =============================================================================
+
+/// Sanitize an error for safe return to WASM guests.
+///
+/// Maps internal error types to stable, non-leaking error codes.
+/// The message is preserved as it typically contains user-actionable info,
+/// but the code is sanitized to avoid exposing internal type names.
+fn sanitize_rest_error(err: &busbar_sf_rest::Error) -> (String, String) {
+    use busbar_sf_client::ErrorKind as ClientErrorKind;
+    use busbar_sf_rest::ErrorKind as RestErrorKind;
+
+    let code = match &err.kind {
+        RestErrorKind::Client(_msg) => {
+            // Check if the source is a client error with more specific kind
+            if let Some(source) = &err.source {
+                if let Some(client_err) = source.downcast_ref::<busbar_sf_client::Error>() {
+                    match &client_err.kind {
+                        ClientErrorKind::Http { status, .. } => format!("HTTP_{}", status),
+                        ClientErrorKind::RateLimited { .. } => "RATE_LIMITED".to_string(),
+                        ClientErrorKind::Authentication(_) => "AUTH_ERROR".to_string(),
+                        ClientErrorKind::Authorization(_) => "AUTHORIZATION_ERROR".to_string(),
+                        ClientErrorKind::NotFound(_) => "NOT_FOUND".to_string(),
+                        ClientErrorKind::PreconditionFailed(_) => "PRECONDITION_FAILED".to_string(),
+                        ClientErrorKind::Timeout => "TIMEOUT".to_string(),
+                        ClientErrorKind::Connection(_) => "CONNECTION_ERROR".to_string(),
+                        ClientErrorKind::Json(_) => "JSON_ERROR".to_string(),
+                        ClientErrorKind::InvalidUrl(_) => "INVALID_URL".to_string(),
+                        ClientErrorKind::Serialization(_) => "SERIALIZATION_ERROR".to_string(),
+                        ClientErrorKind::Config(_) => "CONFIG_ERROR".to_string(),
+                        ClientErrorKind::SalesforceApi { error_code, .. } => error_code.clone(),
+                        ClientErrorKind::RetriesExhausted { .. } => "RETRIES_EXHAUSTED".to_string(),
+                        ClientErrorKind::Other(_) => "CLIENT_ERROR".to_string(),
+                    }
+                } else {
+                    "CLIENT_ERROR".to_string()
+                }
+            } else {
+                "CLIENT_ERROR".to_string()
+            }
+        }
+        RestErrorKind::Auth(_) => "AUTH_ERROR".to_string(),
+        RestErrorKind::Salesforce { error_code, .. } => error_code.clone(),
+        RestErrorKind::Other(_) => "OTHER_ERROR".to_string(),
+    };
+
+    (code, err.to_string())
+}
+
+/// Sanitize bulk API errors.
+fn sanitize_bulk_error(err: &busbar_sf_bulk::Error) -> (String, String) {
+    // Bulk errors typically wrap client/rest errors, so try to extract those
+    if let Some(source) = &err.source {
+        if let Some(rest_err) = source.downcast_ref::<busbar_sf_rest::Error>() {
+            return sanitize_rest_error(rest_err);
+        }
+    }
+    // Fallback to generic bulk error code
+    ("BULK_ERROR".to_string(), err.to_string())
+}
+
+/// Sanitize tooling API errors.
+fn sanitize_tooling_error(err: &busbar_sf_tooling::Error) -> (String, String) {
+    // Tooling errors typically wrap client/rest errors
+    if let Some(source) = &err.source {
+        if let Some(rest_err) = source.downcast_ref::<busbar_sf_rest::Error>() {
+            return sanitize_rest_error(rest_err);
+        }
+    }
+    ("TOOLING_ERROR".to_string(), err.to_string())
+}
+
+/// Sanitize metadata API errors.
+fn sanitize_metadata_error(err: &busbar_sf_metadata::Error) -> (String, String) {
+    // Metadata errors wrap various error types
+    if let Some(source) = &err.source {
+        if let Some(rest_err) = source.downcast_ref::<busbar_sf_rest::Error>() {
+            return sanitize_rest_error(rest_err);
+        }
+    }
+    ("METADATA_ERROR".to_string(), err.to_string())
+}
 
 // =============================================================================
 // REST API Handlers
@@ -42,7 +128,10 @@ pub(crate) async fn handle_query(
             records: qr.records,
             next_records_url: qr.next_records_url,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -61,7 +150,10 @@ pub(crate) async fn handle_query_more(
             records: qr.records,
             next_records_url: qr.next_records_url,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -76,7 +168,10 @@ pub(crate) async fn handle_create(
             success: true,
             errors: vec![],
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -96,7 +191,10 @@ pub(crate) async fn handle_get(
 
     match result {
         Ok(record) => BridgeResult::ok(record),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -110,7 +208,10 @@ pub(crate) async fn handle_update(
         .await
     {
         Ok(()) => BridgeResult::ok(()),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -121,7 +222,10 @@ pub(crate) async fn handle_delete(
 ) -> BridgeResult<()> {
     match client.delete(&request.sobject, &request.id).await {
         Ok(()) => BridgeResult::ok(()),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -153,7 +257,10 @@ pub(crate) async fn handle_upsert(
                 })
                 .collect(),
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -166,7 +273,10 @@ pub(crate) async fn handle_describe_global(
             Ok(v) => BridgeResult::ok(v),
             Err(e) => BridgeResult::err("SERIALIZATION_ERROR", e.to_string()),
         },
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -180,7 +290,10 @@ pub(crate) async fn handle_describe_sobject(
             Ok(v) => BridgeResult::ok(v),
             Err(e) => BridgeResult::err("SERIALIZATION_ERROR", e.to_string()),
         },
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -193,7 +306,10 @@ pub(crate) async fn handle_search(
         Ok(result) => BridgeResult::ok(SearchResponse {
             search_records: result.search_records,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -229,7 +345,10 @@ pub(crate) async fn handle_composite(
                 })
                 .collect(),
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -265,7 +384,10 @@ pub(crate) async fn handle_composite_batch(
                 })
                 .collect(),
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -308,7 +430,10 @@ pub(crate) async fn handle_composite_tree(
                 })
                 .collect(),
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -322,7 +447,10 @@ pub(crate) async fn handle_create_multiple(
         .await
     {
         Ok(results) => BridgeResult::ok(collection_results_to_bridge(results)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -341,7 +469,10 @@ pub(crate) async fn handle_update_multiple(
         .await
     {
         Ok(results) => BridgeResult::ok(collection_results_to_bridge(results)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -357,7 +488,10 @@ pub(crate) async fn handle_get_multiple(
         .await
     {
         Ok(results) => BridgeResult::ok(results),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -369,7 +503,10 @@ pub(crate) async fn handle_delete_multiple(
     let ids: Vec<&str> = request.ids.iter().map(|s| s.as_str()).collect();
     match client.delete_multiple(&ids, request.all_or_none).await {
         Ok(results) => BridgeResult::ok(collection_results_to_bridge(results)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -379,7 +516,10 @@ pub(crate) async fn handle_limits(
 ) -> BridgeResult<serde_json::Value> {
     match client.limits().await {
         Ok(result) => BridgeResult::ok(result),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -398,7 +538,10 @@ pub(crate) async fn handle_versions(
                 })
                 .collect(),
         ),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -435,7 +578,10 @@ pub(crate) async fn handle_bulk_create_ingest_job(
 
     match client.create_ingest_job(sf_request).await {
         Ok(job) => BridgeResult::ok(ingest_job_to_bridge(job)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -449,7 +595,10 @@ pub(crate) async fn handle_bulk_upload_job_data(
         .await
     {
         Ok(()) => BridgeResult::ok(()),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -460,7 +609,10 @@ pub(crate) async fn handle_bulk_close_ingest_job(
 ) -> BridgeResult<BulkJobResponse> {
     match client.close_ingest_job(&request.job_id).await {
         Ok(job) => BridgeResult::ok(ingest_job_to_bridge(job)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -471,7 +623,10 @@ pub(crate) async fn handle_bulk_abort_ingest_job(
 ) -> BridgeResult<BulkJobResponse> {
     match client.abort_ingest_job(&request.job_id).await {
         Ok(job) => BridgeResult::ok(ingest_job_to_bridge(job)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -482,7 +637,10 @@ pub(crate) async fn handle_bulk_get_ingest_job(
 ) -> BridgeResult<BulkJobResponse> {
     match client.get_ingest_job(&request.job_id).await {
         Ok(job) => BridgeResult::ok(ingest_job_to_bridge(job)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -505,7 +663,10 @@ pub(crate) async fn handle_bulk_get_job_results(
 
     match result {
         Ok(csv_data) => BridgeResult::ok(BulkJobResultsResponse { csv_data }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -516,7 +677,10 @@ pub(crate) async fn handle_bulk_delete_ingest_job(
 ) -> BridgeResult<()> {
     match client.delete_ingest_job(&request.job_id).await {
         Ok(()) => BridgeResult::ok(()),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -530,7 +694,10 @@ pub(crate) async fn handle_bulk_get_all_ingest_jobs(
             done: list.done,
             next_records_url: list.next_records_url,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -541,7 +708,10 @@ pub(crate) async fn handle_bulk_abort_query_job(
 ) -> BridgeResult<BulkJobResponse> {
     match client.abort_query_job(&request.job_id).await {
         Ok(job) => BridgeResult::ok(query_job_to_bridge(job)),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -562,7 +732,10 @@ pub(crate) async fn handle_bulk_get_query_results(
             csv_data: results.csv_data,
             locator: results.locator,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_bulk_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -582,7 +755,10 @@ pub(crate) async fn handle_tooling_query(
             records: qr.records,
             next_records_url: qr.next_records_url,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_tooling_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -601,7 +777,10 @@ pub(crate) async fn handle_tooling_execute_anonymous(
             line: result.line,
             column: result.column,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_tooling_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -615,7 +794,10 @@ pub(crate) async fn handle_tooling_get(
         .await
     {
         Ok(record) => BridgeResult::ok(record),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_tooling_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -630,7 +812,10 @@ pub(crate) async fn handle_tooling_create(
             success: true,
             errors: vec![],
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_tooling_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -641,7 +826,10 @@ pub(crate) async fn handle_tooling_delete(
 ) -> BridgeResult<()> {
     match client.delete(&request.sobject, &request.id).await {
         Ok(()) => BridgeResult::ok(()),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_tooling_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -677,7 +865,10 @@ pub(crate) async fn handle_metadata_deploy(
 
     match client.deploy(&zip_bytes, options).await {
         Ok(async_process_id) => BridgeResult::ok(MetadataDeployResponse { async_process_id }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -703,7 +894,10 @@ pub(crate) async fn handle_metadata_check_deploy_status(
             number_tests_completed: result.number_tests_completed as i32,
             number_tests_total: result.number_tests_total as i32,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -733,7 +927,10 @@ pub(crate) async fn handle_metadata_retrieve(
 
     match result {
         Ok(async_process_id) => BridgeResult::ok(MetadataRetrieveResponse { async_process_id }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -754,7 +951,10 @@ pub(crate) async fn handle_metadata_check_retrieve_status(
             zip_base64: result.zip_file,
             error_message: result.error_message,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -780,7 +980,10 @@ pub(crate) async fn handle_metadata_list(
                 })
                 .collect(),
         ),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 
@@ -806,7 +1009,10 @@ pub(crate) async fn handle_metadata_describe(
             partial_save_allowed: result.partial_save_allowed,
             test_required: result.test_required,
         }),
-        Err(e) => BridgeResult::err(format!("{:?}", e.kind), e.to_string()),
+        Err(e) => {
+            let (code, message) = sanitize_metadata_error(&e);
+            BridgeResult::err(code, message)
+        }
     }
 }
 

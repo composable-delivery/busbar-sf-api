@@ -102,8 +102,8 @@ pub(crate) struct BridgeState {
     pub(crate) rest_client: SalesforceRestClient,
     pub(crate) bulk_client: BulkApiClient,
     pub(crate) tooling_client: ToolingClient,
-    pub(crate) instance_url: String,
-    pub(crate) access_token: String,
+    pub(crate) instance_url: Arc<str>,
+    pub(crate) access_token: Arc<str>,
     pub(crate) handle: tokio::runtime::Handle,
 }
 
@@ -111,7 +111,7 @@ impl BridgeState {
     /// Construct a fresh MetadataClient. MetadataClient is not Clone,
     /// so we build one on-demand from stored credentials.
     pub(crate) fn metadata_client(&self) -> MetadataClient {
-        MetadataClient::from_parts(&self.instance_url, &self.access_token)
+        MetadataClient::from_parts(&*self.instance_url, &*self.access_token)
     }
 }
 
@@ -125,8 +125,8 @@ pub struct SfBridge {
     rest_client: SalesforceRestClient,
     bulk_client: BulkApiClient,
     tooling_client: ToolingClient,
-    instance_url: String,
-    access_token: String,
+    instance_url: Arc<str>,
+    access_token: Arc<str>,
     handle: tokio::runtime::Handle,
 }
 
@@ -151,8 +151,8 @@ impl SfBridge {
         handle: tokio::runtime::Handle,
     ) -> Result<Self> {
         let inner = rest_client.inner();
-        let instance_url = inner.instance_url().to_string();
-        let access_token = inner.access_token().to_string();
+        let instance_url: Arc<str> = inner.instance_url().to_string().into();
+        let access_token: Arc<str> = inner.access_token().to_string().into();
 
         let bulk_client = BulkApiClient::from_client(inner.clone());
         let tooling_client = ToolingClient::from_client(inner.clone());
@@ -185,8 +185,8 @@ impl SfBridge {
         let rest_client = self.rest_client.clone();
         let bulk_client = self.bulk_client.clone();
         let tooling_client = self.tooling_client.clone();
-        let instance_url = self.instance_url.clone();
-        let access_token = self.access_token.clone();
+        let instance_url = Arc::clone(&self.instance_url);
+        let access_token = Arc::clone(&self.access_token);
         let handle = self.handle.clone();
         let function = function.to_string();
 

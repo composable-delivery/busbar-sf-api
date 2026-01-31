@@ -33,6 +33,20 @@
 //!     Ok(Json(accounts.records))
 //! }
 //! ```
+//!
+//! ## Testing Strategy
+//!
+//! Traditional unit tests are not feasible for this crate because:
+//! 1. It depends on extism-pdk which requires the Extism WASM runtime
+//! 2. The host functions (sf_query, sf_create, etc.) are only available
+//!    when running inside a WASM plugin loaded by the bridge
+//! 3. The helper functions (call_host_fn, call_host_fn_no_input) require
+//!    these host functions to be present
+//!
+//! This crate is thoroughly tested via:
+//! - Integration tests in sf-bridge that load actual WASM plugins
+//! - The example wasm-guest-plugin that exercises all APIs
+//! - Type safety enforced by the compiler (shared types with sf-wasm-types)
 
 pub use busbar_sf_wasm_types::*;
 use extism_pdk::*;
@@ -287,7 +301,7 @@ pub fn create_multiple(
 /// Update multiple records in a single request (up to 200).
 pub fn update_multiple(
     sobject: &str,
-    records: Vec<UpdateRecord>,
+    records: Vec<UpdateMultipleRecord>,
     all_or_none: bool,
 ) -> Result<Vec<CollectionResult>, Error> {
     let request = UpdateMultipleRequest {
@@ -456,7 +470,7 @@ pub fn bulk_abort_query_job(job_id: &str) -> Result<BulkJobResponse, Error> {
 pub fn bulk_get_query_results(
     job_id: &str,
     locator: Option<String>,
-    max_records: Option<u32>,
+    max_records: Option<u64>,
 ) -> Result<BulkQueryResultsResponse, Error> {
     let request = BulkQueryResultsRequest {
         job_id: job_id.to_string(),
