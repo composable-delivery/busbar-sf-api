@@ -612,11 +612,6 @@ impl MetadataClient {
     /// }
     /// ```
     ///
-    /// # Limitations
-    ///
-    /// The current implementation does not parse deeply nested field structures.
-    /// The `fields` property of `ValueTypeField` will be empty in this version.
-    ///
     /// Available since API v30.0.
     pub async fn describe_value_type(
         &self,
@@ -1162,14 +1157,42 @@ impl MetadataClient {
 
         let mut search_from = xml;
         while let Some(start_idx) = search_from.find(&start_tag) {
-            let remaining = &search_from[start_idx..];
-            if let Some(end_idx) = remaining.find(&end_tag) {
-                let block = &remaining[..end_idx + end_tag.len()];
-                if let Some(field) = self.parse_value_type_field_from_block(block) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            // Find the matching closing tag by counting depth
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(&start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(&end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                // Extract the content within this field (without the tags)
+                let field_content = &remaining[..end_pos];
+
+                // Parse this field
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
                     fields.push(field);
                 }
-                search_from = &remaining[end_idx + end_tag.len()..];
+
+                // Move past this field to find more siblings
+                search_from = &remaining[end_pos + end_tag.len()..];
             } else {
+                // No matching closing tag found, stop searching
                 break;
             }
         }
@@ -1186,52 +1209,108 @@ impl MetadataClient {
         let end_tag = format!("</{}>", tag);
 
         if let Some(start_idx) = xml.find(&start_tag) {
-            let remaining = &xml[start_idx..];
+            let remaining = &xml[start_idx + start_tag.len()..];
             if let Some(end_idx) = remaining.find(&end_tag) {
-                let block = &remaining[..end_idx + end_tag.len()];
-                return self.parse_value_type_field_from_block(block);
+                let content = &remaining[..end_idx];
+                return self.parse_value_type_field_from_content(content);
             }
         }
         None
     }
 
-    /// Parse a ValueTypeField from a block of XML.
-    fn parse_value_type_field_from_block(
+    /// Parse nested ValueTypeField elements within a parent field block.
+    /// This handles the recursive structure where fields can contain other fields.
+    fn parse_nested_value_type_fields_in_block(
         &self,
         block: &str,
+    ) -> Vec<crate::describe::ValueTypeField> {
+        let mut nested_fields = Vec::new();
+        let start_tag = "<valueTypeFields>";
+        let end_tag = "</valueTypeFields>";
+
+        // Find the first occurrence of the start tag - this would be a nested field
+        // (the outer field's opening tag would be before 'block')
+        let mut search_from = block;
+
+        while let Some(start_idx) = search_from.find(start_tag) {
+            let remaining = &search_from[start_idx + start_tag.len()..];
+
+            // Find the matching closing tag by counting depth
+            let mut depth = 1;
+            let mut pos = 0;
+            let mut found_end = None;
+
+            while pos < remaining.len() && depth > 0 {
+                if remaining[pos..].starts_with(start_tag) {
+                    depth += 1;
+                    pos += start_tag.len();
+                } else if remaining[pos..].starts_with(end_tag) {
+                    depth -= 1;
+                    if depth == 0 {
+                        found_end = Some(pos);
+                        break;
+                    }
+                    pos += end_tag.len();
+                } else {
+                    pos += 1;
+                }
+            }
+
+            if let Some(end_pos) = found_end {
+                // Extract the content within this nested field
+                let field_content = &remaining[..end_pos];
+
+                // Parse this nested field recursively
+                if let Some(field) = self.parse_value_type_field_from_content(field_content) {
+                    nested_fields.push(field);
+                }
+
+                // Move past this field to find more siblings
+                search_from = &remaining[end_pos + end_tag.len()..];
+            } else {
+                // No matching closing tag found, stop searching
+                break;
+            }
+        }
+
+        nested_fields
+    }
+
+    /// Parse a ValueTypeField from the content (without the wrapping tags).
+    fn parse_value_type_field_from_content(
+        &self,
+        content: &str,
     ) -> Option<crate::describe::ValueTypeField> {
-        let name = self.extract_element(block, "name")?;
-        let soap_type = self.extract_element(block, "soapType")?;
+        let name = self.extract_element(content, "name")?;
+        let soap_type = self.extract_element(content, "soapType")?;
 
         let is_foreign_key = self
-            .extract_element(block, "isForeignKey")
+            .extract_element(content, "isForeignKey")
             .map(|s| s == "true")
             .unwrap_or(false);
 
-        let foreign_key_domain = self.extract_element(block, "foreignKeyDomain");
+        let foreign_key_domain = self.extract_element(content, "foreignKeyDomain");
 
         let is_name_field = self
-            .extract_element(block, "isNameField")
+            .extract_element(content, "isNameField")
             .map(|s| s == "true")
             .unwrap_or(false);
 
         let min_occurs = self
-            .extract_element(block, "minOccurs")
+            .extract_element(content, "minOccurs")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
 
         let max_occurs = self
-            .extract_element(block, "maxOccurs")
+            .extract_element(content, "maxOccurs")
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
 
         // Parse picklist values
-        let picklist_values = self.parse_picklist_entries(block);
+        let picklist_values = self.parse_picklist_entries(content);
 
-        // Nested field parsing is not implemented in this version to avoid complexity
-        // and potential infinite recursion. The fields property will always be empty.
-        // Future enhancement: parse nested valueTypeFields with proper depth tracking
-        let fields = Vec::new();
+        // Recursively parse nested fields
+        let fields = self.parse_nested_value_type_fields_in_block(content);
 
         Some(crate::describe::ValueTypeField {
             name,
@@ -1697,6 +1776,56 @@ mod tests {
         let parent = result.parent_field.unwrap();
         assert_eq!(parent.name, "Metadata");
         assert_eq!(parent.soap_type, "tns:Metadata");
+    }
+
+    #[test]
+    fn test_parse_describe_value_type_result_with_nested_fields() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <describeValueTypeResponse>
+                <result>
+                    <valueTypeFields>
+                        <name>address</name>
+                        <soapType>tns:Address</soapType>
+                        <isForeignKey>false</isForeignKey>
+                        <isNameField>false</isNameField>
+                        <minOccurs>0</minOccurs>
+                        <maxOccurs>1</maxOccurs>
+                        <valueTypeFields>
+                            <name>street</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                        <valueTypeFields>
+                            <name>city</name>
+                            <soapType>xsd:string</soapType>
+                            <isForeignKey>false</isForeignKey>
+                            <isNameField>false</isNameField>
+                            <minOccurs>0</minOccurs>
+                            <maxOccurs>1</maxOccurs>
+                        </valueTypeFields>
+                    </valueTypeFields>
+                </result>
+            </describeValueTypeResponse>
+        "#;
+
+        let result = client.parse_describe_value_type_result(xml).unwrap();
+
+        // Check that we have the parent field
+        assert_eq!(result.value_type_fields.len(), 1);
+        let address_field = &result.value_type_fields[0];
+        assert_eq!(address_field.name, "address");
+        assert_eq!(address_field.soap_type, "tns:Address");
+
+        // Check that nested fields are parsed
+        assert_eq!(address_field.fields.len(), 2);
+        assert_eq!(address_field.fields[0].name, "street");
+        assert_eq!(address_field.fields[0].soap_type, "xsd:string");
+        assert_eq!(address_field.fields[1].name, "city");
+        assert_eq!(address_field.fields[1].soap_type, "xsd:string");
     }
 
     #[tokio::test]
