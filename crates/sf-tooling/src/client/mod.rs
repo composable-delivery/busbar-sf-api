@@ -12,6 +12,8 @@ mod code_intelligence;
 mod collections;
 mod composite;
 mod coverage;
+#[cfg(feature = "dependencies")]
+mod dependencies;
 mod describe;
 mod execute;
 mod logs;

@@ -628,6 +628,13 @@ pub struct Reference {
     pub ref_type: Option<String>,
 }
 
+// ============================================================================
+// Metadata Component Dependency (Beta)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+pub use busbar_sf_client::MetadataComponentDependency;
+
 #[cfg(test)]
 mod tests {
     use super::*;

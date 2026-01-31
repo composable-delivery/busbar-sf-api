@@ -31,6 +31,7 @@ urlencoding.workspace = true
 [features]
 default = ["query-builder"]
 query-builder = ["busbar-sf-rest"]
+dependencies = ["busbar-sf-client/dependencies"]
 
 [dev-dependencies]
 wiremock.workspace = true

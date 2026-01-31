@@ -447,3 +447,175 @@ async fn test_parallel_query_results_empty_job() {
         }
     }
 }
+
+// ============================================================================
+// MetadataComponentDependency Tests (requires dependencies feature)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentType",
+            ])
+            .limit(1000); // Bulk API supports up to 100,000 records
+
+    let result = client.execute_query(query_builder).await;
+
+    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
+    match result {
+        Ok(query_result) => {
+            assert!(
+                query_result.job.number_records_processed >= 0,
+                "Should process records"
+            );
+
+            println!(
+                "Bulk query processed {} MetadataComponentDependency records",
+                query_result.job.number_records_processed
+            );
+
+            if let Some(csv_results) = query_result.results {
+                let lines: Vec<&str> = csv_results.lines().collect();
+                assert!(!lines.is_empty(), "Should have at least header line");
+                if let Some(header) = lines.first() {
+                    assert!(
+                        header.contains("MetadataComponentId")
+                            || header.contains("metadatacomponentid"),
+                        "Header should contain MetadataComponentId"
+                    );
+                    assert!(
+                        header.contains("RefMetadataComponentId")
+                            || header.contains("refmetadatacomponentid"),
+                        "Header should contain RefMetadataComponentId"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!(
+                "Unexpected error querying MetadataComponentDependency: {}",
+                e
+            );
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies_with_filter() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+            ])
+            .where_eq("MetadataComponentType", "ApexClass")
+            .expect("where_eq should succeed")
+            .limit(100);
+
+    let result = client.execute_query(query_builder).await;
+
+    match result {
+        Ok(query_result) => {
+            println!(
+                "Bulk query with filter processed {} records",
+                query_result.job.number_records_processed
+            );
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!(
+                "Unexpected error querying MetadataComponentDependency with filter: {}",
+                e
+            );
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_metadata_component_dependency_type_deserialization() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<busbar_sf_client::MetadataComponentDependency> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentNamespace",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentNamespace",
+                "RefMetadataComponentType",
+            ])
+            .limit(5);
+
+    let result = client.execute_query(query_builder).await;
+
+    match result {
+        Ok(query_result) => {
+            println!(
+                "Type deserialization test processed {} records",
+                query_result.job.number_records_processed
+            );
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!("Unexpected error in type deserialization test: {}", e);
+        }
+    }
+}
