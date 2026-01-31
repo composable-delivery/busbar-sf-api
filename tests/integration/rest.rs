@@ -771,3 +771,198 @@ async fn test_type_safe_query() {
         assert!(!account.name.is_empty(), "Account should have name");
     }
 }
+
+// ============================================================================
+// Layout API Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_rest_describe_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_layouts("Account")
+        .await
+        .expect("describe_layouts should succeed for Account");
+
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_layouts_contact() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_layouts("Contact")
+        .await
+        .expect("describe_layouts should succeed for Contact");
+
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_approval_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_approval_layouts("Account")
+        .await
+        .expect("describe_approval_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Approval layout response should be a JSON object"
+    );
+    assert!(
+        result.get("approvalLayouts").is_some(),
+        "Response should contain approvalLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_compact_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_compact_layouts("Account")
+        .await
+        .expect("describe_compact_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Compact layout response should be a JSON object"
+    );
+    assert!(
+        result.get("compactLayouts").is_some(),
+        "Response should contain compactLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_global_publisher_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_global_publisher_layouts()
+        .await
+        .expect("describe_global_publisher_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Global publisher layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_named_layout() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // First, get available layouts to find a valid layout name
+    let layouts_result = client
+        .describe_layouts("Account")
+        .await
+        .expect("describe_layouts should succeed");
+
+    // Try to extract a layout name from the response
+    if let Some(layouts) = layouts_result.get("layouts").and_then(|l| l.as_array()) {
+        if let Some(first_layout) = layouts.first() {
+            if let Some(layout_name) = first_layout.get("name").and_then(|n| n.as_str()) {
+                let named_result = client
+                    .describe_named_layout("Account", layout_name)
+                    .await
+                    .expect("describe_named_layout should succeed");
+
+                assert!(
+                    named_result.is_object(),
+                    "Named layout response should be a JSON object"
+                );
+            } else {
+                println!("Note: No layout name found in first layout, skipping named layout test");
+            }
+        } else {
+            println!("Note: No layouts found for Account, skipping named layout test");
+        }
+    } else {
+        println!("Note: layouts not in expected format, skipping named layout test");
+    }
+}
+
+// ============================================================================
+// Layout API Error Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_rest_describe_layouts_invalid_sobject() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.describe_layouts("InvalidObject__c__c").await;
+
+    assert!(
+        result.is_err(),
+        "describe_layouts should fail for invalid SObject"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_layouts_injection_attempt() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.describe_layouts("Account'; DROP TABLE--").await;
+
+    assert!(
+        result.is_err(),
+        "describe_layouts should reject SQL injection attempts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_named_layout_special_chars() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Test that special characters in layout names are properly URL-encoded
+    let result = client
+        .describe_named_layout("Account", "Layout With Spaces")
+        .await;
+
+    // This might fail if the layout doesn't exist, but should not fail due to URL encoding
+    // The error should be a 404 or similar, not a URL parsing error
+    if let Err(e) = result {
+        let error_msg = format!("{:?}", e);
+        assert!(
+            !error_msg.contains("url") || !error_msg.contains("parse"),
+            "Should not fail due to URL parsing issues"
+        );
+    }
+}

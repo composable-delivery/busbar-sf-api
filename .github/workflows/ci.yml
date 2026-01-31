@@ -49,7 +49,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run unit tests with coverage
-        run: cargo llvm-cov --workspace --all-features --lib --lcov --output-path lcov-unit.info
+        run: cargo llvm-cov --workspace --all-features --lib --no-report
+
+      - name: Generate LCOV report
+        if: always()
+        run: cargo llvm-cov report --lcov --output-path lcov-unit.info
 
       - name: Run doc tests
         run: cargo test --workspace --doc
@@ -58,7 +62,7 @@ jobs:
         if: always()
         run: |
           echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
@@ -117,7 +121,13 @@ jobs:
       - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
+        run: cargo llvm-cov --workspace --all-features --test integration --no-report -- --nocapture
+
+      - name: Generate LCOV report
+        if: always()
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo llvm-cov report --lcov --output-path lcov-integration.info
 
       - name: Generate summary
         if: always()
@@ -125,7 +135,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
