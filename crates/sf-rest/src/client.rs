@@ -1251,4 +1251,254 @@ mod tests {
         assert!(result["layouts"].is_array());
         assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
+
+    // =========================================================================
+    // Standalone REST Resource Wiremock Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_tabs_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!([
+            {"label": "Home", "name": "standard-home", "custom": false},
+            {"label": "Accounts", "name": "standard-Account", "custom": false}
+        ]);
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tabs$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.tabs().await.expect("tabs should succeed");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0]["label"], "Home");
+    }
+
+    #[tokio::test]
+    async fn test_theme_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"themeItems": [{"name": "Account", "colors": []}]});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/theme$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.theme().await.expect("theme should succeed");
+        assert!(result["themeItems"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_app_menu_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"appMenuItems": [{"label": "Sales", "type": "Aloha"}]});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/appMenu/AppSwitcher$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .app_menu("AppSwitcher")
+            .await
+            .expect("app_menu should succeed");
+        assert!(result["appMenuItems"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_app_menu_invalid_type() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.app_menu("../../etc/passwd").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("INVALID_APP_MENU_TYPE"));
+    }
+
+    #[tokio::test]
+    async fn test_recent_items_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!([{"attributes": {"type": "Account"}, "Id": "001xx1", "Name": "Acme"}]);
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/recent$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .recent_items()
+            .await
+            .expect("recent_items should succeed");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["Name"], "Acme");
+    }
+
+    #[tokio::test]
+    async fn test_relevant_items_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"rules": [], "userPreferences": {}});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/relevantItems$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .relevant_items()
+            .await
+            .expect("relevant_items should succeed");
+        assert!(result.is_object());
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"Account": {"name": "System Default"}});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/compactLayouts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .compact_layouts("Account")
+            .await
+            .expect("compact_layouts should succeed");
+        assert!(result["Account"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.compact_layouts("Account,Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_empty_input() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.compact_layouts("").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_INPUT"));
+    }
+
+    #[tokio::test]
+    async fn test_platform_event_schema_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"name": "Order_Event__e", "type": "record", "fields": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/event/eventSchema/Order_Event__e$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .platform_event_schema("Order_Event__e")
+            .await
+            .expect("platform_event_schema should succeed");
+        assert_eq!(result["name"], "Order_Event__e");
+    }
+
+    #[tokio::test]
+    async fn test_platform_event_schema_invalid_name() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.platform_event_schema("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("INVALID_EVENT_NAME"));
+    }
+
+    #[tokio::test]
+    async fn test_lightning_toggle_metrics_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"metricsData": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/lightning/toggleMetrics$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .lightning_toggle_metrics()
+            .await
+            .expect("lightning_toggle_metrics should succeed");
+        assert!(result["metricsData"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_lightning_usage_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"lightningUsageData": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/lightning/usage$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .lightning_usage()
+            .await
+            .expect("lightning_usage should succeed");
+        assert!(result["lightningUsageData"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_rest_deploy_returns_error() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.rest_deploy(&[0u8; 10], &serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("multipart/form-data"));
+    }
 }
