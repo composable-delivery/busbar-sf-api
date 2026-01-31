@@ -852,8 +852,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_describe_layouts_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.describe_layouts("Bad'; DROP--").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
@@ -871,7 +870,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Account/describe/namedLayouts/MyLayout"))
+            .and(path_regex(
+                ".*/sobjects/Account/describe/namedLayouts/MyLayout",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
