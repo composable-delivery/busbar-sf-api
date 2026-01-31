@@ -709,7 +709,7 @@ pub struct MetadataPackageType {
 }
 
 fn default_api_version() -> String {
-    "62.0".to_string()
+    "65.0".to_string()
 }
 
 /// Response from a metadata retrieve request (async process ID).

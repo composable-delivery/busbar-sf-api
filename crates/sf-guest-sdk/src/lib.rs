@@ -287,7 +287,7 @@ pub fn create_multiple(
 /// Update multiple records in a single request (up to 200).
 pub fn update_multiple(
     sobject: &str,
-    records: Vec<UpdateRecord>,
+    records: Vec<UpdateMultipleRecord>,
     all_or_none: bool,
 ) -> Result<Vec<CollectionResult>, Error> {
     let request = UpdateMultipleRequest {
@@ -456,7 +456,7 @@ pub fn bulk_abort_query_job(job_id: &str) -> Result<BulkJobResponse, Error> {
 pub fn bulk_get_query_results(
     job_id: &str,
     locator: Option<String>,
-    max_records: Option<u32>,
+    max_records: Option<u64>,
 ) -> Result<BulkQueryResultsResponse, Error> {
     let request = BulkQueryResultsRequest {
         job_id: job_id.to_string(),
