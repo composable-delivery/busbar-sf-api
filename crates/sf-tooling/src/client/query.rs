@@ -43,6 +43,10 @@ impl super::ToolingClient {
     }
 
     /// Execute a SOQL query including deleted and archived records.
+    ///
+    /// Note: The Tooling API does not expose a `/queryAll` endpoint.
+    /// This method uses the standard REST API `/queryAll` resource, which
+    /// also works for Tooling API objects (ApexClass, ApexTrigger, etc.).
     #[instrument(skip(self))]
     pub async fn query_all_records<T: DeserializeOwned>(
         &self,
@@ -50,7 +54,7 @@ impl super::ToolingClient {
     ) -> Result<QueryResult<T>> {
         let encoded = urlencoding::encode(soql);
         let url = format!(
-            "{}/services/data/v{}/tooling/queryAll/?q={}",
+            "{}/services/data/v{}/queryAll/?q={}",
             self.client.instance_url(),
             self.client.api_version(),
             encoded
@@ -92,7 +96,7 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/tooling/queryAll/"))
+            .and(path_regex(".*/queryAll/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;

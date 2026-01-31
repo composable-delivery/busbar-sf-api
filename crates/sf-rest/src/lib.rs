@@ -144,7 +144,7 @@ pub use process::{
 // PR #53: Invocable Action types
 pub use invocable_actions::{
     InvocableAction, InvocableActionCollection, InvocableActionDescribe, InvocableActionParameter,
-    InvocableActionRequest, InvocableActionResult,
+    InvocableActionRequest, InvocableActionResult, InvocableActionTypeMap,
 };
 
 // PR #54: Consent types

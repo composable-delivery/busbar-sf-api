@@ -55,7 +55,7 @@ impl super::SalesforceRestClient {
     #[instrument(skip(self))]
     pub async fn relevant_items(&self) -> Result<serde_json::Value> {
         self.client
-            .rest_get("relevantItems")
+            .rest_get("sobjects/relevantItems")
             .await
             .map_err(Into::into)
     }
@@ -242,7 +242,7 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/relevantItems$"))
+            .and(path_regex(".*/sobjects/relevantItems$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;

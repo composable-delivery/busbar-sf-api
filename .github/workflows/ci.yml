@@ -118,6 +118,11 @@ jobs:
             exit 1
           fi
 
+      - name: Setup test data
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo test --workspace --all-features --test integration -- --nocapture test_00_setup_test_data 2>&1 || true
+
       - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}

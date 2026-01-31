@@ -1,5 +1,74 @@
 use busbar_sf_auth::SalesforceCredentials;
 
+/// Test account names used for integration test data setup.
+/// These have a unique prefix so they can be identified and cleaned up.
+pub const TEST_ACCOUNT_NAMES: &[&str] = &[
+    "BusbarIntTest_Alpha Corp",
+    "BusbarIntTest_Beta Industries",
+    "BusbarIntTest_Gamma Solutions",
+];
+
+/// Ensure test Account records exist in the org.
+///
+/// Creates Account records with known names. Uses upsert-like logic:
+/// queries first, creates only if missing. Returns the Account IDs.
+///
+/// This function is safe to call from multiple tests — it creates
+/// records idempotently.
+pub async fn ensure_test_accounts(client: &busbar_sf_rest::SalesforceRestClient) -> Vec<String> {
+    // Check if test accounts already exist
+    let existing: Vec<serde_json::Value> = client
+        .query_all("SELECT Id, Name FROM Account WHERE Name LIKE 'BusbarIntTest_%' LIMIT 10")
+        .await
+        .expect("Query for test accounts should succeed");
+
+    if existing.len() >= TEST_ACCOUNT_NAMES.len() {
+        // Already have enough test accounts
+        return existing
+            .iter()
+            .filter_map(|r| r.get("Id").and_then(|v| v.as_str()).map(String::from))
+            .collect();
+    }
+
+    // Create missing test accounts
+    let existing_names: Vec<String> = existing
+        .iter()
+        .filter_map(|r| r.get("Name").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+
+    let mut ids: Vec<String> = existing
+        .iter()
+        .filter_map(|r| r.get("Id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+
+    for name in TEST_ACCOUNT_NAMES {
+        if !existing_names.iter().any(|n| n == name) {
+            let id = client
+                .create("Account", &serde_json::json!({"Name": name}))
+                .await
+                .expect("Create test account should succeed");
+            ids.push(id);
+        }
+    }
+
+    ids
+}
+
+/// Clean up test Account records created by `ensure_test_accounts`.
+#[allow(dead_code)]
+pub async fn cleanup_test_accounts(client: &busbar_sf_rest::SalesforceRestClient) {
+    let accounts: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM Account WHERE Name LIKE 'BusbarIntTest_%' LIMIT 100")
+        .await
+        .unwrap_or_default();
+
+    for account in accounts {
+        if let Some(id) = account.get("Id").and_then(|v| v.as_str()) {
+            let _ = client.delete("Account", id).await;
+        }
+    }
+}
+
 /// Get authenticated credentials for integration tests.
 ///
 /// **IMPORTANT**: Integration tests MUST run against a real Salesforce org.

@@ -6,6 +6,26 @@ use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, Salesf
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Test Data Setup (runs first via CI "Setup test data" step)
+// ============================================================================
+
+/// Creates test Account records used by search and other tests.
+/// Called explicitly by CI before the main test run to ensure data exists.
+#[tokio::test]
+async fn test_00_setup_test_data() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let ids = super::common::ensure_test_accounts(&client).await;
+    assert!(
+        !ids.is_empty(),
+        "Should have created or found test accounts"
+    );
+    println!("Test data setup: {} accounts ready", ids.len());
+}
+
+// ============================================================================
 // REST API - Comprehensive Tests
 // ============================================================================
 
@@ -773,8 +793,12 @@ async fn test_parameterized_search() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
+    // Ensure test data exists (search index may not include these yet,
+    // but the API call should succeed regardless)
+    super::common::ensure_test_accounts(&client).await;
+
     let request = busbar_sf_rest::ParameterizedSearchRequest {
-        q: "test*".to_string(),
+        q: "BusbarIntTest*".to_string(),
         fields: None,
         sobjects: Some(vec![busbar_sf_rest::SearchSObjectSpec {
             name: "Account".to_string(),
@@ -788,7 +812,11 @@ async fn test_parameterized_search() {
     };
 
     let result = client.parameterized_search(&request).await;
-    assert!(result.is_ok(), "Parameterized search should succeed");
+    assert!(
+        result.is_ok(),
+        "Parameterized search should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
@@ -808,7 +836,11 @@ async fn test_search_result_layouts() {
         .expect("Failed to create REST client");
 
     let result = client.search_result_layouts(&["Account", "Contact"]).await;
-    assert!(result.is_ok(), "search_result_layouts should succeed");
+    assert!(
+        result.is_ok(),
+        "search_result_layouts should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
@@ -817,8 +849,15 @@ async fn test_search_suggestions() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.search_suggestions("test", "Account").await;
-    assert!(result.is_ok(), "search_suggestions should succeed");
+    // Ensure test accounts exist for suggestions to find
+    super::common::ensure_test_accounts(&client).await;
+
+    let result = client.search_suggestions("Busbar", "Account").await;
+    assert!(
+        result.is_ok(),
+        "search_suggestions should succeed: {:?}",
+        result.err()
+    );
 }
 
 // ============================================================================
@@ -912,9 +951,16 @@ async fn test_list_views_list() {
         .expect("Failed to create REST client");
 
     let result = client.list_views("Account").await;
-    assert!(result.is_ok(), "list_views should succeed for Account");
+    assert!(
+        result.is_ok(),
+        "list_views should succeed for Account: {:?}",
+        result.err()
+    );
     let collection = result.unwrap();
-    assert!(!collection.listviews.is_empty(), "Should have list views");
+    assert!(
+        !collection.listviews.is_empty(),
+        "Account should have default list views (All Accounts, My Accounts, etc.)"
+    );
 }
 
 #[tokio::test]
@@ -1149,17 +1195,45 @@ async fn test_approvals_error_invalid_id() {
 // ============================================================================
 
 #[tokio::test]
+async fn test_invocable_actions_list_standard_types() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let types = client
+        .list_standard_action_types()
+        .await
+        .expect("list_standard_action_types should succeed");
+    assert!(
+        !types.is_empty(),
+        "Should have standard action type categories"
+    );
+}
+
+#[tokio::test]
 async fn test_invocable_actions_list_standard() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.list_standard_actions().await;
-    assert!(result.is_ok(), "list_standard_actions should succeed");
-    let collection = result.unwrap();
-    assert!(
-        !collection.actions.is_empty(),
-        "Should have standard actions"
+    // First discover action type categories
+    let types = client
+        .list_standard_action_types()
+        .await
+        .expect("list_standard_action_types should succeed");
+    assert!(!types.is_empty(), "Should have standard action types");
+
+    // List actions for the first available type category
+    let first_type = types.keys().next().unwrap();
+    let collection = client
+        .list_standard_actions(first_type)
+        .await
+        .expect("list_standard_actions should succeed");
+    // Some categories may be empty, but the API call should succeed
+    println!(
+        "Standard actions for type '{}': {} actions",
+        first_type,
+        collection.actions.len()
     );
 }
 
@@ -1169,21 +1243,28 @@ async fn test_invocable_actions_describe_standard() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let collection = client
-        .list_standard_actions()
+    // Discover types, then find an action to describe
+    let types = client
+        .list_standard_action_types()
         .await
-        .expect("list_standard_actions should succeed");
+        .expect("list_standard_action_types should succeed");
 
-    if let Some(action) = collection.actions.first() {
-        let result = client.describe_standard_action(&action.name).await;
-        assert!(
-            result.is_ok(),
-            "describe_standard_action should succeed for {}",
-            action.name
-        );
-    } else {
-        println!("Note: No standard actions found, skipping describe test");
+    // Try each type category until we find one with actions
+    for action_type in types.keys() {
+        let collection = client
+            .list_standard_actions(action_type)
+            .await
+            .expect("list_standard_actions should succeed");
+        if let Some(action) = collection.actions.first() {
+            let describe = client
+                .describe_standard_action(&action.name)
+                .await
+                .expect("describe_standard_action should succeed");
+            assert_eq!(describe.name, action.name);
+            return;
+        }
     }
+    panic!("No standard actions found in any category to describe");
 }
 
 #[tokio::test]
@@ -1192,39 +1273,45 @@ async fn test_invocable_actions_invoke_standard() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let collection = client
-        .list_standard_actions()
+    // Discover types, then find an action to invoke
+    let types = client
+        .list_standard_action_types()
         .await
-        .expect("list_standard_actions should succeed");
+        .expect("list_standard_action_types should succeed");
 
-    if let Some(action) = collection.actions.first() {
-        let request = busbar_sf_rest::InvocableActionRequest {
-            inputs: vec![serde_json::json!({})],
-        };
+    for action_type in types.keys() {
+        let collection = client
+            .list_standard_actions(action_type)
+            .await
+            .expect("list_standard_actions should succeed");
+        if let Some(action) = collection.actions.first() {
+            let request = busbar_sf_rest::InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
 
-        let result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> =
-            client.invoke_standard_action(&action.name, &request).await;
-        // May fail depending on required inputs, but tests the API call
-        match result {
-            Ok(results) => println!("Invoked standard action: {} results", results.len()),
-            Err(e) => println!(
-                "invoke_standard_action failed (may be expected without required inputs): {}",
-                e
-            ),
+            // Invoke may fail due to missing required inputs — that's expected
+            // behavior for an empty-input invocation. The test validates the
+            // API call itself works (auth, endpoint, serialization).
+            let _result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> =
+                client.invoke_standard_action(&action.name, &request).await;
+            return;
         }
-    } else {
-        println!("Note: No standard actions found, skipping invoke test");
     }
+    panic!("No standard actions found in any category to invoke");
 }
 
 #[tokio::test]
-async fn test_invocable_actions_list_custom() {
+async fn test_invocable_actions_list_custom_types() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.list_custom_actions().await;
-    assert!(result.is_ok(), "list_custom_actions should succeed");
+    let types = client
+        .list_custom_action_types()
+        .await
+        .expect("list_custom_action_types should succeed");
+    // Custom action types may be empty on a fresh scratch org — that's valid
+    println!("Custom action type categories: {}", types.len());
 }
 
 #[tokio::test]
@@ -1233,21 +1320,27 @@ async fn test_invocable_actions_describe_custom() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let collection = client
-        .list_custom_actions()
+    let types = client
+        .list_custom_action_types()
         .await
-        .expect("list_custom_actions should succeed");
+        .expect("list_custom_action_types should succeed");
 
-    if let Some(action) = collection.actions.first() {
-        let result = client.describe_custom_action(&action.name).await;
-        assert!(
-            result.is_ok(),
-            "describe_custom_action should succeed for {}",
-            action.name
-        );
-    } else {
-        println!("Note: No custom actions found, skipping describe test");
+    for action_type in types.keys() {
+        let collection = client
+            .list_custom_actions(action_type)
+            .await
+            .expect("list_custom_actions should succeed");
+        if let Some(action) = collection.actions.first() {
+            let describe = client
+                .describe_custom_action(&action.name)
+                .await
+                .expect("describe_custom_action should succeed");
+            assert_eq!(describe.name, action.name);
+            return;
+        }
     }
+    // No custom actions is valid on a fresh scratch org
+    println!("No custom actions found — scratch org has no custom actions deployed");
 }
 
 #[tokio::test]
@@ -1256,29 +1349,28 @@ async fn test_invocable_actions_invoke_custom() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let collection = client
-        .list_custom_actions()
+    let types = client
+        .list_custom_action_types()
         .await
-        .expect("list_custom_actions should succeed");
+        .expect("list_custom_action_types should succeed");
 
-    if let Some(action) = collection.actions.first() {
-        let request = busbar_sf_rest::InvocableActionRequest {
-            inputs: vec![serde_json::json!({})],
-        };
+    for action_type in types.keys() {
+        let collection = client
+            .list_custom_actions(action_type)
+            .await
+            .expect("list_custom_actions should succeed");
+        if let Some(action) = collection.actions.first() {
+            let request = busbar_sf_rest::InvocableActionRequest {
+                inputs: vec![serde_json::json!({})],
+            };
 
-        let result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> =
-            client.invoke_custom_action(&action.name, &request).await;
-        // May fail depending on required inputs, but tests the API call
-        match result {
-            Ok(results) => println!("Invoked custom action: {} results", results.len()),
-            Err(e) => println!(
-                "invoke_custom_action failed (may be expected without required inputs): {}",
-                e
-            ),
+            let _result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> =
+                client.invoke_custom_action(&action.name, &request).await;
+            return;
         }
-    } else {
-        println!("Note: No custom actions found, skipping invoke test");
     }
+    // No custom actions is valid on a fresh scratch org
+    println!("No custom actions found — scratch org has no custom actions deployed");
 }
 
 #[tokio::test]
@@ -1338,8 +1430,14 @@ async fn test_data_category_groups() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
+    // This endpoint requires Knowledge to be enabled in the scratch org.
+    // Create the org with: sf org create scratch -f config/project-scratch-def.json
     let result = client.data_category_groups(None).await;
-    assert!(result.is_ok(), "data_category_groups should succeed");
+    assert!(
+        result.is_ok(),
+        "data_category_groups should succeed (requires Knowledge enabled — see config/project-scratch-def.json): {:?}",
+        result.err()
+    );
 }
 
 // ============================================================================

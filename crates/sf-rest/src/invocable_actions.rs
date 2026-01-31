@@ -11,11 +11,17 @@ pub struct InvocableAction {
     pub action_type: String,
 }
 
-/// Collection of invocable actions.
+/// Collection of invocable actions returned from a type-specific endpoint
+/// (e.g., `/actions/standard/apex`).
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct InvocableActionCollection {
+    #[serde(default)]
     pub actions: Vec<InvocableAction>,
 }
+
+/// Map of action type categories to their sub-resource URLs,
+/// returned from `/actions/standard` or `/actions/custom`.
+pub type InvocableActionTypeMap = std::collections::HashMap<String, String>;
 
 /// Detailed description of an invocable action.
 #[derive(Debug, Clone, Deserialize, Serialize)]

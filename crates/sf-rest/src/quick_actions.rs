@@ -19,10 +19,10 @@ pub struct QuickActionDescribe {
     pub label: String,
     #[serde(rename = "type")]
     pub action_type: String,
-    #[serde(rename = "targetSobjectType")]
+    #[serde(rename = "targetSobjectType", default)]
     pub target_sobject_type: String,
     #[serde(rename = "targetRecordTypeId")]
-    pub target_record_type_id: String,
+    pub target_record_type_id: Option<String>,
     pub layout: Option<serde_json::Value>,
     #[serde(rename = "defaultValues")]
     pub default_values: Option<serde_json::Value>,
@@ -97,8 +97,29 @@ mod tests {
         let describe: QuickActionDescribe = serde_json::from_value(json).unwrap();
         assert_eq!(describe.name, "NewCase");
         assert_eq!(describe.target_sobject_type, "Case");
+        assert_eq!(
+            describe.target_record_type_id.as_deref(),
+            Some("012000000000000AAA")
+        );
         assert_eq!(describe.icons.len(), 1);
         assert_eq!(describe.icons[0].height, 32);
+    }
+
+    #[test]
+    fn test_quick_action_describe_null_record_type() {
+        let json = json!({
+            "name": "LogACall",
+            "label": "Log a Call",
+            "type": "LogACall",
+            "targetSobjectType": "Task",
+            "targetRecordTypeId": null,
+            "layout": null,
+            "defaultValues": null,
+            "icons": []
+        });
+        let describe: QuickActionDescribe = serde_json::from_value(json).unwrap();
+        assert_eq!(describe.name, "LogACall");
+        assert!(describe.target_record_type_id.is_none());
     }
 
     #[test]
