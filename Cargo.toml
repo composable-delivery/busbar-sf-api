@@ -59,6 +59,9 @@ serde.workspace = true
 serde_json.workspace = true
 tracing-subscriber.workspace = true
 
+[dev-dependencies]
+busbar-sf-bridge = { workspace = true }
+
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
