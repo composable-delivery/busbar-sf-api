@@ -429,9 +429,7 @@ async fn test_tooling_error_invalid_log_id() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_tooling_query_metadata_component_dependencies() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -451,9 +449,7 @@ async fn test_tooling_query_metadata_component_dependencies() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_tooling_query_metadata_component_dependencies_with_filter() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -487,9 +483,7 @@ async fn test_tooling_query_metadata_component_dependencies_with_filter() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_tooling_query_metadata_component_dependencies_raw() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 

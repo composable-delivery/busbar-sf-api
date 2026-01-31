@@ -191,9 +191,7 @@ async fn test_bulk_error_invalid_job_id() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_bulk_query_metadata_component_dependencies() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -245,9 +243,7 @@ async fn test_bulk_query_metadata_component_dependencies() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_bulk_query_metadata_component_dependencies_with_filter() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -285,9 +281,7 @@ async fn test_bulk_query_metadata_component_dependencies_with_filter() {
 #[cfg(feature = "dependencies")]
 #[tokio::test]
 async fn test_bulk_metadata_component_dependency_type_deserialization() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
