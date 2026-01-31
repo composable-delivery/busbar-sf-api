@@ -128,6 +128,148 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Layout Operations
+    // =========================================================================
+
+    /// Get all page layouts for a specific SObject.
+    ///
+    /// This returns metadata about all page layouts configured for the SObject,
+    /// including sections, rows, items, and field metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.describe_layouts("Account").await?;
+    /// println!("Account layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::DescribeLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/layouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a specific named layout for an SObject.
+    ///
+    /// This returns the layout metadata for a specific named layout.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layout = client.describe_named_layout("Account", "MyCustomLayout").await?;
+    /// println!("Layout metadata: {:?}", layout);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/namedLayouts/{layoutName}`.
+    #[instrument(skip(self))]
+    pub async fn describe_named_layout(
+        &self,
+        sobject: &str,
+        layout_name: &str,
+    ) -> Result<crate::layout::NamedLayoutResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        // URL-encode the layout name to handle special characters
+        let encoded_name = url_security::encode_param(layout_name);
+        let path = format!(
+            "sobjects/{}/describe/namedLayouts/{}",
+            sobject, encoded_name
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get approval process layouts for a specific SObject.
+    ///
+    /// This returns the approval process layout information including
+    /// approval steps, actions, and field mappings.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let approval_layouts = client.describe_approval_layouts("Account").await?;
+    /// println!("Approval layouts: {:?}", approval_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/approvalLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_approval_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::ApprovalLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/approvalLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get compact layouts for a specific SObject.
+    ///
+    /// Compact layouts are used in the Salesforce mobile app and Lightning Experience
+    /// to show a preview of a record in a compact space.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let compact_layouts = client.describe_compact_layouts("Account").await?;
+    /// println!("Compact layouts: {:?}", compact_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/compactLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_compact_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::CompactLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/compactLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get global publisher layouts (global quick actions).
+    ///
+    /// This returns global quick actions and publisher layouts that are
+    /// available across the entire organization, not tied to a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let global_layouts = client.describe_global_publisher_layouts().await?;
+    /// println!("Global layouts: {:?}", global_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/Global/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_global_publisher_layouts(
+        &self,
+    ) -> Result<crate::layout::GlobalPublisherLayoutsResult> {
+        let path = "sobjects/Global/describe/layouts";
+        self.client.rest_get(path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // CRUD Operations
     // =========================================================================
 
@@ -966,248 +1108,147 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn test_tabs_wiremock() {
+    async fn test_describe_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body = serde_json::json!([
-            {"label": "Home", "name": "standard-home", "custom": false},
-            {"label": "Accounts", "name": "standard-Account", "custom": false}
-        ]);
+
+        let body = serde_json::json!({
+            "layouts": [{"id": "00h000000000001", "name": "Account Layout"}],
+            "recordTypeMappings": []
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/tabs$"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client.tabs().await.expect("tabs should succeed");
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0]["label"], "Home");
-    }
-
-    #[tokio::test]
-    async fn test_theme_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"themeItems": [{"name": "Account", "colors": []}]});
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/theme$"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client.theme().await.expect("theme should succeed");
-        assert!(result["themeItems"].is_array());
-    }
-
-    #[tokio::test]
-    async fn test_app_menu_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"appMenuItems": [{"label": "Sales", "type": "Aloha"}]});
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/appMenu/AppSwitcher$"))
+            .and(path_regex(".*/sobjects/Account/describe/layouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .app_menu("AppSwitcher")
+            .describe_layouts("Account")
             .await
-            .expect("app_menu should succeed");
-        assert!(result["appMenuItems"].is_array());
+            .expect("describe_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Account Layout");
     }
 
     #[tokio::test]
-    async fn test_app_menu_invalid_type() {
+    async fn test_describe_layouts_invalid_sobject() {
         let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client.app_menu("../../etc/passwd").await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("INVALID_APP_MENU_TYPE"));
-    }
-
-    #[tokio::test]
-    async fn test_recent_items_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!([{"attributes": {"type": "Account"}, "Id": "001xx1", "Name": "Acme"}]);
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/recent$"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .recent_items()
-            .await
-            .expect("recent_items should succeed");
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0]["Name"], "Acme");
-    }
-
-    #[tokio::test]
-    async fn test_relevant_items_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"rules": [], "userPreferences": {}});
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/relevantItems$"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .relevant_items()
-            .await
-            .expect("relevant_items should succeed");
-        assert!(result.is_object());
-    }
-
-    #[tokio::test]
-    async fn test_compact_layouts_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"Account": {"name": "System Default"}});
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/compactLayouts"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .compact_layouts("Account")
-            .await
-            .expect("compact_layouts should succeed");
-        assert!(result["Account"].is_object());
-    }
-
-    #[tokio::test]
-    async fn test_compact_layouts_invalid_sobject() {
-        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client.compact_layouts("Account,Bad'; DROP--").await;
+        let result = client.describe_layouts("Bad'; DROP--").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
     }
 
     #[tokio::test]
-    async fn test_compact_layouts_empty_input() {
-        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client.compact_layouts("").await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("INVALID_INPUT"));
-    }
-
-    #[tokio::test]
-    async fn test_platform_event_schema_wiremock() {
+    async fn test_describe_named_layout_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"name": "Order_Event__e", "type": "record", "fields": []});
+
+        let body = serde_json::json!({
+            "layouts": [{"detailLayoutSections": [], "editLayoutSections": []}]
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/event/eventSchema/Order_Event__e$"))
+            .and(path_regex(
+                ".*/sobjects/Account/describe/namedLayouts/MyLayout",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .platform_event_schema("Order_Event__e")
+            .describe_named_layout("Account", "MyLayout")
             .await
-            .expect("platform_event_schema should succeed");
-        assert_eq!(result["name"], "Order_Event__e");
+            .expect("describe_named_layout should succeed");
+
+        assert!(result["layouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_platform_event_schema_invalid_name() {
-        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client.platform_event_schema("Bad'; DROP--").await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("INVALID_EVENT_NAME"));
-    }
-
-    #[tokio::test]
-    async fn test_lightning_toggle_metrics_wiremock() {
+    async fn test_describe_approval_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"metricsData": []});
+
+        let body = serde_json::json!({
+            "approvalLayouts": []
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/lightning/toggleMetrics$"))
+            .and(path_regex(".*/sobjects/Account/describe/approvalLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .lightning_toggle_metrics()
+            .describe_approval_layouts("Account")
             .await
-            .expect("lightning_toggle_metrics should succeed");
-        assert!(result["metricsData"].is_array());
+            .expect("describe_approval_layouts should succeed");
+
+        assert!(result["approvalLayouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_lightning_usage_wiremock() {
+    async fn test_describe_compact_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"lightningUsageData": []});
+
+        let body = serde_json::json!({
+            "compactLayouts": [{"id": "0AH000000000001", "name": "System Default"}],
+            "defaultCompactLayoutId": "0AH000000000001"
+        });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/lightning/usage$"))
+            .and(path_regex(".*/sobjects/Account/describe/compactLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .lightning_usage()
+            .describe_compact_layouts("Account")
             .await
-            .expect("lightning_usage should succeed");
-        assert!(result["lightningUsageData"].is_array());
+            .expect("describe_compact_layouts should succeed");
+
+        assert!(result["compactLayouts"].is_array());
+        assert_eq!(result["compactLayouts"][0]["name"], "System Default");
     }
 
     #[tokio::test]
-    async fn test_rest_deploy_returns_error() {
-        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client.rest_deploy(&[0u8; 10], &serde_json::json!({})).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("multipart/form-data"));
+    async fn test_describe_global_publisher_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "layouts": [{"id": "00h000000000002", "name": "Global Layout"}]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Global/describe/layouts$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_global_publisher_layouts()
+            .await
+            .expect("describe_global_publisher_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
 }

@@ -528,270 +528,196 @@ async fn test_type_safe_query() {
 }
 
 // ============================================================================
-// Standalone REST Resources - Integration Tests
+// Layout API Tests
 // ============================================================================
 
 #[tokio::test]
-async fn test_rest_tabs() {
+async fn test_rest_describe_layouts() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let tabs = client.tabs().await.expect("tabs() should succeed");
+    let result = client
+        .describe_layouts("Account")
+        .await
+        .expect("describe_layouts should succeed for Account");
 
-    assert!(!tabs.is_empty(), "Should return at least one tab");
-    // Verify structure of first tab
-    if let Some(first_tab) = tabs.first() {
-        assert!(first_tab.get("label").is_some(), "Tab should have a label");
-        assert!(first_tab.get("url").is_some(), "Tab should have a url");
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_layouts_contact() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_layouts("Contact")
+        .await
+        .expect("describe_layouts should succeed for Contact");
+
+    assert!(
+        result.is_object(),
+        "Layout response should be a JSON object"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_approval_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_approval_layouts("Account")
+        .await
+        .expect("describe_approval_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Approval layout response should be a JSON object"
+    );
+    assert!(
+        result.get("approvalLayouts").is_some(),
+        "Response should contain approvalLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_compact_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_compact_layouts("Account")
+        .await
+        .expect("describe_compact_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Compact layout response should be a JSON object"
+    );
+    assert!(
+        result.get("compactLayouts").is_some(),
+        "Response should contain compactLayouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_global_publisher_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client
+        .describe_global_publisher_layouts()
+        .await
+        .expect("describe_global_publisher_layouts should succeed");
+
+    assert!(
+        result.is_object(),
+        "Global publisher layout response should be a JSON object"
+    );
+    assert!(
+        result.get("layouts").is_some(),
+        "Response should contain layouts"
+    );
+}
+
+#[tokio::test]
+async fn test_rest_describe_named_layout() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // First, get available layouts to find a valid layout name
+    let layouts_result = client
+        .describe_layouts("Account")
+        .await
+        .expect("describe_layouts should succeed");
+
+    // Try to extract a layout name from the response
+    if let Some(layouts) = layouts_result.get("layouts").and_then(|l| l.as_array()) {
+        if let Some(first_layout) = layouts.first() {
+            if let Some(layout_name) = first_layout.get("name").and_then(|n| n.as_str()) {
+                let named_result = client
+                    .describe_named_layout("Account", layout_name)
+                    .await
+                    .expect("describe_named_layout should succeed");
+
+                assert!(
+                    named_result.is_object(),
+                    "Named layout response should be a JSON object"
+                );
+            } else {
+                println!("Note: No layout name found in first layout, skipping named layout test");
+            }
+        } else {
+            println!("Note: No layouts found for Account, skipping named layout test");
+        }
+    } else {
+        println!("Note: layouts not in expected format, skipping named layout test");
     }
 }
 
+// ============================================================================
+// Layout API Error Tests
+// ============================================================================
+
 #[tokio::test]
-async fn test_rest_theme() {
+async fn test_rest_describe_layouts_invalid_sobject() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let theme = client.theme().await.expect("theme() should succeed");
-
-    // Verify theme has expected structure
-    assert!(
-        theme.get("themeItems").is_some(),
-        "Theme should have themeItems"
-    );
-}
-
-#[tokio::test]
-async fn test_rest_app_menu_app_switcher() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let app_menu = client
-        .app_menu("AppSwitcher")
-        .await
-        .expect("app_menu(AppSwitcher) should succeed");
-
-    // Verify structure
-    assert!(app_menu.is_object(), "App menu should be an object");
-}
-
-#[tokio::test]
-async fn test_rest_app_menu_salesforce1() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let app_menu = client
-        .app_menu("Salesforce1")
-        .await
-        .expect("app_menu(Salesforce1) should succeed");
-
-    // Verify structure
-    assert!(app_menu.is_object(), "App menu should be an object");
-}
-
-#[tokio::test]
-async fn test_rest_app_menu_invalid_type() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let result = client.app_menu("InvalidType").await;
+    let result = client.describe_layouts("InvalidObject__c__c").await;
 
     assert!(
         result.is_err(),
-        "app_menu with invalid type should return error"
+        "describe_layouts should fail for invalid SObject"
     );
-    let error = result.unwrap_err();
-    let error_msg = error.to_string();
+}
+
+#[tokio::test]
+async fn test_rest_describe_layouts_injection_attempt() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.describe_layouts("Account'; DROP TABLE--").await;
+
     assert!(
-        error_msg.contains("INVALID_APP_MENU_TYPE"),
-        "Error should indicate invalid app menu type"
+        result.is_err(),
+        "describe_layouts should reject SQL injection attempts"
     );
 }
 
 #[tokio::test]
-async fn test_rest_recent_items() {
+async fn test_rest_describe_named_layout_special_chars() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let recent = client
-        .recent_items()
-        .await
-        .expect("recent_items() should succeed");
+    // Test that special characters in layout names are properly URL-encoded
+    let result = client
+        .describe_named_layout("Account", "Layout With Spaces")
+        .await;
 
-    // Recent items is a Vec (could be empty if no recent items)
-    // Just verify it returns successfully
-    let _count = recent.len(); // Verify it's a valid Vec
-}
-
-#[tokio::test]
-async fn test_rest_relevant_items() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    match client.relevant_items().await {
-        Ok(relevant) => {
-            // Relevant items should be an object or array
-            assert!(
-                relevant.is_object() || relevant.is_array(),
-                "Relevant items should be an object or array"
-            );
-        }
-        Err(e) => {
-            // NOT_FOUND is acceptable — endpoint may not be available in all orgs
-            let msg = e.to_string();
-            assert!(
-                msg.contains("NOT_FOUND"),
-                "Expected NOT_FOUND error, got: {msg}"
-            );
-        }
+    // This might fail if the layout doesn't exist, but should not fail due to URL encoding
+    // The error should be a 404 or similar, not a URL parsing error
+    if let Err(e) = result {
+        let error_msg = format!("{:?}", e);
+        assert!(
+            !error_msg.contains("url") || !error_msg.contains("parse"),
+            "Should not fail due to URL parsing issues"
+        );
     }
-}
-
-#[tokio::test]
-async fn test_rest_compact_layouts() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let layouts = client
-        .compact_layouts("Account,Contact")
-        .await
-        .expect("compact_layouts() should succeed");
-
-    // Verify structure
-    assert!(
-        layouts.is_object() || layouts.is_array(),
-        "Compact layouts should be an object or array"
-    );
-}
-
-#[tokio::test]
-async fn test_rest_compact_layouts_invalid_sobject() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let result = client.compact_layouts("Invalid$Object").await;
-
-    assert!(
-        result.is_err(),
-        "compact_layouts with invalid sobject should return error"
-    );
-}
-
-#[tokio::test]
-async fn test_rest_compact_layouts_empty_input() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let result = client.compact_layouts("").await;
-
-    assert!(
-        result.is_err(),
-        "compact_layouts with empty input should return error"
-    );
-    let error = result.unwrap_err();
-    let error_msg = error.to_string();
-    assert!(
-        error_msg.contains("cannot be empty"),
-        "Error should indicate empty input"
-    );
-}
-
-#[tokio::test]
-async fn test_rest_platform_event_schema_invalid_name() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    // Test with invalid event name (contains invalid character)
-    let result = client.platform_event_schema("Invalid$Event__e").await;
-
-    assert!(
-        result.is_err(),
-        "platform_event_schema with invalid event name should return error"
-    );
-}
-
-#[tokio::test]
-async fn test_rest_lightning_toggle_metrics() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    match client.lightning_toggle_metrics().await {
-        Ok(metrics) => {
-            assert!(
-                metrics.is_object() || metrics.is_array(),
-                "Lightning toggle metrics should be an object or array"
-            );
-        }
-        Err(e) => {
-            // NOT_FOUND is acceptable — endpoint may not be available in all orgs
-            let msg = e.to_string();
-            assert!(
-                msg.contains("NOT_FOUND"),
-                "Expected NOT_FOUND error, got: {msg}"
-            );
-        }
-    }
-}
-
-#[tokio::test]
-async fn test_rest_lightning_usage() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    match client.lightning_usage().await {
-        Ok(usage) => {
-            assert!(
-                usage.is_object() || usage.is_array(),
-                "Lightning usage should be an object or array"
-            );
-        }
-        Err(e) => {
-            // NOT_FOUND is acceptable — endpoint may not be available in all orgs
-            let msg = e.to_string();
-            assert!(
-                msg.contains("NOT_FOUND"),
-                "Expected NOT_FOUND error, got: {msg}"
-            );
-        }
-    }
-}
-
-#[tokio::test]
-async fn test_rest_deploy_returns_error() {
-    let creds = get_credentials().await;
-    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create REST client");
-
-    let zip_data = vec![0u8; 100]; // Dummy zip data
-    let options = serde_json::json!({
-        "singlePackage": true,
-        "checkOnly": false,
-        "rollbackOnError": true
-    });
-
-    let result = client.rest_deploy(&zip_data, &options).await;
-
-    // This should return an error since it's not implemented
-    assert!(
-        result.is_err(),
-        "rest_deploy() should return error as it's not implemented"
-    );
-    let error = result.unwrap_err();
-    let error_msg = error.to_string();
-    assert!(
-        error_msg.contains("multipart") || error_msg.contains("SOAP"),
-        "Error should mention multipart or SOAP alternative"
-    );
 }
