@@ -7,7 +7,9 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION, CONTENT
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::deploy::{ComponentFailure, DeployOptions, DeployResult, DeployStatus};
+use crate::deploy::{
+    CancelDeployResult, ComponentFailure, DeployOptions, DeployResult, DeployStatus,
+};
 use crate::describe::{DescribeMetadataResult, MetadataType};
 use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
@@ -264,6 +266,146 @@ impl MetadataClient {
         let async_id = self.deploy(package_zip, options).await?;
         self.poll_deploy_status(&async_id, timeout, poll_interval)
             .await
+    }
+
+    /// Cancel an in-progress deployment.
+    ///
+    /// Requests cancellation of a deployment identified by its async process ID.
+    /// Note that cancellation is asynchronous — this method returns immediately,
+    /// but you must call `check_deploy_status()` to see when the deployment
+    /// actually reaches `Canceled` or `Canceling` status.
+    ///
+    /// # Requirements
+    ///
+    /// - The deployment must not have already completed
+    /// - Available since API v30.0 (Spring '14)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_metadata::{MetadataClient, DeployOptions};
+    ///
+    /// // Start a deployment
+    /// let async_id = client.deploy(&package_zip, DeployOptions::default()).await?;
+    ///
+    /// // Cancel it
+    /// let cancel_result = client.cancel_deploy(&async_id).await?;
+    /// println!("Cancel requested, done={}", cancel_result.done);
+    ///
+    /// // Poll to see when cancellation completes
+    /// let status = client.check_deploy_status(&async_id, false).await?;
+    /// ```
+    pub async fn cancel_deploy(&self, async_process_id: &str) -> Result<CancelDeployResult> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Header>
+    <SessionHeader xmlns="http://soap.sforce.com/2006/04/metadata">
+      <sessionId>{session_id}</sessionId>
+    </SessionHeader>
+  </soap:Header>
+  <soap:Body>
+    <cancelDeploy xmlns="http://soap.sforce.com/2006/04/metadata">
+      <String>{process_id}</String>
+    </cancelDeploy>
+  </soap:Body>
+</soap:Envelope>"#,
+            session_id = self.access_token,
+            process_id = xml::escape(async_process_id),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("cancelDeploy"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.parse_cancel_deploy_result(&response_text)
+    }
+
+    /// Quick-deploy a recently validated deployment without re-running Apex tests.
+    ///
+    /// This operation is essential for production release workflows that separate
+    /// validation from deployment. First, deploy with `checkOnly=true` to validate
+    /// and run tests. If validation succeeds, call this method with the validation
+    /// deploy ID to quick-deploy without re-running tests.
+    ///
+    /// # Requirements
+    ///
+    /// - The validation deploy must have succeeded (status `Succeeded`)
+    /// - The validation must be recent: within 10 days for production orgs,
+    ///   4 days for sandbox orgs
+    /// - Available since API v33.0 (Winter '15)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_metadata::{MetadataClient, DeployOptions};
+    ///
+    /// // First, validate the deployment (check_only=true)
+    /// let mut validate_opts = DeployOptions::default();
+    /// validate_opts.check_only = true;
+    /// let validation_id = client.deploy(&package_zip, validate_opts).await?;
+    ///
+    /// // Wait for validation to complete
+    /// let validation_result = client.poll_deploy_status(
+    ///     &validation_id,
+    ///     Duration::from_secs(600),
+    ///     Duration::from_secs(5),
+    /// ).await?;
+    ///
+    /// if validation_result.success {
+    ///     // Quick-deploy without re-running tests
+    ///     let deploy_id = client.deploy_recent_validation(&validation_id).await?;
+    ///     println!("Quick-deploy started: {}", deploy_id);
+    /// }
+    /// ```
+    pub async fn deploy_recent_validation(&self, validation_id: &str) -> Result<String> {
+        let envelope = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Header>
+    <SessionHeader xmlns="http://soap.sforce.com/2006/04/metadata">
+      <sessionId>{session_id}</sessionId>
+    </SessionHeader>
+  </soap:Header>
+  <soap:Body>
+    <deployRecentValidation xmlns="http://soap.sforce.com/2006/04/metadata">
+      <validationId>{validation_id}</validationId>
+    </deployRecentValidation>
+  </soap:Body>
+</soap:Envelope>"#,
+            session_id = self.access_token,
+            validation_id = xml::escape(validation_id),
+        );
+
+        let response = self
+            .http_client
+            .post(self.metadata_url())
+            .headers(self.build_headers("deployRecentValidation"))
+            .body(envelope)
+            .send()
+            .await?;
+
+        let response_text = response.text().await?;
+
+        if let Some(fault) = self.parse_soap_fault(&response_text) {
+            return Err(Error::new(ErrorKind::SoapFault(fault.to_string())));
+        }
+
+        self.extract_element(&response_text, "id").ok_or_else(|| {
+            Error::new(ErrorKind::InvalidResponse(
+                "No async process ID in deployRecentValidation response".to_string(),
+            ))
+        })
     }
 
     // ========================================================================
@@ -733,6 +875,20 @@ impl MetadataClient {
             test_failures,
             state_detail,
         })
+    }
+
+    /// Parse cancel deploy result from XML.
+    fn parse_cancel_deploy_result(&self, xml: &str) -> Result<CancelDeployResult> {
+        let id = self
+            .extract_element(xml, "id")
+            .ok_or_else(|| Error::new(ErrorKind::InvalidResponse("Missing id".to_string())))?;
+
+        let done = self
+            .extract_element(xml, "done")
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
+        Ok(CancelDeployResult { id, done })
     }
 
     /// Parse component failures from XML.
@@ -1382,5 +1538,39 @@ mod tests {
         assert_eq!(result.messages.len(), 1);
         assert_eq!(result.messages[0].file_name, "classes/OldClass.cls");
         assert_eq!(result.messages[0].problem, "Entity is deleted");
+    }
+
+    #[test]
+    fn test_parse_cancel_deploy_result() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <cancelDeployResponse>
+                <result>
+                    <id>0Af123456789ABC</id>
+                    <done>true</done>
+                </result>
+            </cancelDeployResponse>
+        "#;
+
+        let result = client.parse_cancel_deploy_result(xml).unwrap();
+        assert_eq!(result.id, "0Af123456789ABC");
+        assert!(result.done);
+    }
+
+    #[test]
+    fn test_parse_cancel_deploy_result_not_done() {
+        let client = MetadataClient::from_parts("url", "token");
+        let xml = r#"
+            <cancelDeployResponse>
+                <result>
+                    <id>0Af123456789ABC</id>
+                    <done>false</done>
+                </result>
+            </cancelDeployResponse>
+        "#;
+
+        let result = client.parse_cancel_deploy_result(xml).unwrap();
+        assert_eq!(result.id, "0Af123456789ABC");
+        assert!(!result.done);
     }
 }

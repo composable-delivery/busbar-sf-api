@@ -55,6 +55,9 @@ tracing-subscriber.workspace = true
 name = "integration"
 path = "tests/integration.rs"
 
+[dev-dependencies]
+zip.workspace = true
+
 [workspace.package]
 version = "0.0.2"
 edition = "2021"

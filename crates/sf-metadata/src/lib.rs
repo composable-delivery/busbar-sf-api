@@ -60,7 +60,7 @@ mod retrieve;
 mod types;
 
 pub use client::MetadataClient;
-pub use deploy::{ComponentFailure, DeployOptions, DeployResult, DeployStatus};
+pub use deploy::{CancelDeployResult, ComponentFailure, DeployOptions, DeployResult, DeployStatus};
 pub use describe::{DescribeMetadataResult, MetadataType};
 pub use error::{Error, ErrorKind, Result};
 pub use list::MetadataComponent;

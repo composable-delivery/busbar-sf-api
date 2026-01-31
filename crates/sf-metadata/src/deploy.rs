@@ -126,6 +126,19 @@ pub struct ComponentFailure {
     pub deleted: bool,
 }
 
+/// Result of canceling a deployment.
+///
+/// Returned by `cancel_deploy()`. The `done` field indicates whether the cancellation
+/// has completed. Note that canceling is asynchronous — you must poll `check_deploy_status()`
+/// to see when the deployment reaches `Canceled` or `Canceling` status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelDeployResult {
+    /// The async process ID of the deployment being canceled.
+    pub id: String,
+    /// Whether the cancel operation has completed.
+    pub done: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,5 +171,18 @@ mod tests {
             "Failed".parse::<DeployStatus>().unwrap(),
             DeployStatus::Failed
         );
+    }
+
+    #[test]
+    fn test_cancel_deploy_result() {
+        use crate::deploy::CancelDeployResult;
+
+        let result = CancelDeployResult {
+            id: "0Af123456789ABC".to_string(),
+            done: true,
+        };
+
+        assert_eq!(result.id, "0Af123456789ABC");
+        assert!(result.done);
     }
 }
