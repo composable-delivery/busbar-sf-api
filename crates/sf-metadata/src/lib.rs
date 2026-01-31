@@ -69,5 +69,6 @@ pub use retrieve::{
     RetrieveStatus,
 };
 pub use types::{
-    ComponentSuccess, FileProperties, SoapFault, TestFailure, TestLevel, DEFAULT_API_VERSION,
+    ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
+    SoapFault, TestFailure, TestLevel, UpsertResult, DEFAULT_API_VERSION,
 };

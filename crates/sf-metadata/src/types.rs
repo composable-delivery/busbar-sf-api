@@ -82,6 +82,60 @@ pub struct FileProperties {
     pub component_type: String,
 }
 
+/// Error information returned from Metadata API CRUD operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataError {
+    /// Status code identifying the error type.
+    pub status_code: String,
+    /// Descriptive error message.
+    pub message: String,
+    /// Field names associated with the error.
+    pub fields: Vec<String>,
+}
+
+/// Result of a save operation (create/update/rename).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SaveResult {
+    /// Full name of the metadata component.
+    pub full_name: String,
+    /// Whether the operation succeeded.
+    pub success: bool,
+    /// Errors that occurred during the operation.
+    pub errors: Vec<MetadataError>,
+}
+
+/// Result of an upsert operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpsertResult {
+    /// Full name of the metadata component.
+    pub full_name: String,
+    /// Whether the operation succeeded.
+    pub success: bool,
+    /// Whether the component was created (true) or updated (false).
+    pub created: bool,
+    /// Errors that occurred during the operation.
+    pub errors: Vec<MetadataError>,
+}
+
+/// Result of a delete operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteResult {
+    /// Full name of the metadata component.
+    pub full_name: String,
+    /// Whether the operation succeeded.
+    pub success: bool,
+    /// Errors that occurred during the operation.
+    pub errors: Vec<MetadataError>,
+}
+
+/// Result of a read operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadResult {
+    /// The metadata components that were read.
+    /// Each element is a metadata object with type-specific fields.
+    pub records: Vec<serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
