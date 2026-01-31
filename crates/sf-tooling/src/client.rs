@@ -1389,10 +1389,7 @@ mod tests {
         let describe = result
             .get("objectDescribe")
             .expect("should have objectDescribe");
-        assert_eq!(
-            describe.get("name").unwrap().as_str().unwrap(),
-            "ApexClass"
-        );
+        assert_eq!(describe.get("name").unwrap().as_str().unwrap(), "ApexClass");
     }
 
     #[tokio::test]
