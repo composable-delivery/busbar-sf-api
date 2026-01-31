@@ -1,7 +1,7 @@
 //! Platform actions and suggested articles API types.
 //!
 //! Provides access to suggested articles and platform actions for SObjects.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_sobject_suggested_articles.htm
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_sobject_suggested_articles.htm>
 
 use serde::{Deserialize, Serialize};
 

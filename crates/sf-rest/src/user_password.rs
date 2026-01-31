@@ -1,7 +1,7 @@
 //! User password management API types.
 //!
 //! Provides password status, set, and reset operations for User records.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_sobject_user_password.htm
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_sobject_user_password.htm>
 
 use serde::{Deserialize, Serialize};
 

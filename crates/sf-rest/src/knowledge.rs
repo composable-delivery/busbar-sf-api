@@ -1,7 +1,7 @@
 //! Knowledge Management and Support API types.
 //!
 //! Provides access to Knowledge Management settings, knowledge articles, and data categories.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_knowledge_management_settings.htm
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_knowledge_management_settings.htm>
 
 use serde::{Deserialize, Serialize};
 

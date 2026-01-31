@@ -1,7 +1,7 @@
 //! Embedded Service API types.
 //!
 //! Provides access to Embedded Service configurations.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/>
 
 use serde::{Deserialize, Serialize};
 

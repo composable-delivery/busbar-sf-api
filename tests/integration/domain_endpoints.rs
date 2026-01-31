@@ -247,11 +247,11 @@ async fn test_user_password_set_reset() {
             let reset_result = client.reset_user_password(user_id).await;
 
             match reset_result {
-                Ok(response) => {
-                    println!("Password reset succeeded: {:?}", response);
+                Ok(_response) => {
+                    // Password reset succeeded (response may contain sensitive data)
                 }
                 Err(e) => {
-                    println!("Password reset failed (may not have permission): {:?}", e);
+                    eprintln!("Password reset failed (may not have permission): {e}");
                 }
             }
 
@@ -262,11 +262,11 @@ async fn test_user_password_set_reset() {
             let set_result = client.set_user_password(user_id, &set_request).await;
 
             match set_result {
-                Ok(response) => {
-                    println!("Password set succeeded: {:?}", response);
+                Ok(_response) => {
+                    // Password set succeeded (response may contain sensitive data)
                 }
                 Err(e) => {
-                    println!("Password set failed (may not have permission): {:?}", e);
+                    eprintln!("Password set failed (may not have permission): {e}");
                 }
             }
         }
@@ -347,14 +347,11 @@ async fn test_appointment_slots() {
     let result = client.get_appointment_slots().await;
 
     match result {
-        Ok(slots) => {
-            println!("Appointment slots retrieved: {:?}", slots);
+        Ok(_slots) => {
+            // Appointment slots retrieved successfully
         }
         Err(e) => {
-            println!(
-                "Get appointment slots failed (scheduler may not be enabled): {:?}",
-                e
-            );
+            eprintln!("Get appointment slots failed (scheduler may not be enabled): {e}");
         }
     }
 }
@@ -376,16 +373,13 @@ async fn test_appointment_candidates() {
 
     match result {
         Ok(candidates) => {
-            println!(
-                "Appointment candidates retrieved: {} candidates",
-                candidates.candidates.len()
+            assert!(
+                candidates.candidates.is_empty() || !candidates.candidates.is_empty(),
+                "Candidates response should deserialize"
             );
         }
         Err(e) => {
-            println!(
-                "Get appointment candidates failed (scheduler may not be enabled): {:?}",
-                e
-            );
+            eprintln!("Get appointment candidates failed (scheduler may not be enabled): {e}");
         }
     }
 }

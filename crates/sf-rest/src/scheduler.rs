@@ -1,7 +1,7 @@
 //! Salesforce Scheduler API types.
 //!
 //! Provides access to appointment scheduling functionality.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_ls_intro.htm
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_ls_intro.htm>
 
 use serde::{Deserialize, Serialize};
 

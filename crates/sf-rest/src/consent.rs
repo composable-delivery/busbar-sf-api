@@ -1,7 +1,7 @@
 //! Consent API types and responses.
 //!
 //! The Consent API enables reading and writing user consent status for data privacy compliance.
-//! See: https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_consent.htm
+//! See: <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_consent.htm>
 
 use serde::{Deserialize, Serialize};
 
