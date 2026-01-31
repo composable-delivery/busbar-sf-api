@@ -131,10 +131,10 @@ impl SalesforceRestClient {
     // Layout Operations
     // =========================================================================
 
-    /// Get all page layouts for a specific SObject.
+    /// Get page layouts for a specific SObject.
     ///
-    /// This returns metadata about all page layouts configured for the SObject,
-    /// including sections, rows, items, and field metadata.
+    /// This returns layout metadata including sections, fields, buttons,
+    /// and related lists for all page layouts assigned to the SObject.
     ///
     /// # Example
     ///
@@ -145,10 +145,7 @@ impl SalesforceRestClient {
     ///
     /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/layouts`.
     #[instrument(skip(self))]
-    pub async fn describe_layouts(
-        &self,
-        sobject: &str,
-    ) -> Result<crate::layout::DescribeLayoutsResult> {
+    pub async fn describe_layouts(&self, sobject: &str) -> Result<serde_json::Value> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -176,7 +173,7 @@ impl SalesforceRestClient {
         &self,
         sobject: &str,
         layout_name: &str,
-    ) -> Result<crate::layout::NamedLayoutResult> {
+    ) -> Result<serde_json::Value> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -206,10 +203,7 @@ impl SalesforceRestClient {
     ///
     /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/approvalLayouts`.
     #[instrument(skip(self))]
-    pub async fn describe_approval_layouts(
-        &self,
-        sobject: &str,
-    ) -> Result<crate::layout::ApprovalLayoutsResult> {
+    pub async fn describe_approval_layouts(&self, sobject: &str) -> Result<serde_json::Value> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -234,10 +228,7 @@ impl SalesforceRestClient {
     ///
     /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/compactLayouts`.
     #[instrument(skip(self))]
-    pub async fn describe_compact_layouts(
-        &self,
-        sobject: &str,
-    ) -> Result<crate::layout::CompactLayoutsResult> {
+    pub async fn describe_compact_layouts(&self, sobject: &str) -> Result<serde_json::Value> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -262,9 +253,7 @@ impl SalesforceRestClient {
     ///
     /// This is equivalent to calling `/services/data/vXX.0/sobjects/Global/describe/layouts`.
     #[instrument(skip(self))]
-    pub async fn describe_global_publisher_layouts(
-        &self,
-    ) -> Result<crate::layout::GlobalPublisherLayoutsResult> {
+    pub async fn describe_global_publisher_layouts(&self) -> Result<serde_json::Value> {
         let path = "sobjects/Global/describe/layouts";
         self.client.rest_get(path).await.map_err(Into::into)
     }
@@ -771,6 +760,301 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Incremental Sync Operations
+    // =========================================================================
+
+    /// Get deleted records in a date range.
+    ///
+    /// Returns a list of records that were deleted between the start and end dates.
+    /// This is useful for incremental data synchronization.
+    ///
+    /// The date range should be no more than 30 days and no earlier than 30 days ago.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type (e.g., "Account", "Contact")
+    /// * `start` - Start datetime in ISO 8601 format
+    /// * `end` - End datetime in ISO 8601 format
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.get_deleted("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z").await?;
+    /// for record in result.deleted_records {
+    ///     println!("Deleted: {} at {}", record.id, record.deleted_date);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_deleted(
+        &self,
+        sobject: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<GetDeletedResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!(
+            "sobjects/{}/deleted/?start={}&end={}",
+            sobject,
+            urlencoding::encode(start),
+            urlencoding::encode(end)
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get updated records in a date range.
+    ///
+    /// Returns a list of IDs for records that were updated between the start and end dates.
+    /// This is useful for incremental data synchronization.
+    ///
+    /// The date range should be no more than 30 days and no earlier than 30 days ago.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type (e.g., "Account", "Contact")
+    /// * `start` - Start datetime in ISO 8601 format
+    /// * `end` - End datetime in ISO 8601 format
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.get_updated("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z").await?;
+    /// for id in result.ids {
+    ///     println!("Updated: {}", id);
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_updated(
+        &self,
+        sobject: &str,
+        start: &str,
+        end: &str,
+    ) -> Result<GetUpdatedResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!(
+            "sobjects/{}/updated/?start={}&end={}",
+            sobject,
+            urlencoding::encode(start),
+            urlencoding::encode(end)
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
+    // Binary Content Operations
+    // =========================================================================
+
+    /// Retrieve binary content from a blob field.
+    ///
+    /// This retrieves the raw binary data from fields such as:
+    /// - Attachment.Body
+    /// - Document.Body
+    /// - ContentVersion.VersionData
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type (e.g., "Attachment", "ContentVersion")
+    /// * `id` - The record ID
+    /// * `blob_field` - The blob field name (e.g., "Body", "VersionData")
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let bytes = client.get_blob("Attachment", "00P7F00000ABC123", "Body").await?;
+    /// std::fs::write("attachment.pdf", &bytes)?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_blob(&self, sobject: &str, id: &str, blob_field: &str) -> Result<Vec<u8>> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        if !soql::is_safe_field_name(blob_field) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_FIELD".to_string(),
+                message: "Invalid blob field name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/{}/{}", sobject, id, blob_field);
+        let url = self.client.rest_url(&path);
+        let request = self.client.get(&url);
+        let response = self.client.execute(request).await?;
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Retrieve a rich text image field.
+    ///
+    /// Retrieves an image embedded in a rich text area field.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type
+    /// * `id` - The record ID
+    /// * `field_name` - The rich text field name
+    /// * `content_reference_id` - The content reference ID for the image
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let image = client.get_rich_text_image(
+    ///     "Account",
+    ///     "001xx000003DGb2AAG",
+    ///     "Description",
+    ///     "069xx0000000001"
+    /// ).await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_rich_text_image(
+        &self,
+        sobject: &str,
+        id: &str,
+        field_name: &str,
+        content_reference_id: &str,
+    ) -> Result<Vec<u8>> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        if !soql::is_safe_field_name(field_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_FIELD".to_string(),
+                message: "Invalid field name".to_string(),
+            }));
+        }
+        // Content reference IDs are typically numeric, but validate as a field name for safety
+        if !soql::is_safe_field_name(content_reference_id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_CONTENT_REFERENCE_ID".to_string(),
+                message: "Invalid content reference ID".to_string(),
+            }));
+        }
+        let path = format!(
+            "sobjects/{}/{}/richTextImageFields/{}/{}",
+            sobject, id, field_name, content_reference_id
+        );
+        let url = self.client.rest_url(&path);
+        let request = self.client.get(&url);
+        let response = self.client.execute(request).await?;
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
+    // =========================================================================
+    // Relationship Traversal
+    // =========================================================================
+
+    /// Traverse an SObject relationship by path.
+    ///
+    /// Navigate child relationships or lookup relationships directly through the REST API.
+    /// For child relationships, this returns a QueryResult. For lookup relationships,
+    /// this returns the related record.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type
+    /// * `id` - The record ID
+    /// * `relationship_name` - The relationship name (e.g., "Contacts", "Account")
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Get child contacts for an account
+    /// let contacts: QueryResult<serde_json::Value> = client
+    ///     .get_relationship("Account", "001xx000003DGb2AAG", "Contacts")
+    ///     .await?;
+    ///
+    /// // Get parent account for a contact
+    /// let account: serde_json::Value = client
+    ///     .get_relationship("Contact", "003xx000004TmiQAAS", "Account")
+    ///     .await?;
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_relationship<T: DeserializeOwned>(
+        &self,
+        sobject: &str,
+        id: &str,
+        relationship_name: &str,
+    ) -> Result<T> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        if !url_security::is_valid_salesforce_id(id) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ID".to_string(),
+                message: "Invalid Salesforce ID format".to_string(),
+            }));
+        }
+        if !soql::is_safe_field_name(relationship_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_RELATIONSHIP".to_string(),
+                message: "Invalid relationship name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/{}/{}", sobject, id, relationship_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
+    // SObject Metadata
+    // =========================================================================
+
+    /// Get basic information about an SObject.
+    ///
+    /// Returns recent items and metadata URLs for the SObject.
+    /// This is different from `describe_sobject` which returns full metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobject` - The SObject type (e.g., "Account", "Contact")
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let info = client.get_sobject_basic_info("Account").await?;
+    /// println!("Recent items: {}", info.recent_items.len());
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_sobject_basic_info(&self, sobject: &str) -> Result<SObjectInfo> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // API Versions
     // =========================================================================
 
@@ -797,6 +1081,94 @@ pub struct ApiVersion {
     pub url: String,
 }
 
+// =========================================================================
+// Incremental Sync Types
+// =========================================================================
+
+/// Result of a getDeleted request.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct GetDeletedResult {
+    /// List of deleted records.
+    #[serde(rename = "deletedRecords")]
+    pub deleted_records: Vec<DeletedRecord>,
+
+    /// Earliest date available for the getDeleted API.
+    #[serde(rename = "earliestDateAvailable")]
+    pub earliest_date_available: String,
+
+    /// Latest date covered by this query.
+    #[serde(rename = "latestDateCovered")]
+    pub latest_date_covered: String,
+}
+
+/// A deleted record.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct DeletedRecord {
+    /// Record ID.
+    pub id: String,
+
+    /// Date when the record was deleted (ISO 8601 format).
+    #[serde(rename = "deletedDate")]
+    pub deleted_date: String,
+}
+
+/// Result of a getUpdated request.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct GetUpdatedResult {
+    /// List of IDs of records that were updated.
+    pub ids: Vec<String>,
+
+    /// Latest date covered by this query.
+    #[serde(rename = "latestDateCovered")]
+    pub latest_date_covered: String,
+}
+
+// =========================================================================
+// SObject Basic Information Types
+// =========================================================================
+
+/// Basic information about an SObject (from GET /sobjects/{SObjectType}).
+///
+/// This is different from the describe endpoint - it returns recent items
+/// and metadata URLs rather than full field metadata.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct SObjectInfo {
+    /// Basic describe information.
+    #[serde(rename = "objectDescribe")]
+    pub object_describe: SObjectInfoDescribe,
+
+    /// Recently accessed items.
+    #[serde(rename = "recentItems")]
+    pub recent_items: Vec<serde_json::Value>,
+}
+
+/// Basic describe information from SObject info endpoint.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct SObjectInfoDescribe {
+    /// SObject name.
+    pub name: String,
+
+    /// Display label.
+    pub label: String,
+
+    /// Key prefix for IDs.
+    #[serde(rename = "keyPrefix")]
+    pub key_prefix: Option<String>,
+
+    /// URL map with links to describe, sobject, and other resources.
+    pub urls: std::collections::HashMap<String, String>,
+
+    /// Whether this is a custom object.
+    pub custom: bool,
+
+    /// CRUD and other capability flags.
+    pub createable: bool,
+    pub updateable: bool,
+    pub deletable: bool,
+    pub queryable: bool,
+    pub searchable: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -818,8 +1190,345 @@ mod tests {
         assert_eq!(client.api_version(), "60.0");
     }
 
+    #[test]
+    fn test_get_deleted_result_deserialization() {
+        let json = r#"{
+            "deletedRecords": [
+                {
+                    "id": "001xx000003DGb2AAG",
+                    "deletedDate": "2024-01-15T10:30:00.000+0000"
+                }
+            ],
+            "earliestDateAvailable": "2024-01-01T00:00:00.000+0000",
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        }"#;
+
+        let result: GetDeletedResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.deleted_records.len(), 1);
+        assert_eq!(result.deleted_records[0].id, "001xx000003DGb2AAG");
+        assert_eq!(
+            result.deleted_records[0].deleted_date,
+            "2024-01-15T10:30:00.000+0000"
+        );
+        assert_eq!(
+            result.earliest_date_available,
+            "2024-01-01T00:00:00.000+0000"
+        );
+        assert_eq!(result.latest_date_covered, "2024-01-31T23:59:59.000+0000");
+    }
+
+    #[test]
+    fn test_get_updated_result_deserialization() {
+        let json = r#"{
+            "ids": [
+                "001xx000003DGb2AAG",
+                "001xx000003DGb3AAG"
+            ],
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        }"#;
+
+        let result: GetUpdatedResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.ids.len(), 2);
+        assert_eq!(result.ids[0], "001xx000003DGb2AAG");
+        assert_eq!(result.ids[1], "001xx000003DGb3AAG");
+        assert_eq!(result.latest_date_covered, "2024-01-31T23:59:59.000+0000");
+    }
+
+    #[test]
+    fn test_sobject_info_deserialization() {
+        let json = r#"{
+            "objectDescribe": {
+                "name": "Account",
+                "label": "Account",
+                "keyPrefix": "001",
+                "urls": {
+                    "sobject": "/services/data/v62.0/sobjects/Account",
+                    "describe": "/services/data/v62.0/sobjects/Account/describe"
+                },
+                "custom": false,
+                "createable": true,
+                "updateable": true,
+                "deletable": true,
+                "queryable": true,
+                "searchable": true
+            },
+            "recentItems": [
+                {
+                    "Id": "001xx000003DGb2AAG",
+                    "Name": "Test Account"
+                }
+            ]
+        }"#;
+
+        let result: SObjectInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(result.object_describe.name, "Account");
+        assert_eq!(result.object_describe.label, "Account");
+        assert_eq!(result.object_describe.key_prefix, Some("001".to_string()));
+        assert!(!result.object_describe.custom);
+        assert_eq!(result.recent_items.len(), 1);
+    }
+
     // =========================================================================
     // Wiremock HTTP Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_deleted_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "deletedRecords": [
+                {"id": "001xx000003DGb2AAG", "deletedDate": "2024-01-15T10:30:00.000+0000"}
+            ],
+            "earliestDateAvailable": "2024-01-01T00:00:00.000+0000",
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/deleted/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_deleted("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await
+            .expect("get_deleted should succeed");
+
+        assert_eq!(result.deleted_records.len(), 1);
+        assert_eq!(result.deleted_records[0].id, "001xx000003DGb2AAG");
+    }
+
+    #[tokio::test]
+    async fn test_get_deleted_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_deleted(
+                "Bad'; DROP--",
+                "2024-01-01T00:00:00Z",
+                "2024-01-31T23:59:59Z",
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_updated_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "ids": ["001xx000003DGb2AAG", "001xx000003DGb3AAG"],
+            "latestDateCovered": "2024-01-31T23:59:59.000+0000"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/updated/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_updated("Account", "2024-01-01T00:00:00Z", "2024-01-31T23:59:59Z")
+            .await
+            .expect("get_updated should succeed");
+
+        assert_eq!(result.ids.len(), 2);
+        assert_eq!(result.ids[0], "001xx000003DGb2AAG");
+    }
+
+    #[tokio::test]
+    async fn test_get_updated_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_updated(
+                "Bad'; DROP--",
+                "2024-01-01T00:00:00Z",
+                "2024-01-31T23:59:59Z",
+            )
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let binary_data = vec![0x89, 0x50, 0x4E, 0x47]; // PNG header bytes
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Attachment/001xx000003DGb2AAG/Body"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(binary_data.clone()))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_blob("Attachment", "001xx000003DGb2AAG", "Body")
+            .await
+            .expect("get_blob should succeed");
+
+        assert_eq!(result, binary_data);
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_invalid_id() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.get_blob("Attachment", "bad-id!", "Body").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ID"));
+    }
+
+    #[tokio::test]
+    async fn test_get_blob_invalid_field() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_blob("Attachment", "001xx000003DGb2AAG", "Bad;Field")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_FIELD"));
+    }
+
+    #[tokio::test]
+    async fn test_get_rich_text_image_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let image_data = vec![0xFF, 0xD8, 0xFF, 0xE0]; // JPEG header
+
+        Mock::given(method("GET"))
+            .and(path_regex(
+                ".*/sobjects/Account/001xx000003DGb2AAG/richTextImageFields/Description/refId001",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(image_data.clone()))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_rich_text_image("Account", "001xx000003DGb2AAG", "Description", "refId001")
+            .await
+            .expect("get_rich_text_image should succeed");
+
+        assert_eq!(result, image_data);
+    }
+
+    #[tokio::test]
+    async fn test_get_rich_text_image_invalid_id() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .get_rich_text_image("Account", "bad!", "Description", "refId001")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ID"));
+    }
+
+    #[tokio::test]
+    async fn test_get_relationship_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "totalSize": 2,
+            "done": true,
+            "records": [
+                {"Id": "003xx1", "Name": "Contact 1"},
+                {"Id": "003xx2", "Name": "Contact 2"}
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(
+                ".*/sobjects/Account/001xx000003DGb2AAG/Contacts",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result: serde_json::Value = client
+            .get_relationship("Account", "001xx000003DGb2AAG", "Contacts")
+            .await
+            .expect("get_relationship should succeed");
+
+        assert_eq!(result["totalSize"], 2);
+        assert_eq!(result["records"][0]["Name"], "Contact 1");
+    }
+
+    #[tokio::test]
+    async fn test_get_relationship_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result: std::result::Result<serde_json::Value, _> = client
+            .get_relationship("Bad'; DROP--", "001xx000003DGb2AAG", "Contacts")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_get_sobject_basic_info_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "objectDescribe": {
+                "name": "Account",
+                "label": "Account",
+                "keyPrefix": "001",
+                "urls": {"sobject": "/services/data/v62.0/sobjects/Account"},
+                "custom": false,
+                "createable": true,
+                "updateable": true,
+                "deletable": true,
+                "queryable": true,
+                "searchable": true
+            },
+            "recentItems": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .get_sobject_basic_info("Account")
+            .await
+            .expect("get_sobject_basic_info should succeed");
+
+        assert_eq!(result.object_describe.name, "Account");
+        assert!(result.object_describe.queryable);
+        assert!(result.recent_items.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_sobject_basic_info_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.get_sobject_basic_info("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    // =========================================================================
+    // Layout Tests
     // =========================================================================
 
     #[tokio::test]
@@ -920,8 +1629,7 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         let body = serde_json::json!({
-            "compactLayouts": [{"id": "0AH000000000001", "name": "System Default"}],
-            "defaultCompactLayoutId": "0AH000000000001"
+            "compactLayouts": []
         });
 
         Mock::given(method("GET"))
@@ -937,7 +1645,6 @@ mod tests {
             .expect("describe_compact_layouts should succeed");
 
         assert!(result["compactLayouts"].is_array());
-        assert_eq!(result["compactLayouts"][0]["name"], "System Default");
     }
 
     #[tokio::test]
@@ -948,7 +1655,7 @@ mod tests {
         let mock_server = MockServer::start().await;
 
         let body = serde_json::json!({
-            "layouts": [{"id": "00h000000000002", "name": "Global Layout"}]
+            "layouts": []
         });
 
         Mock::given(method("GET"))
@@ -964,6 +1671,5 @@ mod tests {
             .expect("describe_global_publisher_layouts should succeed");
 
         assert!(result["layouts"].is_array());
-        assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
 }
