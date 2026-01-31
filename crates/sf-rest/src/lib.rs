@@ -52,8 +52,7 @@ mod collections;
 mod composite;
 mod describe;
 mod error;
-mod list_views;
-mod process;
+mod layout;
 mod query;
 mod query_builder;
 mod quick_actions;
@@ -100,6 +99,12 @@ pub use describe::{
     ActionOverride, ChildRelationship, DescribeGlobalResult, DescribeSObjectResult, FieldDescribe,
     FilteredLookupInfo, NamedLayoutInfo, PicklistValue, RecordTypeInfo, SObjectBasicInfo,
     ScopeInfo,
+};
+
+// Layout types
+pub use layout::{
+    ApprovalLayoutsResult, CompactLayoutsResult, DescribeLayoutsResult,
+    GlobalPublisherLayoutsResult, NamedLayoutResult,
 };
 
 // Error types
