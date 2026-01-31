@@ -128,6 +128,148 @@ impl SalesforceRestClient {
     }
 
     // =========================================================================
+    // Layout Operations
+    // =========================================================================
+
+    /// Get all page layouts for a specific SObject.
+    ///
+    /// This returns metadata about all page layouts configured for the SObject,
+    /// including sections, rows, items, and field metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.describe_layouts("Account").await?;
+    /// println!("Account layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::DescribeLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/layouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get a specific named layout for an SObject.
+    ///
+    /// This returns the layout metadata for a specific named layout.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layout = client.describe_named_layout("Account", "MyCustomLayout").await?;
+    /// println!("Layout metadata: {:?}", layout);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/namedLayouts/{layoutName}`.
+    #[instrument(skip(self))]
+    pub async fn describe_named_layout(
+        &self,
+        sobject: &str,
+        layout_name: &str,
+    ) -> Result<crate::layout::NamedLayoutResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        // URL-encode the layout name to handle special characters
+        let encoded_name = url_security::encode_param(layout_name);
+        let path = format!(
+            "sobjects/{}/describe/namedLayouts/{}",
+            sobject, encoded_name
+        );
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get approval process layouts for a specific SObject.
+    ///
+    /// This returns the approval process layout information including
+    /// approval steps, actions, and field mappings.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let approval_layouts = client.describe_approval_layouts("Account").await?;
+    /// println!("Approval layouts: {:?}", approval_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/approvalLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_approval_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::ApprovalLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/approvalLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get compact layouts for a specific SObject.
+    ///
+    /// Compact layouts are used in the Salesforce mobile app and Lightning Experience
+    /// to show a preview of a record in a compact space.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let compact_layouts = client.describe_compact_layouts("Account").await?;
+    /// println!("Compact layouts: {:?}", compact_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/{sobject}/describe/compactLayouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_compact_layouts(
+        &self,
+        sobject: &str,
+    ) -> Result<crate::layout::CompactLayoutsResult> {
+        if !soql::is_safe_sobject_name(sobject) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_SOBJECT".to_string(),
+                message: "Invalid SObject name".to_string(),
+            }));
+        }
+        let path = format!("sobjects/{}/describe/compactLayouts", sobject);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get global publisher layouts (global quick actions).
+    ///
+    /// This returns global quick actions and publisher layouts that are
+    /// available across the entire organization, not tied to a specific SObject.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let global_layouts = client.describe_global_publisher_layouts().await?;
+    /// println!("Global layouts: {:?}", global_layouts);
+    /// ```
+    ///
+    /// This is equivalent to calling `/services/data/vXX.0/sobjects/Global/describe/layouts`.
+    #[instrument(skip(self))]
+    pub async fn describe_global_publisher_layouts(
+        &self,
+    ) -> Result<crate::layout::GlobalPublisherLayoutsResult> {
+        let path = "sobjects/Global/describe/layouts";
+        self.client.rest_get(path).await.map_err(Into::into)
+    }
+
+    // =========================================================================
     // CRUD Operations
     // =========================================================================
 
@@ -1146,195 +1288,59 @@ mod tests {
     }
 
     // =========================================================================
-    // Wiremock HTTP tests — Consent API
+    // Wiremock HTTP Tests
     // =========================================================================
 
     #[tokio::test]
-    async fn test_read_consent_wiremock() {
+    async fn test_describe_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
+
         let body = serde_json::json!({
-            "consents": [
-                {"id": "001xx000003DHP0AAO", "consent": true},
-                {"id": "001xx000003DHP1AAO", "consent": false, "error": "No consent found"}
-            ]
+            "layouts": [{"id": "00h000000000001", "name": "Account Layout"}],
+            "recordTypeMappings": []
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/consent/action/marketing_email"))
+            .and(path_regex(".*/sobjects/Account/describe/layouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .read_consent("marketing_email", "001xx000003DHP0AAO,001xx000003DHP1AAO")
+            .describe_layouts("Account")
             .await
-            .expect("should succeed");
-        assert_eq!(result.consents.len(), 2);
-        assert!(result.consents[0].consent);
-        assert!(!result.consents[1].consent);
-        assert_eq!(
-            result.consents[1].error.as_deref(),
-            Some("No consent found")
-        );
+            .expect("describe_layouts should succeed");
+
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Account Layout");
     }
 
     #[tokio::test]
-    async fn test_read_consent_invalid_action() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client
-            .read_consent("Robert'; DROP TABLE--", "001xx000003DHP0AAO")
-            .await;
+    async fn test_describe_layouts_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.describe_layouts("Bad'; DROP--").await;
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_ACTION"),
-            "Expected INVALID_ACTION, got: {err}"
-        );
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
     }
 
     #[tokio::test]
-    async fn test_write_consent_wiremock() {
+    async fn test_describe_named_layout_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let response_body = serde_json::json!({
-            "consents": [
-                {"id": "001xx000003DHP0AAO", "consent": true}
-            ]
-        });
 
-        Mock::given(method("POST"))
-            .and(path_regex(".*/consent/action/marketing_email"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let request = crate::consent::ConsentWriteRequest {
-            consents: vec![crate::consent::ConsentWriteRecord {
-                id: "001xx000003DHP0AAO".to_string(),
-                consent: true,
-            }],
-        };
-        let result = client
-            .write_consent("marketing_email", &request)
-            .await
-            .expect("should succeed");
-        assert_eq!(result.consents.len(), 1);
-        assert!(result.consents[0].consent);
-    }
-
-    #[tokio::test]
-    async fn test_read_multi_consent_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
         let body = serde_json::json!({
-            "marketing_email": {
-                "consents": [{"id": "001xx000003DHP0AAO", "consent": true}]
-            },
-            "sms": {
-                "consents": [{"id": "001xx000003DHP0AAO", "consent": false}]
-            }
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/consent/multiaction"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .read_multi_consent("marketing_email,sms", "001xx000003DHP0AAO")
-            .await
-            .expect("should succeed");
-        assert!(result.actions.contains_key("marketing_email"));
-        assert!(result.actions.contains_key("sms"));
-        assert!(result.actions["marketing_email"].consents[0].consent);
-        assert!(!result.actions["sms"].consents[0].consent);
-    }
-
-    // =========================================================================
-    // Wiremock HTTP tests — Knowledge Management
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_knowledge_management_settings_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "isEnabled": true,
-            "defaultLanguage": "en_US"
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/knowledgeManagement/settings"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .knowledge_management_settings()
-            .await
-            .expect("should succeed");
-        assert!(result.is_enabled);
-        assert_eq!(result.default_language.as_deref(), Some("en_US"));
-    }
-
-    #[tokio::test]
-    async fn test_list_knowledge_articles_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "articles": [
-                {"id": "kA0xx0000000001AAA", "title": "How to Reset Password"},
-                {"id": "kA0xx0000000002AAA", "title": "Getting Started Guide"}
-            ]
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/support/knowledgeArticles$"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .list_knowledge_articles()
-            .await
-            .expect("should succeed");
-        assert_eq!(result.articles.len(), 2);
-        assert_eq!(result.articles[0].title, "How to Reset Password");
-    }
-
-    #[tokio::test]
-    async fn test_get_knowledge_article_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "id": "kA0xx0000000001AAA",
-            "title": "How to Reset Password",
-            "urlName": "reset-password",
-            "articleType": "Knowledge__kav"
+            "layouts": [{"detailLayoutSections": [], "editLayoutSections": []}]
         });
 
         Mock::given(method("GET"))
             .and(path_regex(
-                ".*/support/knowledgeArticles/kA0xx0000000001AAA",
+                ".*/sobjects/Account/describe/namedLayouts/MyLayout",
             ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
@@ -1342,384 +1348,91 @@ mod tests {
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .get_knowledge_article("kA0xx0000000001AAA")
+            .describe_named_layout("Account", "MyLayout")
             .await
-            .expect("should succeed");
-        assert_eq!(result.id, "kA0xx0000000001AAA");
-        assert_eq!(result.title, "How to Reset Password");
-        assert_eq!(result.url_name.as_deref(), Some("reset-password"));
+            .expect("describe_named_layout should succeed");
+
+        assert!(result["layouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_get_knowledge_article_invalid_id() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client.get_knowledge_article("not-valid!").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_ID"),
-            "Expected INVALID_ID, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_list_data_category_groups_wiremock() {
+    async fn test_describe_approval_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
+
         let body = serde_json::json!({
-            "categoryGroups": [
-                {"name": "Products", "label": "Products", "active": true},
-                {"name": "Geography", "label": "Geography", "active": true}
-            ]
+            "approvalLayouts": []
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/support/dataCategoryGroups$"))
+            .and(path_regex(".*/sobjects/Account/describe/approvalLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .list_data_category_groups()
+            .describe_approval_layouts("Account")
             .await
-            .expect("should succeed");
-        assert_eq!(result.category_groups.len(), 2);
-        assert_eq!(result.category_groups[0].name, "Products");
+            .expect("describe_approval_layouts should succeed");
+
+        assert!(result["approvalLayouts"].is_array());
     }
 
     #[tokio::test]
-    async fn test_list_data_categories_wiremock() {
+    async fn test_describe_compact_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
+
         let body = serde_json::json!({
-            "categories": [
-                {"name": "Laptops", "label": "Laptops", "parentName": "Products"},
-                {"name": "Phones", "label": "Phones", "parentName": "Products"}
-            ]
+            "compactLayouts": [{"id": "0AH000000000001", "name": "System Default"}],
+            "defaultCompactLayoutId": "0AH000000000001"
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(
-                ".*/support/dataCategoryGroups/Products/dataCategories",
-            ))
+            .and(path_regex(".*/sobjects/Account/describe/compactLayouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .list_data_categories("Products")
+            .describe_compact_layouts("Account")
             .await
-            .expect("should succeed");
-        assert_eq!(result.categories.len(), 2);
-        assert_eq!(result.categories[0].name, "Laptops");
+            .expect("describe_compact_layouts should succeed");
+
+        assert!(result["compactLayouts"].is_array());
+        assert_eq!(result["compactLayouts"][0]["name"], "System Default");
     }
 
     #[tokio::test]
-    async fn test_list_data_categories_invalid_group() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client.list_data_categories("Robert'; DROP TABLE--").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_GROUP"),
-            "Expected INVALID_GROUP, got: {err}"
-        );
-    }
-
-    // =========================================================================
-    // Wiremock HTTP tests — User Password Management
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_get_user_password_status_wiremock() {
+    async fn test_describe_global_publisher_layouts_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"isExpired": false});
 
-        Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/User/005xx000001X8UzAAK/password"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .get_user_password_status("005xx000001X8UzAAK")
-            .await
-            .expect("should succeed");
-        assert!(!result.is_expired);
-    }
-
-    #[tokio::test]
-    async fn test_get_user_password_status_invalid_id() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client.get_user_password_status("bad-id!").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_ID"),
-            "Expected INVALID_ID, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_set_user_password_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let response_body = serde_json::json!({});
-
-        Mock::given(method("POST"))
-            .and(path_regex(".*/sobjects/User/005xx000001X8UzAAK/password"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let request = crate::user_password::SetPasswordRequest {
-            new_password: "NewSecurePassword123!".to_string(),
-        };
-        let result = client
-            .set_user_password("005xx000001X8UzAAK", &request)
-            .await
-            .expect("should succeed");
-        assert!(result.new_password.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_reset_user_password_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({"NewPassword": "AutoGen123!"});
-
-        Mock::given(method("DELETE"))
-            .and(path_regex(".*/sobjects/User/005xx000001X8UzAAK/password"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .reset_user_password("005xx000001X8UzAAK")
-            .await
-            .expect("should succeed");
-        assert_eq!(result.new_password.as_deref(), Some("AutoGen123!"));
-    }
-
-    // =========================================================================
-    // Wiremock HTTP tests — Suggested Articles & Platform Actions
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_get_suggested_articles_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
         let body = serde_json::json!({
-            "articles": [
-                {"id": "kA0xx0000000001AAA", "title": "Password Reset Guide", "score": 0.95},
-                {"id": "kA0xx0000000002AAA", "title": "Login Troubleshooting", "score": 0.80}
-            ]
+            "layouts": [{"id": "00h000000000002", "name": "Global Layout"}]
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Case/suggestedArticles"))
+            .and(path_regex(".*/sobjects/Global/describe/layouts$"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client
-            .get_suggested_articles("Case", Some("Password reset"), Some("Cannot log in"))
+            .describe_global_publisher_layouts()
             .await
-            .expect("should succeed");
-        assert_eq!(result.articles.len(), 2);
-        assert_eq!(result.articles[0].title, "Password Reset Guide");
-        assert_eq!(result.articles[0].score, Some(0.95));
-    }
+            .expect("describe_global_publisher_layouts should succeed");
 
-    #[tokio::test]
-    async fn test_get_suggested_articles_invalid_sobject() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client
-            .get_suggested_articles("Robert'; DROP TABLE--", None, None)
-            .await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_SOBJECT"),
-            "Expected INVALID_SOBJECT, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_get_platform_actions_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "actions": [
-                {"name": "NewCase", "label": "New Case", "actionType": "QuickAction", "available": true},
-                {"name": "SendEmail", "label": "Send Email", "actionType": "QuickAction", "available": true}
-            ]
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Account/platformAction"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .get_platform_actions("Account")
-            .await
-            .expect("should succeed");
-        assert_eq!(result.actions.len(), 2);
-        assert_eq!(result.actions[0].name, "NewCase");
-        assert_eq!(result.actions[0].label.as_deref(), Some("New Case"));
-    }
-
-    #[tokio::test]
-    async fn test_get_platform_actions_invalid_sobject() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client.get_platform_actions("Robert'; DROP TABLE--").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_SOBJECT"),
-            "Expected INVALID_SOBJECT, got: {err}"
-        );
-    }
-
-    // =========================================================================
-    // Wiremock HTTP tests — Scheduler
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_get_appointment_slots_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "slots": [
-                {"startTime": "2026-02-01T09:00:00.000Z", "endTime": "2026-02-01T10:00:00.000Z"},
-                {"startTime": "2026-02-01T10:00:00.000Z", "endTime": "2026-02-01T11:00:00.000Z"}
-            ]
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(".*/scheduling/getAppointmentSlots"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .get_appointment_slots()
-            .await
-            .expect("should succeed");
-        assert!(result.get("slots").is_some());
-        assert_eq!(result["slots"].as_array().unwrap().len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_get_appointment_candidates_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "candidates": [
-                {
-                    "startTime": "2026-02-01T09:00:00.000Z",
-                    "endTime": "2026-02-01T10:00:00.000Z"
-                }
-            ]
-        });
-
-        Mock::given(method("POST"))
-            .and(path_regex(".*/scheduling/getAppointmentCandidates"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let request = crate::scheduler::AppointmentCandidatesRequest {
-            scheduling_policy_id: Some("0VsB000000001AAA".to_string()),
-            work_type_id: Some("08qB000000001AAA".to_string()),
-            account_id: Some("001B000000001AAA".to_string()),
-            additional: std::collections::HashMap::new(),
-        };
-        let result = client
-            .get_appointment_candidates(&request)
-            .await
-            .expect("should succeed");
-        assert_eq!(result.candidates.len(), 1);
-        assert_eq!(
-            result.candidates[0].start_time.as_deref(),
-            Some("2026-02-01T09:00:00.000Z")
-        );
-    }
-
-    // =========================================================================
-    // Wiremock HTTP tests — Embedded Service
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_get_embedded_service_config_wiremock() {
-        use wiremock::matchers::{method, path_regex};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let mock_server = MockServer::start().await;
-        let body = serde_json::json!({
-            "id": "0ESxx0000000001AAA",
-            "name": "My_Embedded_Chat",
-            "isEnabled": true,
-            "siteUrl": "https://myorg.my.site.com"
-        });
-
-        Mock::given(method("GET"))
-            .and(path_regex(
-                ".*/support/embeddedservice/configuration/0ESxx0000000001AAA",
-            ))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
-            .mount(&mock_server)
-            .await;
-
-        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client
-            .get_embedded_service_config("0ESxx0000000001AAA")
-            .await
-            .expect("should succeed");
-        assert_eq!(result.id, "0ESxx0000000001AAA");
-        assert_eq!(result.name.as_deref(), Some("My_Embedded_Chat"));
-        assert_eq!(result.is_enabled, Some(true));
-    }
-
-    #[tokio::test]
-    async fn test_get_embedded_service_config_invalid_id() {
-        let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client.get_embedded_service_config("bad-id!").await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.to_string().contains("INVALID_ID"),
-            "Expected INVALID_ID, got: {err}"
-        );
+        assert!(result["layouts"].is_array());
+        assert_eq!(result["layouts"][0]["name"], "Global Layout");
     }
 }

@@ -54,7 +54,7 @@ pub mod consent;
 mod describe;
 pub mod embedded_service;
 mod error;
-pub mod knowledge;
+mod layout;
 mod query;
 mod query_builder;
 pub mod scheduler;
@@ -81,6 +81,12 @@ pub use describe::{
     ActionOverride, ChildRelationship, DescribeGlobalResult, DescribeSObjectResult, FieldDescribe,
     FilteredLookupInfo, NamedLayoutInfo, PicklistValue, RecordTypeInfo, SObjectBasicInfo,
     ScopeInfo,
+};
+
+// Layout types
+pub use layout::{
+    ApprovalLayoutsResult, CompactLayoutsResult, DescribeLayoutsResult,
+    GlobalPublisherLayoutsResult, NamedLayoutResult,
 };
 
 // Error types
