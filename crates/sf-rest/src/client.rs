@@ -1031,8 +1031,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_menu_invalid_type() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.app_menu("../../etc/passwd").await;
         assert!(result.is_err());
         assert!(result
@@ -1047,8 +1046,7 @@ mod tests {
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let mock_server = MockServer::start().await;
-        let body =
-            serde_json::json!([{"attributes": {"type": "Account"}, "Id": "001xx1", "Name": "Acme"}]);
+        let body = serde_json::json!([{"attributes": {"type": "Account"}, "Id": "001xx1", "Name": "Acme"}]);
 
         Mock::given(method("GET"))
             .and(path_regex(".*/recent$"))
@@ -1111,8 +1109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compact_layouts_invalid_sobject() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.compact_layouts("Account,Bad'; DROP--").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
@@ -1120,8 +1117,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_compact_layouts_empty_input() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.compact_layouts("").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_INPUT"));
@@ -1151,8 +1147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_platform_event_schema_invalid_name() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client.platform_event_schema("Bad'; DROP--").await;
         assert!(result.is_err());
         assert!(result
@@ -1207,11 +1202,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_rest_deploy_returns_error() {
-        let client =
-            SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
-        let result = client
-            .rest_deploy(&[0u8; 10], &serde_json::json!({}))
-            .await;
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.rest_deploy(&[0u8; 10], &serde_json::json!({})).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
