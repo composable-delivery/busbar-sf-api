@@ -13,6 +13,9 @@ busbar-sf-wasm-types = { workspace = true }
 busbar-sf-rest = { workspace = true }
 busbar-sf-auth = { workspace = true }
 busbar-sf-client = { workspace = true }
+busbar-sf-bulk = { workspace = true }
+busbar-sf-tooling = { workspace = true }
+busbar-sf-metadata = { workspace = true }
 
 # Extism host SDK
 extism = "1"
@@ -23,6 +26,9 @@ tokio = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Encoding
+base64 = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }

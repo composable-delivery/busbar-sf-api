@@ -15,6 +15,9 @@
 //! │  Calls host functions:                          │
 //! │    sf_query("SELECT Id FROM Account")           │
 //! │    sf_create("Contact", {fields...})            │
+//! │    sf_bulk_create_ingest_job(...)                │
+//! │    sf_tooling_query(...)                         │
+//! │    sf_metadata_deploy(...)                       │
 //! │                                                 │
 //! │  CANNOT: see tokens, make raw HTTP, access fs   │
 //! └──────────────┬──────────────────────────────────┘
@@ -23,7 +26,8 @@
 //! ┌─────────────────────────────────────────────────┐
 //! │  SfBridge (this crate)                          │
 //! │                                                 │
-//! │  - Owns SalesforceRestClient (with credentials) │
+//! │  - Owns all Salesforce clients (with creds)     │
+//! │  - REST, Bulk, Tooling, Metadata APIs           │
 //! │  - Registers host functions per the ABI         │
 //! │  - Validates inputs, executes API calls         │
 //! │  - Returns results to guest                     │
@@ -45,14 +49,7 @@
 //!
 //! `SfBridge::call` is safe to invoke from multiple tokio tasks concurrently.
 //! Each invocation creates a fresh WASM plugin instance from a pre-compiled
-//! module. The underlying `SalesforceRestClient` shares a connection pool.
-//!
-//! ```text
-//! tokio runtime (multi-threaded)
-//! ├── task: guest_a.wasm → sf_query()  → host awaits API → returns
-//! ├── task: guest_b.wasm → sf_create() → host awaits API → returns
-//! └── task: guest_c.wasm → sf_query()  → host awaits API → returns
-//! ```
+//! module. The underlying clients share connection pools.
 //!
 //! ## Example
 //!
@@ -85,7 +82,10 @@ pub use error::{Error, Result};
 
 use std::sync::Arc;
 
+use busbar_sf_bulk::BulkApiClient;
+use busbar_sf_metadata::MetadataClient;
 use busbar_sf_rest::SalesforceRestClient;
+use busbar_sf_tooling::ToolingClient;
 use busbar_sf_wasm_types::host_fn_names;
 use extism::{Manifest, Plugin, PluginBuilder, UserData, ValType, Wasm};
 use tracing::instrument;
@@ -100,7 +100,19 @@ use tracing::instrument;
 /// API calls via `state.handle.block_on(...)`.
 pub(crate) struct BridgeState {
     pub(crate) rest_client: SalesforceRestClient,
+    pub(crate) bulk_client: BulkApiClient,
+    pub(crate) tooling_client: ToolingClient,
+    pub(crate) instance_url: String,
+    pub(crate) access_token: String,
     pub(crate) handle: tokio::runtime::Handle,
+}
+
+impl BridgeState {
+    /// Construct a fresh MetadataClient. MetadataClient is not Clone,
+    /// so we build one on-demand from stored credentials.
+    pub(crate) fn metadata_client(&self) -> MetadataClient {
+        MetadataClient::from_parts(&self.instance_url, &self.access_token)
+    }
 }
 
 /// The main bridge between WASM guests and Salesforce APIs.
@@ -111,6 +123,10 @@ pub(crate) struct BridgeState {
 pub struct SfBridge {
     wasm_bytes: Arc<Vec<u8>>,
     rest_client: SalesforceRestClient,
+    bulk_client: BulkApiClient,
+    tooling_client: ToolingClient,
+    instance_url: String,
+    access_token: String,
     handle: tokio::runtime::Handle,
 }
 
@@ -123,11 +139,7 @@ impl SfBridge {
     /// Must be called from within a tokio runtime context.
     pub fn new(wasm_bytes: Vec<u8>, rest_client: SalesforceRestClient) -> Result<Self> {
         let handle = tokio::runtime::Handle::current();
-        Ok(Self {
-            wasm_bytes: Arc::new(wasm_bytes),
-            rest_client,
-            handle,
-        })
+        Self::with_handle(wasm_bytes, rest_client, handle)
     }
 
     /// Create a new bridge, providing a specific tokio runtime handle.
@@ -138,9 +150,20 @@ impl SfBridge {
         rest_client: SalesforceRestClient,
         handle: tokio::runtime::Handle,
     ) -> Result<Self> {
+        let inner = rest_client.inner();
+        let instance_url = inner.instance_url().to_string();
+        let access_token = inner.access_token().to_string();
+
+        let bulk_client = BulkApiClient::from_client(inner.clone());
+        let tooling_client = ToolingClient::from_client(inner.clone());
+
         Ok(Self {
             wasm_bytes: Arc::new(wasm_bytes),
             rest_client,
+            bulk_client,
+            tooling_client,
+            instance_url,
+            access_token,
             handle,
         })
     }
@@ -149,7 +172,7 @@ impl SfBridge {
     ///
     /// Each call creates a fresh plugin instance (cheap -- the module is
     /// pre-compiled by Extism/Wasmtime). The host functions are wired up
-    /// with the bridge's Salesforce client.
+    /// with the bridge's Salesforce clients.
     ///
     /// Safe to call concurrently from multiple tokio tasks.
     #[instrument(skip(self, input), fields(function = %function))]
@@ -160,6 +183,10 @@ impl SfBridge {
     ) -> Result<Vec<u8>> {
         let wasm_bytes = self.wasm_bytes.clone();
         let rest_client = self.rest_client.clone();
+        let bulk_client = self.bulk_client.clone();
+        let tooling_client = self.tooling_client.clone();
+        let instance_url = self.instance_url.clone();
+        let access_token = self.access_token.clone();
         let handle = self.handle.clone();
         let function = function.to_string();
 
@@ -168,6 +195,10 @@ impl SfBridge {
         tokio::task::spawn_blocking(move || {
             let state = BridgeState {
                 rest_client,
+                bulk_client,
+                tooling_client,
+                instance_url,
+                access_token,
                 handle,
             };
             let mut plugin = create_plugin(&wasm_bytes, state)?;
@@ -185,12 +216,22 @@ fn create_plugin(wasm_bytes: &[u8], state: BridgeState) -> Result<Plugin> {
 
     let plugin = PluginBuilder::new(manifest)
         .with_wasi(true)
+        // =====================================================================
+        // REST API host functions
+        // =====================================================================
         .with_function(
             host_fn_names::QUERY,
             [ValType::I64],
             [ValType::I64],
             user_data.clone(),
             host_fn_query,
+        )
+        .with_function(
+            host_fn_names::QUERY_MORE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_query_more,
         )
         .with_function(
             host_fn_names::CREATE,
@@ -256,11 +297,39 @@ fn create_plugin(wasm_bytes: &[u8], state: BridgeState) -> Result<Plugin> {
             host_fn_composite,
         )
         .with_function(
+            host_fn_names::COMPOSITE_BATCH,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_composite_batch,
+        )
+        .with_function(
+            host_fn_names::COMPOSITE_TREE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_composite_tree,
+        )
+        .with_function(
             host_fn_names::CREATE_MULTIPLE,
             [ValType::I64],
             [ValType::I64],
             user_data.clone(),
             host_fn_create_multiple,
+        )
+        .with_function(
+            host_fn_names::UPDATE_MULTIPLE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_update_multiple,
+        )
+        .with_function(
+            host_fn_names::GET_MULTIPLE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_multiple,
         )
         .with_function(
             host_fn_names::DELETE_MULTIPLE,
@@ -275,6 +344,169 @@ fn create_plugin(wasm_bytes: &[u8], state: BridgeState) -> Result<Plugin> {
             [ValType::I64],
             user_data.clone(),
             host_fn_limits,
+        )
+        .with_function(
+            host_fn_names::VERSIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_versions,
+        )
+        // =====================================================================
+        // Bulk API host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::BULK_CREATE_INGEST_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_create_ingest_job,
+        )
+        .with_function(
+            host_fn_names::BULK_UPLOAD_JOB_DATA,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_upload_job_data,
+        )
+        .with_function(
+            host_fn_names::BULK_CLOSE_INGEST_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_close_ingest_job,
+        )
+        .with_function(
+            host_fn_names::BULK_ABORT_INGEST_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_abort_ingest_job,
+        )
+        .with_function(
+            host_fn_names::BULK_GET_INGEST_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_get_ingest_job,
+        )
+        .with_function(
+            host_fn_names::BULK_GET_JOB_RESULTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_get_job_results,
+        )
+        .with_function(
+            host_fn_names::BULK_DELETE_INGEST_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_delete_ingest_job,
+        )
+        .with_function(
+            host_fn_names::BULK_GET_ALL_INGEST_JOBS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_get_all_ingest_jobs,
+        )
+        .with_function(
+            host_fn_names::BULK_ABORT_QUERY_JOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_abort_query_job,
+        )
+        .with_function(
+            host_fn_names::BULK_GET_QUERY_RESULTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_bulk_get_query_results,
+        )
+        // =====================================================================
+        // Tooling API host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::TOOLING_QUERY,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tooling_query,
+        )
+        .with_function(
+            host_fn_names::TOOLING_EXECUTE_ANONYMOUS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tooling_execute_anonymous,
+        )
+        .with_function(
+            host_fn_names::TOOLING_GET,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tooling_get,
+        )
+        .with_function(
+            host_fn_names::TOOLING_CREATE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tooling_create,
+        )
+        .with_function(
+            host_fn_names::TOOLING_DELETE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tooling_delete,
+        )
+        // =====================================================================
+        // Metadata API host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::METADATA_DEPLOY,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_deploy,
+        )
+        .with_function(
+            host_fn_names::METADATA_CHECK_DEPLOY_STATUS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_check_deploy_status,
+        )
+        .with_function(
+            host_fn_names::METADATA_RETRIEVE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_retrieve,
+        )
+        .with_function(
+            host_fn_names::METADATA_CHECK_RETRIEVE_STATUS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_check_retrieve_status,
+        )
+        .with_function(
+            host_fn_names::METADATA_LIST,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_list,
+        )
+        .with_function(
+            host_fn_names::METADATA_DESCRIBE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_metadata_describe,
         )
         .build()?;
 
@@ -347,9 +579,9 @@ where
     Ok(())
 }
 
-// --- Individual host function callbacks ---
-// Each passes a closure that calls block_on() in the same scope as the
-// reference to rest_client, avoiding async lifetime issues.
+// =============================================================================
+// REST API host function callbacks
+// =============================================================================
 
 fn host_fn_query(
     plugin: &mut extism::CurrentPlugin,
@@ -360,6 +592,18 @@ fn host_fn_query(
     bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
         s.handle
             .block_on(host_functions::handle_query(&s.rest_client, r))
+    })
+}
+
+fn host_fn_query_more(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_query_more(&s.rest_client, r))
     })
 }
 
@@ -471,6 +715,30 @@ fn host_fn_composite(
     })
 }
 
+fn host_fn_composite_batch(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_composite_batch(&s.rest_client, r))
+    })
+}
+
+fn host_fn_composite_tree(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_composite_tree(&s.rest_client, r))
+    })
+}
+
 fn host_fn_create_multiple(
     plugin: &mut extism::CurrentPlugin,
     inputs: &[extism::Val],
@@ -480,6 +748,30 @@ fn host_fn_create_multiple(
     bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
         s.handle
             .block_on(host_functions::handle_create_multiple(&s.rest_client, r))
+    })
+}
+
+fn host_fn_update_multiple(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_update_multiple(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_multiple(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_multiple(&s.rest_client, r))
     })
 }
 
@@ -504,5 +796,323 @@ fn host_fn_limits(
     bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
         s.handle
             .block_on(host_functions::handle_limits(&s.rest_client))
+    })
+}
+
+fn host_fn_versions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_versions(&s.rest_client))
+    })
+}
+
+// =============================================================================
+// Bulk API host function callbacks
+// =============================================================================
+
+fn host_fn_bulk_create_ingest_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_create_ingest_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_upload_job_data(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_upload_job_data(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_close_ingest_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_close_ingest_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_abort_ingest_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_abort_ingest_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_get_ingest_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_get_ingest_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_get_job_results(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_get_job_results(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_delete_ingest_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_delete_ingest_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_get_all_ingest_jobs(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_bulk_get_all_ingest_jobs(
+                &s.bulk_client,
+            ))
+    })
+}
+
+fn host_fn_bulk_abort_query_job(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_abort_query_job(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_bulk_get_query_results(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_bulk_get_query_results(
+                &s.bulk_client,
+                r,
+            ))
+    })
+}
+
+// =============================================================================
+// Tooling API host function callbacks
+// =============================================================================
+
+fn host_fn_tooling_query(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_tooling_query(&s.tooling_client, r))
+    })
+}
+
+fn host_fn_tooling_execute_anonymous(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_tooling_execute_anonymous(
+                &s.tooling_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_tooling_get(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_tooling_get(&s.tooling_client, r))
+    })
+}
+
+fn host_fn_tooling_create(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_tooling_create(&s.tooling_client, r))
+    })
+}
+
+fn host_fn_tooling_delete(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_tooling_delete(&s.tooling_client, r))
+    })
+}
+
+// =============================================================================
+// Metadata API host function callbacks
+// =============================================================================
+
+fn host_fn_metadata_deploy(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_deploy(&client, r))
+    })
+}
+
+fn host_fn_metadata_check_deploy_status(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_check_deploy_status(
+                &client, r,
+            ))
+    })
+}
+
+fn host_fn_metadata_retrieve(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_retrieve(&client, r))
+    })
+}
+
+fn host_fn_metadata_check_retrieve_status(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_check_retrieve_status(
+                &client, r,
+            ))
+    })
+}
+
+fn host_fn_metadata_list(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_list(&client, r))
+    })
+}
+
+fn host_fn_metadata_describe(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        let client = s.metadata_client();
+        s.handle
+            .block_on(host_functions::handle_metadata_describe(&client))
     })
 }

@@ -15,6 +15,18 @@ pub enum Error {
     #[error("salesforce REST error: {0}")]
     SalesforceRest(#[from] busbar_sf_rest::Error),
 
+    /// Error from the Salesforce Bulk API client.
+    #[error("salesforce bulk error: {0}")]
+    SalesforceBulk(#[from] busbar_sf_bulk::Error),
+
+    /// Error from the Salesforce Tooling API client.
+    #[error("salesforce tooling error: {0}")]
+    SalesforceTooling(#[from] busbar_sf_tooling::Error),
+
+    /// Error from the Salesforce Metadata API client.
+    #[error("salesforce metadata error: {0}")]
+    SalesforceMetadata(#[from] busbar_sf_metadata::Error),
+
     /// Error from the Salesforce client.
     #[error("salesforce client error: {0}")]
     SalesforceClient(#[from] busbar_sf_client::Error),

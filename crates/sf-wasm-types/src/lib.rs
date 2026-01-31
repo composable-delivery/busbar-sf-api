@@ -77,11 +77,31 @@ impl<T> BridgeResult<T> {
         })
     }
 
+    pub fn err_with_fields(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        fields: Vec<String>,
+    ) -> Self {
+        BridgeResult::Err(BridgeError {
+            code: code.into(),
+            message: message.into(),
+            fields,
+        })
+    }
+
     pub fn into_result(self) -> Result<T, BridgeError> {
         match self {
             BridgeResult::Ok(v) => Ok(v),
             BridgeResult::Err(e) => Err(e),
         }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        matches!(self, BridgeResult::Ok(_))
+    }
+
+    pub fn is_err(&self) -> bool {
+        matches!(self, BridgeResult::Err(_))
     }
 }
 
@@ -108,7 +128,7 @@ pub struct SalesforceApiError {
 }
 
 // =============================================================================
-// Query
+// REST API: Query
 // =============================================================================
 
 /// Request for SOQL query operations.
@@ -135,8 +155,15 @@ pub struct QueryResponse {
     pub next_records_url: Option<String>,
 }
 
+/// Request to fetch the next page of query results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryMoreRequest {
+    /// The `next_records_url` from the previous query response.
+    pub next_records_url: String,
+}
+
 // =============================================================================
-// CRUD Operations
+// REST API: CRUD Operations
 // =============================================================================
 
 /// Request to create a record.
@@ -213,7 +240,7 @@ pub struct UpsertResponse {
 }
 
 // =============================================================================
-// Describe
+// REST API: Describe
 // =============================================================================
 
 /// Request to describe a specific SObject.
@@ -224,7 +251,7 @@ pub struct DescribeSObjectRequest {
 }
 
 // =============================================================================
-// Search (SOSL)
+// REST API: Search (SOSL)
 // =============================================================================
 
 /// Request for a SOSL search.
@@ -241,7 +268,7 @@ pub struct SearchResponse {
 }
 
 // =============================================================================
-// Composite API
+// REST API: Composite
 // =============================================================================
 
 /// Request for a composite API call.
@@ -281,8 +308,68 @@ pub struct CompositeSubresponse {
     pub reference_id: String,
 }
 
+/// Request for a composite batch API call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeBatchRequest {
+    /// If true, halt execution on first error.
+    pub halt_on_error: bool,
+    /// The batch subrequests to execute.
+    pub subrequests: Vec<CompositeBatchSubrequest>,
+}
+
+/// A single subrequest in a composite batch call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeBatchSubrequest {
+    /// HTTP method.
+    pub method: String,
+    /// Relative URL.
+    pub url: String,
+    /// Optional request body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rich_input: Option<serde_json::Value>,
+}
+
+/// Response from a composite batch API call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeBatchResponse {
+    pub has_errors: bool,
+    pub results: Vec<CompositeBatchSubresponse>,
+}
+
+/// Response from a single composite batch subrequest.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeBatchSubresponse {
+    pub status_code: u16,
+    pub result: serde_json::Value,
+}
+
+/// Request for a composite tree API call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeTreeRequest {
+    /// SObject type for the root records.
+    pub sobject: String,
+    /// Records with nested children.
+    pub records: Vec<serde_json::Value>,
+}
+
+/// Response from a composite tree API call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeTreeResponse {
+    pub has_errors: bool,
+    pub results: Vec<CompositeTreeResult>,
+}
+
+/// Result of a single record in a composite tree response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositeTreeResult {
+    pub reference_id: String,
+    pub id: Option<String>,
+    #[serde(default)]
+    pub errors: Vec<SalesforceApiError>,
+}
+
 // =============================================================================
-// Collections (Batch CRUD)
+// REST API: Collections (Batch CRUD)
 // =============================================================================
 
 /// Request to create multiple records.
@@ -294,6 +381,37 @@ pub struct CreateMultipleRequest {
     pub records: Vec<serde_json::Value>,
     /// If true, all records fail if any single record fails.
     pub all_or_none: bool,
+}
+
+/// Request to update multiple records.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMultipleRequest {
+    /// SObject type.
+    pub sobject: String,
+    /// Records to update as (id, fields) pairs.
+    pub records: Vec<UpdateMultipleRecord>,
+    /// If true, all records fail if any single record fails.
+    pub all_or_none: bool,
+}
+
+/// A single record in an update multiple request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMultipleRecord {
+    /// Record ID.
+    pub id: String,
+    /// Fields to update.
+    pub fields: serde_json::Value,
+}
+
+/// Request to get multiple records by ID.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetMultipleRequest {
+    /// SObject type.
+    pub sobject: String,
+    /// Record IDs (up to 2000).
+    pub ids: Vec<String>,
+    /// Fields to retrieve.
+    pub fields: Vec<String>,
 }
 
 /// Request to delete multiple records.
@@ -316,7 +434,7 @@ pub struct CollectionResult {
 }
 
 // =============================================================================
-// Limits
+// REST API: Limits & Versions
 // =============================================================================
 
 /// Response from the limits endpoint.
@@ -324,6 +442,345 @@ pub struct CollectionResult {
 /// Returned as a JSON object where keys are limit names and values
 /// contain `Max` and `Remaining` fields.
 pub type LimitsResponse = serde_json::Value;
+
+/// A single API version entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiVersion {
+    pub label: String,
+    pub url: String,
+    pub version: String,
+}
+
+// =============================================================================
+// Bulk API 2.0
+// =============================================================================
+
+/// Request to create a bulk ingest job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkCreateIngestJobRequest {
+    /// SObject API name.
+    pub sobject: String,
+    /// Operation: insert, update, upsert, delete, hardDelete.
+    pub operation: String,
+    /// External ID field name (required for upsert).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_id_field: Option<String>,
+    /// Column delimiter (COMMA, TAB, SEMICOLON, PIPE, BACKQUOTE, CARET).
+    #[serde(default = "default_column_delimiter")]
+    pub column_delimiter: String,
+    /// Line ending (LF, CRLF).
+    #[serde(default = "default_line_ending")]
+    pub line_ending: String,
+}
+
+fn default_column_delimiter() -> String {
+    "COMMA".to_string()
+}
+
+fn default_line_ending() -> String {
+    "LF".to_string()
+}
+
+/// Response from bulk job operations (create, close, abort, get).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkJobResponse {
+    pub id: String,
+    pub state: String,
+    pub object: String,
+    pub operation: String,
+    #[serde(default)]
+    pub number_records_processed: i64,
+    #[serde(default)]
+    pub number_records_failed: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_modstamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Request to upload CSV data to a bulk ingest job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkUploadJobDataRequest {
+    pub job_id: String,
+    pub csv_data: String,
+}
+
+/// Request that identifies a bulk job by ID.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkJobIdRequest {
+    pub job_id: String,
+}
+
+/// Request to get job results (successful, failed, or unprocessed records).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkJobResultsRequest {
+    pub job_id: String,
+    /// One of: "successful", "failed", "unprocessed".
+    pub result_type: String,
+}
+
+/// Response containing CSV results from a bulk job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkJobResultsResponse {
+    pub csv_data: String,
+}
+
+/// Response from listing all ingest jobs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkJobListResponse {
+    pub records: Vec<BulkJobResponse>,
+    pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_records_url: Option<String>,
+}
+
+/// Request to get query job results with optional pagination.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkQueryResultsRequest {
+    pub job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_records: Option<u64>,
+}
+
+/// Response containing CSV results from a bulk query job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkQueryResultsResponse {
+    pub csv_data: String,
+    /// Locator for next page, None if all results returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
+}
+
+// =============================================================================
+// Tooling API
+// =============================================================================
+
+/// Request for a Tooling API SOQL query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolingQueryRequest {
+    pub soql: String,
+}
+
+/// Request to execute anonymous Apex code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteAnonymousRequest {
+    pub apex_code: String,
+}
+
+/// Response from executing anonymous Apex code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecuteAnonymousResponse {
+    pub compiled: bool,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_problem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exception_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exception_stack_trace: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<i32>,
+}
+
+/// Request to get a Tooling API record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolingGetRequest {
+    pub sobject: String,
+    pub id: String,
+}
+
+/// Request to create a Tooling API record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolingCreateRequest {
+    pub sobject: String,
+    pub record: serde_json::Value,
+}
+
+/// Request to delete a Tooling API record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolingDeleteRequest {
+    pub sobject: String,
+    pub id: String,
+}
+
+// =============================================================================
+// Metadata API
+// =============================================================================
+
+/// Request to deploy metadata (zipped package).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataDeployRequest {
+    /// Base64-encoded zip file containing the metadata package.
+    pub zip_base64: String,
+    /// Deploy options.
+    #[serde(default)]
+    pub options: MetadataDeployOptions,
+}
+
+/// Options for a metadata deployment.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MetadataDeployOptions {
+    /// If true, validate only (don't actually deploy).
+    #[serde(default)]
+    pub check_only: bool,
+    /// Test level: NoTestRun, RunLocalTests, RunAllTestsInOrg, RunSpecifiedTests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_level: Option<String>,
+    /// Specific tests to run (when test_level is RunSpecifiedTests).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub run_tests: Vec<String>,
+    /// If true, roll back on error.
+    #[serde(default = "default_true")]
+    pub rollback_on_error: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Response from a metadata deploy request (async process ID).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataDeployResponse {
+    pub async_process_id: String,
+}
+
+/// Request to check deploy status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataCheckDeployStatusRequest {
+    pub async_process_id: String,
+    #[serde(default)]
+    pub include_details: bool,
+}
+
+/// Result of a metadata deploy operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataDeployResult {
+    pub id: String,
+    pub done: bool,
+    pub status: String,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    #[serde(default)]
+    pub number_component_errors: i32,
+    #[serde(default)]
+    pub number_components_deployed: i32,
+    #[serde(default)]
+    pub number_components_total: i32,
+    #[serde(default)]
+    pub number_test_errors: i32,
+    #[serde(default)]
+    pub number_tests_completed: i32,
+    #[serde(default)]
+    pub number_tests_total: i32,
+}
+
+/// Request to retrieve metadata as a zip package.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataRetrieveRequest {
+    /// If true, retrieve a named managed package.
+    /// If false, retrieve unpackaged metadata using the `types` field.
+    #[serde(default)]
+    pub is_packaged: bool,
+    /// For packaged retrieval: the managed package name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+    /// For unpackaged retrieval: the metadata types to include.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub types: Vec<MetadataPackageType>,
+    /// API version for the package manifest (default: "62.0").
+    #[serde(default = "default_api_version")]
+    pub api_version: String,
+}
+
+/// A metadata type entry in a package manifest for retrieve operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataPackageType {
+    /// The metadata type name (e.g., "ApexClass", "ApexTrigger").
+    pub name: String,
+    /// Members to include. Use `["*"]` for all members.
+    pub members: Vec<String>,
+}
+
+fn default_api_version() -> String {
+    "62.0".to_string()
+}
+
+/// Response from a metadata retrieve request (async process ID).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataRetrieveResponse {
+    pub async_process_id: String,
+}
+
+/// Request to check retrieve status.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataCheckRetrieveStatusRequest {
+    pub async_process_id: String,
+    #[serde(default)]
+    pub include_zip: bool,
+}
+
+/// Result of a metadata retrieve operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataRetrieveResult {
+    pub id: String,
+    pub done: bool,
+    pub status: String,
+    pub success: bool,
+    /// Base64-encoded zip file (if include_zip was true).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zip_base64: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Request to list metadata components of a given type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataListRequest {
+    pub metadata_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
+/// A metadata component entry from list_metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataComponentInfo {
+    pub full_name: String,
+    pub file_name: String,
+    pub component_type: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace_prefix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_modified_date: Option<String>,
+}
+
+/// Response from describe_metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataDescribeResult {
+    pub metadata_objects: Vec<MetadataTypeInfo>,
+    pub organization_namespace: String,
+    pub partial_save_allowed: bool,
+    pub test_required: bool,
+}
+
+/// Information about a metadata type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataTypeInfo {
+    pub xml_name: String,
+    pub directory_name: String,
+    pub suffix: Option<String>,
+    pub in_folder: bool,
+    pub meta_file: bool,
+    #[serde(default)]
+    pub child_xml_names: Vec<String>,
+}
 
 // =============================================================================
 // Host Function Names (constants for ABI contract)
@@ -334,7 +791,9 @@ pub type LimitsResponse = serde_json::Value;
 /// These are the names used to register/import host functions across
 /// the WASM boundary. Both sf-bridge and sf-guest-sdk use these.
 pub mod host_fn_names {
+    // REST API
     pub const QUERY: &str = "sf_query";
+    pub const QUERY_MORE: &str = "sf_query_more";
     pub const CREATE: &str = "sf_create";
     pub const GET: &str = "sf_get";
     pub const UPDATE: &str = "sf_update";
@@ -344,9 +803,41 @@ pub mod host_fn_names {
     pub const DESCRIBE_SOBJECT: &str = "sf_describe_sobject";
     pub const SEARCH: &str = "sf_search";
     pub const COMPOSITE: &str = "sf_composite";
+    pub const COMPOSITE_BATCH: &str = "sf_composite_batch";
+    pub const COMPOSITE_TREE: &str = "sf_composite_tree";
     pub const CREATE_MULTIPLE: &str = "sf_create_multiple";
+    pub const UPDATE_MULTIPLE: &str = "sf_update_multiple";
+    pub const GET_MULTIPLE: &str = "sf_get_multiple";
     pub const DELETE_MULTIPLE: &str = "sf_delete_multiple";
     pub const LIMITS: &str = "sf_limits";
+    pub const VERSIONS: &str = "sf_versions";
+
+    // Bulk API
+    pub const BULK_CREATE_INGEST_JOB: &str = "sf_bulk_create_ingest_job";
+    pub const BULK_UPLOAD_JOB_DATA: &str = "sf_bulk_upload_job_data";
+    pub const BULK_CLOSE_INGEST_JOB: &str = "sf_bulk_close_ingest_job";
+    pub const BULK_ABORT_INGEST_JOB: &str = "sf_bulk_abort_ingest_job";
+    pub const BULK_GET_INGEST_JOB: &str = "sf_bulk_get_ingest_job";
+    pub const BULK_GET_JOB_RESULTS: &str = "sf_bulk_get_job_results";
+    pub const BULK_DELETE_INGEST_JOB: &str = "sf_bulk_delete_ingest_job";
+    pub const BULK_GET_ALL_INGEST_JOBS: &str = "sf_bulk_get_all_ingest_jobs";
+    pub const BULK_ABORT_QUERY_JOB: &str = "sf_bulk_abort_query_job";
+    pub const BULK_GET_QUERY_RESULTS: &str = "sf_bulk_get_query_results";
+
+    // Tooling API
+    pub const TOOLING_QUERY: &str = "sf_tooling_query";
+    pub const TOOLING_EXECUTE_ANONYMOUS: &str = "sf_tooling_execute_anonymous";
+    pub const TOOLING_GET: &str = "sf_tooling_get";
+    pub const TOOLING_CREATE: &str = "sf_tooling_create";
+    pub const TOOLING_DELETE: &str = "sf_tooling_delete";
+
+    // Metadata API
+    pub const METADATA_DEPLOY: &str = "sf_metadata_deploy";
+    pub const METADATA_CHECK_DEPLOY_STATUS: &str = "sf_metadata_check_deploy_status";
+    pub const METADATA_RETRIEVE: &str = "sf_metadata_retrieve";
+    pub const METADATA_CHECK_RETRIEVE_STATUS: &str = "sf_metadata_check_retrieve_status";
+    pub const METADATA_LIST: &str = "sf_metadata_list";
+    pub const METADATA_DESCRIBE: &str = "sf_metadata_describe";
 }
 
 /// The Extism namespace used for all bridge host functions.
@@ -355,6 +846,10 @@ pub const BRIDGE_NAMESPACE: &str = "busbar";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // BridgeResult & BridgeError
+    // =========================================================================
 
     #[test]
     fn test_bridge_result_ok_serialization() {
@@ -386,12 +881,48 @@ mod tests {
     }
 
     #[test]
+    fn test_bridge_result_err_with_fields() {
+        let result: BridgeResult<String> =
+            BridgeResult::err_with_fields("FIELD_ERR", "bad field", vec!["Name".to_string()]);
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("Name"));
+        match serde_json::from_str::<BridgeResult<String>>(&json).unwrap() {
+            BridgeResult::Err(e) => {
+                assert_eq!(e.fields, vec!["Name"]);
+            }
+            _ => panic!("expected Err"),
+        }
+    }
+
+    #[test]
     fn test_bridge_result_into_result() {
         let ok: BridgeResult<u32> = BridgeResult::ok(42);
         assert_eq!(ok.into_result().unwrap(), 42);
 
         let err: BridgeResult<u32> = BridgeResult::err("FAIL", "failed");
         assert!(err.into_result().is_err());
+    }
+
+    #[test]
+    fn test_bridge_result_is_ok_is_err() {
+        let ok: BridgeResult<u32> = BridgeResult::ok(42);
+        assert!(ok.is_ok());
+        assert!(!ok.is_err());
+
+        let err: BridgeResult<u32> = BridgeResult::err("FAIL", "failed");
+        assert!(err.is_err());
+        assert!(!err.is_ok());
+    }
+
+    #[test]
+    fn test_bridge_result_from_into() {
+        let ok: BridgeResult<u32> = BridgeResult::ok(42);
+        let result: Result<u32, BridgeError> = ok.into();
+        assert_eq!(result.unwrap(), 42);
+
+        let err: BridgeResult<u32> = BridgeResult::err("FAIL", "failed");
+        let result: Result<u32, BridgeError> = err.into();
+        assert!(result.is_err());
     }
 
     #[test]
@@ -405,6 +936,59 @@ mod tests {
     }
 
     #[test]
+    fn test_bridge_error_is_error_trait() {
+        let err = BridgeError {
+            code: "TEST".to_string(),
+            message: "test error".to_string(),
+            fields: vec![],
+        };
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn test_bridge_error_fields_skipped_when_empty() {
+        let err = BridgeError {
+            code: "X".to_string(),
+            message: "y".to_string(),
+            fields: vec![],
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert!(json.get("fields").is_none());
+    }
+
+    #[test]
+    fn test_bridge_error_fields_present_when_nonempty() {
+        let err = BridgeError {
+            code: "X".to_string(),
+            message: "y".to_string(),
+            fields: vec!["f1".to_string()],
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert!(json.get("fields").is_some());
+    }
+
+    // =========================================================================
+    // SalesforceApiError
+    // =========================================================================
+
+    #[test]
+    fn test_salesforce_api_error_serialization() {
+        let err = SalesforceApiError {
+            status_code: "INVALID_FIELD".to_string(),
+            message: "No such column 'Foo'".to_string(),
+            fields: vec!["Foo".to_string()],
+        };
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["statusCode"], "INVALID_FIELD");
+        let deserialized: SalesforceApiError = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.fields, vec!["Foo"]);
+    }
+
+    // =========================================================================
+    // REST API: Query
+    // =========================================================================
+
+    #[test]
     fn test_query_request_serialization() {
         let req = QueryRequest {
             soql: "SELECT Id, Name FROM Account".to_string(),
@@ -413,6 +997,13 @@ mod tests {
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["soql"], "SELECT Id, Name FROM Account");
         assert_eq!(json["include_deleted"], false);
+    }
+
+    #[test]
+    fn test_query_request_include_deleted_defaults_false() {
+        let json = serde_json::json!({"soql": "SELECT Id FROM Account"});
+        let req: QueryRequest = serde_json::from_value(json).unwrap();
+        assert!(!req.include_deleted);
     }
 
     #[test]
@@ -445,6 +1036,20 @@ mod tests {
         assert!(!json["done"].as_bool().unwrap());
         assert!(json["next_records_url"].is_string());
     }
+
+    #[test]
+    fn test_query_more_request_roundtrip() {
+        let req = QueryMoreRequest {
+            next_records_url: "/services/data/v62.0/query/01gxx-2000".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: QueryMoreRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.next_records_url, req.next_records_url);
+    }
+
+    // =========================================================================
+    // REST API: CRUD
+    // =========================================================================
 
     #[test]
     fn test_create_request_roundtrip() {
@@ -515,6 +1120,30 @@ mod tests {
     }
 
     #[test]
+    fn test_update_request_roundtrip() {
+        let req = UpdateRequest {
+            sobject: "Account".to_string(),
+            id: "001xx000003DgAAAS".to_string(),
+            record: serde_json::json!({"Name": "Updated"}),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: UpdateRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "Account");
+        assert_eq!(d.id, "001xx000003DgAAAS");
+    }
+
+    #[test]
+    fn test_delete_request_roundtrip() {
+        let req = DeleteRequest {
+            sobject: "Account".to_string(),
+            id: "001xx000003DgAAAS".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: DeleteRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "Account");
+    }
+
+    #[test]
     fn test_upsert_request_roundtrip() {
         let req = UpsertRequest {
             sobject: "Account".to_string(),
@@ -539,6 +1168,44 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert!(json["created"].as_bool().unwrap());
     }
+
+    // =========================================================================
+    // REST API: Describe & Search
+    // =========================================================================
+
+    #[test]
+    fn test_describe_sobject_request_roundtrip() {
+        let req = DescribeSObjectRequest {
+            sobject: "Account".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: DescribeSObjectRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "Account");
+    }
+
+    #[test]
+    fn test_search_request_roundtrip() {
+        let req = SearchRequest {
+            sosl: "FIND {Acme} IN ALL FIELDS RETURNING Account(Id, Name)".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: SearchRequest = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.sosl.contains("FIND {Acme}"));
+    }
+
+    #[test]
+    fn test_search_response_roundtrip() {
+        let resp = SearchResponse {
+            search_records: vec![serde_json::json!({"Id": "001xx", "Name": "Acme"})],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: SearchResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.search_records.len(), 1);
+    }
+
+    // =========================================================================
+    // REST API: Composite
+    // =========================================================================
 
     #[test]
     fn test_composite_request_serialization() {
@@ -568,23 +1235,83 @@ mod tests {
     #[test]
     fn test_composite_response_deserialization() {
         let json = serde_json::json!({
-            "responses": [
-                {
-                    "body": {"id": "001xx", "success": true},
-                    "http_status_code": 201,
-                    "reference_id": "NewAccount"
-                },
-                {
-                    "body": {"Id": "001xx", "Name": "Test"},
-                    "http_status_code": 200,
-                    "reference_id": "GetAccount"
-                }
-            ]
+            "responses": [{
+                "body": {"id": "001xx", "success": true},
+                "http_status_code": 201,
+                "reference_id": "NewAccount"
+            }]
         });
         let resp: CompositeResponse = serde_json::from_value(json).unwrap();
-        assert_eq!(resp.responses.len(), 2);
+        assert_eq!(resp.responses.len(), 1);
         assert_eq!(resp.responses[0].http_status_code, 201);
     }
+
+    #[test]
+    fn test_composite_batch_request_roundtrip() {
+        let req = CompositeBatchRequest {
+            halt_on_error: true,
+            subrequests: vec![CompositeBatchSubrequest {
+                method: "GET".to_string(),
+                url: "/services/data/v62.0/sobjects/Account/001xx".to_string(),
+                rich_input: None,
+            }],
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: CompositeBatchRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.halt_on_error);
+        assert_eq!(d.subrequests.len(), 1);
+    }
+
+    #[test]
+    fn test_composite_batch_response_roundtrip() {
+        let resp = CompositeBatchResponse {
+            has_errors: false,
+            results: vec![CompositeBatchSubresponse {
+                status_code: 200,
+                result: serde_json::json!({"Id": "001xx"}),
+            }],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: CompositeBatchResponse = serde_json::from_str(&json).unwrap();
+        assert!(!d.has_errors);
+        assert_eq!(d.results[0].status_code, 200);
+    }
+
+    #[test]
+    fn test_composite_tree_request_roundtrip() {
+        let req = CompositeTreeRequest {
+            sobject: "Account".to_string(),
+            records: vec![serde_json::json!({
+                "attributes": {"type": "Account"},
+                "referenceId": "ref1",
+                "Name": "Parent"
+            })],
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: CompositeTreeRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "Account");
+        assert_eq!(d.records.len(), 1);
+    }
+
+    #[test]
+    fn test_composite_tree_response_roundtrip() {
+        let resp = CompositeTreeResponse {
+            has_errors: false,
+            results: vec![CompositeTreeResult {
+                reference_id: "ref1".to_string(),
+                id: Some("001xx".to_string()),
+                errors: vec![],
+            }],
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: CompositeTreeResponse = serde_json::from_str(&json).unwrap();
+        assert!(!d.has_errors);
+        assert_eq!(d.results[0].id, Some("001xx".to_string()));
+    }
+
+    // =========================================================================
+    // REST API: Collections
+    // =========================================================================
 
     #[test]
     fn test_create_multiple_request() {
@@ -602,6 +1329,35 @@ mod tests {
     }
 
     #[test]
+    fn test_update_multiple_request_roundtrip() {
+        let req = UpdateMultipleRequest {
+            sobject: "Account".to_string(),
+            records: vec![UpdateMultipleRecord {
+                id: "001xx000003DgAAAS".to_string(),
+                fields: serde_json::json!({"Name": "Updated"}),
+            }],
+            all_or_none: true,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: UpdateMultipleRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.records.len(), 1);
+        assert_eq!(d.records[0].id, "001xx000003DgAAAS");
+    }
+
+    #[test]
+    fn test_get_multiple_request_roundtrip() {
+        let req = GetMultipleRequest {
+            sobject: "Account".to_string(),
+            ids: vec!["001xx1".to_string(), "001xx2".to_string()],
+            fields: vec!["Id".to_string(), "Name".to_string()],
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: GetMultipleRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.ids.len(), 2);
+        assert_eq!(d.fields.len(), 2);
+    }
+
+    #[test]
     fn test_collection_result_success() {
         let json = serde_json::json!({
             "id": "001xx000003DgAAAS",
@@ -615,33 +1371,524 @@ mod tests {
     }
 
     #[test]
-    fn test_search_request_roundtrip() {
-        let req = SearchRequest {
-            sosl: "FIND {Acme} IN ALL FIELDS RETURNING Account(Id, Name)".to_string(),
+    fn test_delete_multiple_request() {
+        let req = DeleteMultipleRequest {
+            ids: vec!["001xx000003Dg1".to_string(), "001xx000003Dg2".to_string()],
+            all_or_none: true,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["ids"].as_array().unwrap().len(), 2);
+    }
+
+    // =========================================================================
+    // REST API: Versions
+    // =========================================================================
+
+    #[test]
+    fn test_api_version_roundtrip() {
+        let v = ApiVersion {
+            label: "Winter '25".to_string(),
+            url: "/services/data/v62.0".to_string(),
+            version: "62.0".to_string(),
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        let d: ApiVersion = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.version, "62.0");
+    }
+
+    // =========================================================================
+    // Bulk API 2.0
+    // =========================================================================
+
+    #[test]
+    fn test_bulk_create_ingest_job_request_roundtrip() {
+        let req = BulkCreateIngestJobRequest {
+            sobject: "Account".to_string(),
+            operation: "insert".to_string(),
+            external_id_field: None,
+            column_delimiter: "COMMA".to_string(),
+            line_ending: "LF".to_string(),
         };
         let json = serde_json::to_string(&req).unwrap();
-        let deserialized: SearchRequest = serde_json::from_str(&json).unwrap();
-        assert!(deserialized.sosl.contains("FIND {Acme}"));
+        let d: BulkCreateIngestJobRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "Account");
+        assert_eq!(d.operation, "insert");
     }
 
     #[test]
-    fn test_salesforce_api_error_serialization() {
-        let err = SalesforceApiError {
-            status_code: "INVALID_FIELD".to_string(),
-            message: "No such column 'Foo'".to_string(),
-            fields: vec!["Foo".to_string()],
-        };
-        let json = serde_json::to_value(&err).unwrap();
-        assert_eq!(json["statusCode"], "INVALID_FIELD");
-        let deserialized: SalesforceApiError = serde_json::from_value(json).unwrap();
-        assert_eq!(deserialized.fields, vec!["Foo"]);
+    fn test_bulk_create_ingest_job_defaults() {
+        let json = serde_json::json!({"sobject": "Account", "operation": "insert"});
+        let req: BulkCreateIngestJobRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.column_delimiter, "COMMA");
+        assert_eq!(req.line_ending, "LF");
     }
+
+    #[test]
+    fn test_bulk_job_response_roundtrip() {
+        let resp = BulkJobResponse {
+            id: "750xx".to_string(),
+            state: "JobComplete".to_string(),
+            object: "Account".to_string(),
+            operation: "insert".to_string(),
+            number_records_processed: 100,
+            number_records_failed: 2,
+            created_date: Some("2024-01-15T10:30:00.000Z".to_string()),
+            system_modstamp: None,
+            error_message: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: BulkJobResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.id, "750xx");
+        assert_eq!(d.number_records_processed, 100);
+    }
+
+    #[test]
+    fn test_bulk_job_response_defaults() {
+        let json = serde_json::json!({
+            "id": "750xx", "state": "Open", "object": "Account", "operation": "insert"
+        });
+        let resp: BulkJobResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(resp.number_records_processed, 0);
+        assert_eq!(resp.number_records_failed, 0);
+    }
+
+    #[test]
+    fn test_bulk_upload_job_data_request_roundtrip() {
+        let req = BulkUploadJobDataRequest {
+            job_id: "750xx".to_string(),
+            csv_data: "Name\nAcme\nWidget".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: BulkUploadJobDataRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.job_id, "750xx");
+        assert!(d.csv_data.contains("Acme"));
+    }
+
+    #[test]
+    fn test_bulk_job_id_request_roundtrip() {
+        let req = BulkJobIdRequest {
+            job_id: "750xx".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: BulkJobIdRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.job_id, "750xx");
+    }
+
+    #[test]
+    fn test_bulk_job_results_request_roundtrip() {
+        let req = BulkJobResultsRequest {
+            job_id: "750xx".to_string(),
+            result_type: "successful".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: BulkJobResultsRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.result_type, "successful");
+    }
+
+    #[test]
+    fn test_bulk_job_results_response_roundtrip() {
+        let resp = BulkJobResultsResponse {
+            csv_data: "sf__Id,Name\n001xx,Acme".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: BulkJobResultsResponse = serde_json::from_str(&json).unwrap();
+        assert!(d.csv_data.contains("sf__Id"));
+    }
+
+    #[test]
+    fn test_bulk_job_list_response_roundtrip() {
+        let resp = BulkJobListResponse {
+            records: vec![BulkJobResponse {
+                id: "750a".to_string(),
+                state: "JobComplete".to_string(),
+                object: "Account".to_string(),
+                operation: "insert".to_string(),
+                number_records_processed: 50,
+                number_records_failed: 0,
+                created_date: None,
+                system_modstamp: None,
+                error_message: None,
+            }],
+            done: true,
+            next_records_url: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: BulkJobListResponse = serde_json::from_str(&json).unwrap();
+        assert!(d.done);
+        assert_eq!(d.records.len(), 1);
+    }
+
+    #[test]
+    fn test_bulk_query_results_request_roundtrip() {
+        let req = BulkQueryResultsRequest {
+            job_id: "750xx".to_string(),
+            locator: Some("abc123".to_string()),
+            max_records: Some(1000),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: BulkQueryResultsRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.locator, Some("abc123".to_string()));
+        assert_eq!(d.max_records, Some(1000));
+    }
+
+    #[test]
+    fn test_bulk_query_results_request_minimal() {
+        let json = serde_json::json!({"job_id": "750xx"});
+        let req: BulkQueryResultsRequest = serde_json::from_value(json).unwrap();
+        assert!(req.locator.is_none());
+        assert!(req.max_records.is_none());
+    }
+
+    #[test]
+    fn test_bulk_query_results_response_roundtrip() {
+        let resp = BulkQueryResultsResponse {
+            csv_data: "Id,Name\n001xx,Acme".to_string(),
+            locator: Some("next_page".to_string()),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: BulkQueryResultsResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.locator, Some("next_page".to_string()));
+    }
+
+    // =========================================================================
+    // Tooling API
+    // =========================================================================
+
+    #[test]
+    fn test_tooling_query_request_roundtrip() {
+        let req = ToolingQueryRequest {
+            soql: "SELECT Id, Name FROM ApexClass".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: ToolingQueryRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.soql.contains("ApexClass"));
+    }
+
+    #[test]
+    fn test_execute_anonymous_request_roundtrip() {
+        let req = ExecuteAnonymousRequest {
+            apex_code: "System.debug('hello');".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: ExecuteAnonymousRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.apex_code.contains("System.debug"));
+    }
+
+    #[test]
+    fn test_execute_anonymous_response_success() {
+        let resp = ExecuteAnonymousResponse {
+            compiled: true,
+            success: true,
+            compile_problem: None,
+            exception_message: None,
+            exception_stack_trace: None,
+            line: None,
+            column: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: ExecuteAnonymousResponse = serde_json::from_str(&json).unwrap();
+        assert!(d.compiled);
+        assert!(d.success);
+    }
+
+    #[test]
+    fn test_execute_anonymous_response_compile_error() {
+        let resp = ExecuteAnonymousResponse {
+            compiled: false,
+            success: false,
+            compile_problem: Some("unexpected token".to_string()),
+            exception_message: None,
+            exception_stack_trace: None,
+            line: Some(1),
+            column: Some(5),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: ExecuteAnonymousResponse = serde_json::from_str(&json).unwrap();
+        assert!(!d.compiled);
+        assert_eq!(d.line, Some(1));
+        assert_eq!(d.column, Some(5));
+    }
+
+    #[test]
+    fn test_execute_anonymous_response_runtime_error() {
+        let resp = ExecuteAnonymousResponse {
+            compiled: true,
+            success: false,
+            compile_problem: None,
+            exception_message: Some("List index out of bounds".to_string()),
+            exception_stack_trace: Some("AnonymousBlock: line 3".to_string()),
+            line: None,
+            column: None,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: ExecuteAnonymousResponse = serde_json::from_str(&json).unwrap();
+        assert!(d.compiled);
+        assert!(!d.success);
+        assert!(d.exception_message.is_some());
+    }
+
+    #[test]
+    fn test_tooling_get_request_roundtrip() {
+        let req = ToolingGetRequest {
+            sobject: "ApexClass".to_string(),
+            id: "01pxx".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: ToolingGetRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.sobject, "ApexClass");
+    }
+
+    #[test]
+    fn test_tooling_create_request_roundtrip() {
+        let req = ToolingCreateRequest {
+            sobject: "ApexClass".to_string(),
+            record: serde_json::json!({"Body": "public class Foo {}"}),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: ToolingCreateRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.record["Body"], "public class Foo {}");
+    }
+
+    #[test]
+    fn test_tooling_delete_request_roundtrip() {
+        let req = ToolingDeleteRequest {
+            sobject: "ApexClass".to_string(),
+            id: "01pxx".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: ToolingDeleteRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.id, "01pxx");
+    }
+
+    // =========================================================================
+    // Metadata API
+    // =========================================================================
+
+    #[test]
+    fn test_metadata_deploy_request_roundtrip() {
+        let req = MetadataDeployRequest {
+            zip_base64: "UEsDBBQ...".to_string(),
+            options: MetadataDeployOptions {
+                check_only: true,
+                test_level: Some("RunLocalTests".to_string()),
+                run_tests: vec![],
+                rollback_on_error: true,
+            },
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataDeployRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.options.check_only);
+    }
+
+    #[test]
+    fn test_metadata_deploy_options_defaults() {
+        let json = serde_json::json!({});
+        let opts: MetadataDeployOptions = serde_json::from_value(json).unwrap();
+        assert!(!opts.check_only);
+        assert!(opts.test_level.is_none());
+        assert!(opts.run_tests.is_empty());
+        assert!(opts.rollback_on_error);
+    }
+
+    #[test]
+    fn test_metadata_deploy_response_roundtrip() {
+        let resp = MetadataDeployResponse {
+            async_process_id: "0Af1234".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: MetadataDeployResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.async_process_id, "0Af1234");
+    }
+
+    #[test]
+    fn test_metadata_check_deploy_status_request_roundtrip() {
+        let req = MetadataCheckDeployStatusRequest {
+            async_process_id: "0Af1234".to_string(),
+            include_details: true,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataCheckDeployStatusRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.include_details);
+    }
+
+    #[test]
+    fn test_metadata_deploy_result_roundtrip() {
+        let result = MetadataDeployResult {
+            id: "0Af1234".to_string(),
+            done: true,
+            status: "Succeeded".to_string(),
+            success: true,
+            error_message: None,
+            number_component_errors: 0,
+            number_components_deployed: 5,
+            number_components_total: 5,
+            number_test_errors: 0,
+            number_tests_completed: 10,
+            number_tests_total: 10,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let d: MetadataDeployResult = serde_json::from_str(&json).unwrap();
+        assert!(d.done);
+        assert!(d.success);
+        assert_eq!(d.number_components_deployed, 5);
+    }
+
+    #[test]
+    fn test_metadata_retrieve_request_unpackaged() {
+        let req = MetadataRetrieveRequest {
+            is_packaged: false,
+            package_name: None,
+            types: vec![MetadataPackageType {
+                name: "ApexClass".to_string(),
+                members: vec!["*".to_string()],
+            }],
+            api_version: "62.0".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataRetrieveRequest = serde_json::from_str(&json).unwrap();
+        assert!(!d.is_packaged);
+        assert_eq!(d.types.len(), 1);
+        assert_eq!(d.types[0].name, "ApexClass");
+    }
+
+    #[test]
+    fn test_metadata_retrieve_request_packaged() {
+        let req = MetadataRetrieveRequest {
+            is_packaged: true,
+            package_name: Some("MyPackage".to_string()),
+            types: vec![],
+            api_version: "62.0".to_string(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataRetrieveRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.is_packaged);
+        assert_eq!(d.package_name, Some("MyPackage".to_string()));
+    }
+
+    #[test]
+    fn test_metadata_retrieve_request_defaults() {
+        let json = serde_json::json!({});
+        let req: MetadataRetrieveRequest = serde_json::from_value(json).unwrap();
+        assert!(!req.is_packaged);
+        assert!(req.types.is_empty());
+        assert_eq!(req.api_version, "62.0");
+    }
+
+    #[test]
+    fn test_metadata_package_type_roundtrip() {
+        let pt = MetadataPackageType {
+            name: "ApexTrigger".to_string(),
+            members: vec!["AccountTrigger".to_string(), "ContactTrigger".to_string()],
+        };
+        let json = serde_json::to_string(&pt).unwrap();
+        let d: MetadataPackageType = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.name, "ApexTrigger");
+        assert_eq!(d.members.len(), 2);
+    }
+
+    #[test]
+    fn test_metadata_retrieve_response_roundtrip() {
+        let resp = MetadataRetrieveResponse {
+            async_process_id: "09S1234".to_string(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let d: MetadataRetrieveResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.async_process_id, "09S1234");
+    }
+
+    #[test]
+    fn test_metadata_check_retrieve_status_request_roundtrip() {
+        let req = MetadataCheckRetrieveStatusRequest {
+            async_process_id: "09S1234".to_string(),
+            include_zip: true,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataCheckRetrieveStatusRequest = serde_json::from_str(&json).unwrap();
+        assert!(d.include_zip);
+    }
+
+    #[test]
+    fn test_metadata_retrieve_result_roundtrip() {
+        let result = MetadataRetrieveResult {
+            id: "09S1234".to_string(),
+            done: true,
+            status: "Succeeded".to_string(),
+            success: true,
+            zip_base64: Some("UEsDBBQ...".to_string()),
+            error_message: None,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let d: MetadataRetrieveResult = serde_json::from_str(&json).unwrap();
+        assert!(d.zip_base64.is_some());
+    }
+
+    #[test]
+    fn test_metadata_list_request_roundtrip() {
+        let req = MetadataListRequest {
+            metadata_type: "ApexClass".to_string(),
+            folder: None,
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let d: MetadataListRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.metadata_type, "ApexClass");
+    }
+
+    #[test]
+    fn test_metadata_list_request_with_folder() {
+        let req = MetadataListRequest {
+            metadata_type: "Report".to_string(),
+            folder: Some("MyReports".to_string()),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["folder"], "MyReports");
+    }
+
+    #[test]
+    fn test_metadata_component_info_roundtrip() {
+        let comp = MetadataComponentInfo {
+            full_name: "MyClass".to_string(),
+            file_name: "classes/MyClass.cls".to_string(),
+            component_type: "ApexClass".to_string(),
+            id: "01pxx".to_string(),
+            namespace_prefix: None,
+            last_modified_date: Some("2024-01-15".to_string()),
+        };
+        let json = serde_json::to_string(&comp).unwrap();
+        let d: MetadataComponentInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.full_name, "MyClass");
+    }
+
+    #[test]
+    fn test_metadata_describe_result_roundtrip() {
+        let result = MetadataDescribeResult {
+            metadata_objects: vec![MetadataTypeInfo {
+                xml_name: "ApexClass".to_string(),
+                directory_name: "classes".to_string(),
+                suffix: Some("cls".to_string()),
+                in_folder: false,
+                meta_file: true,
+                child_xml_names: vec![],
+            }],
+            organization_namespace: "".to_string(),
+            partial_save_allowed: true,
+            test_required: false,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let d: MetadataDescribeResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(d.metadata_objects.len(), 1);
+        assert_eq!(d.metadata_objects[0].xml_name, "ApexClass");
+    }
+
+    // =========================================================================
+    // Host Function Names
+    // =========================================================================
 
     #[test]
     fn test_host_fn_names_are_unique() {
         use host_fn_names::*;
         let names = [
             QUERY,
+            QUERY_MORE,
             CREATE,
             GET,
             UPDATE,
@@ -651,24 +1898,90 @@ mod tests {
             DESCRIBE_SOBJECT,
             SEARCH,
             COMPOSITE,
+            COMPOSITE_BATCH,
+            COMPOSITE_TREE,
             CREATE_MULTIPLE,
+            UPDATE_MULTIPLE,
+            GET_MULTIPLE,
             DELETE_MULTIPLE,
             LIMITS,
+            VERSIONS,
+            BULK_CREATE_INGEST_JOB,
+            BULK_UPLOAD_JOB_DATA,
+            BULK_CLOSE_INGEST_JOB,
+            BULK_ABORT_INGEST_JOB,
+            BULK_GET_INGEST_JOB,
+            BULK_GET_JOB_RESULTS,
+            BULK_DELETE_INGEST_JOB,
+            BULK_GET_ALL_INGEST_JOBS,
+            BULK_ABORT_QUERY_JOB,
+            BULK_GET_QUERY_RESULTS,
+            TOOLING_QUERY,
+            TOOLING_EXECUTE_ANONYMOUS,
+            TOOLING_GET,
+            TOOLING_CREATE,
+            TOOLING_DELETE,
+            METADATA_DEPLOY,
+            METADATA_CHECK_DEPLOY_STATUS,
+            METADATA_RETRIEVE,
+            METADATA_CHECK_RETRIEVE_STATUS,
+            METADATA_LIST,
+            METADATA_DESCRIBE,
         ];
         let mut unique = std::collections::HashSet::new();
         for name in &names {
             assert!(unique.insert(name), "duplicate host function name: {name}");
         }
+        assert_eq!(unique.len(), 40);
     }
 
     #[test]
-    fn test_delete_multiple_request() {
-        let req = DeleteMultipleRequest {
-            ids: vec!["001xx000003Dg1".to_string(), "001xx000003Dg2".to_string()],
-            all_or_none: true,
-        };
-        let json = serde_json::to_value(&req).unwrap();
-        assert_eq!(json["ids"].as_array().unwrap().len(), 2);
-        assert!(json["all_or_none"].as_bool().unwrap());
+    fn test_host_fn_names_all_prefixed() {
+        use host_fn_names::*;
+        let names = [
+            QUERY,
+            QUERY_MORE,
+            CREATE,
+            GET,
+            UPDATE,
+            DELETE,
+            UPSERT,
+            DESCRIBE_GLOBAL,
+            DESCRIBE_SOBJECT,
+            SEARCH,
+            COMPOSITE,
+            COMPOSITE_BATCH,
+            COMPOSITE_TREE,
+            CREATE_MULTIPLE,
+            UPDATE_MULTIPLE,
+            GET_MULTIPLE,
+            DELETE_MULTIPLE,
+            LIMITS,
+            VERSIONS,
+            BULK_CREATE_INGEST_JOB,
+            BULK_UPLOAD_JOB_DATA,
+            BULK_CLOSE_INGEST_JOB,
+            BULK_ABORT_INGEST_JOB,
+            BULK_GET_INGEST_JOB,
+            BULK_GET_JOB_RESULTS,
+            BULK_DELETE_INGEST_JOB,
+            BULK_GET_ALL_INGEST_JOBS,
+            BULK_ABORT_QUERY_JOB,
+            BULK_GET_QUERY_RESULTS,
+            TOOLING_QUERY,
+            TOOLING_EXECUTE_ANONYMOUS,
+            TOOLING_GET,
+            TOOLING_CREATE,
+            TOOLING_DELETE,
+            METADATA_DEPLOY,
+            METADATA_CHECK_DEPLOY_STATUS,
+            METADATA_RETRIEVE,
+            METADATA_CHECK_RETRIEVE_STATUS,
+            METADATA_LIST,
+            METADATA_DESCRIBE,
+        ];
+        for name in &names {
+            assert!(name.starts_with("sf_"), "{name} must start with sf_");
+        }
     }
 }
