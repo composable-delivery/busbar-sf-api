@@ -190,9 +190,7 @@ async fn test_bulk_error_invalid_job_id() {
 
 #[tokio::test]
 async fn test_parallel_query_results_basic() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -233,9 +231,7 @@ async fn test_parallel_query_results_basic() {
 
 #[tokio::test]
 async fn test_parallel_query_results_with_max_records() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -267,9 +263,7 @@ async fn test_parallel_query_results_with_max_records() {
 
 #[tokio::test]
 async fn test_get_all_query_results_parallel() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -319,9 +313,7 @@ async fn test_get_all_query_results_parallel() {
 
 #[tokio::test]
 async fn test_parallel_vs_serial_results_consistency() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
@@ -377,9 +369,7 @@ async fn test_parallel_vs_serial_results_consistency() {
 
 #[tokio::test]
 async fn test_parallel_query_results_empty_job() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Bulk client");
 
