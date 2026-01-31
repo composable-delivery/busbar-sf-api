@@ -3,7 +3,7 @@
 //! Tests for Consent API, Knowledge Management, User Password, Suggested Articles,
 //! Platform Actions, Salesforce Scheduler, and Embedded Service endpoints.
 
-use super::common::require_credentials;
+use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_rest::{
     consent::{ConsentWriteRecord, ConsentWriteRequest},
@@ -18,9 +18,7 @@ use busbar_sf_rest::{
 
 #[tokio::test]
 async fn test_consent_read() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -53,9 +51,7 @@ async fn test_consent_read() {
 
 #[tokio::test]
 async fn test_consent_write() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -93,9 +89,7 @@ async fn test_consent_write() {
 
 #[tokio::test]
 async fn test_consent_multi_read() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -132,9 +126,7 @@ async fn test_consent_multi_read() {
 
 #[tokio::test]
 async fn test_knowledge_management_settings() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -156,9 +148,7 @@ async fn test_knowledge_management_settings() {
 
 #[tokio::test]
 async fn test_list_knowledge_articles() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -182,9 +172,7 @@ async fn test_list_knowledge_articles() {
 
 #[tokio::test]
 async fn test_list_data_category_groups() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -212,9 +200,7 @@ async fn test_list_data_category_groups() {
 
 #[tokio::test]
 async fn test_user_password_status() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -244,9 +230,7 @@ async fn test_user_password_status() {
 
 #[tokio::test]
 async fn test_user_password_set_reset() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -297,9 +281,7 @@ async fn test_user_password_set_reset() {
 
 #[tokio::test]
 async fn test_suggested_articles() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -329,9 +311,7 @@ async fn test_suggested_articles() {
 
 #[tokio::test]
 async fn test_platform_actions() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -360,9 +340,7 @@ async fn test_platform_actions() {
 
 #[tokio::test]
 async fn test_appointment_slots() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -383,9 +361,7 @@ async fn test_appointment_slots() {
 
 #[tokio::test]
 async fn test_appointment_candidates() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
@@ -420,9 +396,7 @@ async fn test_appointment_candidates() {
 
 #[tokio::test]
 async fn test_embedded_service_config() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 

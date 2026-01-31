@@ -1333,7 +1333,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/support/knowledgeArticles/kA0xx0000000001AAA"))
+            .and(path_regex(
+                ".*/support/knowledgeArticles/kA0xx0000000001AAA",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
@@ -1402,7 +1404,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/support/dataCategoryGroups/Products/dataCategories"))
+            .and(path_regex(
+                ".*/support/dataCategoryGroups/Products/dataCategories",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
@@ -1592,9 +1596,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_platform_actions_invalid_sobject() {
         let client = SalesforceRestClient::new("https://na1.salesforce.com", "token").unwrap();
-        let result = client
-            .get_platform_actions("Robert'; DROP TABLE--")
-            .await;
+        let result = client.get_platform_actions("Robert'; DROP TABLE--").await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -1692,7 +1694,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/support/embeddedservice/configuration/0ESxx0000000001AAA"))
+            .and(path_regex(
+                ".*/support/embeddedservice/configuration/0ESxx0000000001AAA",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
