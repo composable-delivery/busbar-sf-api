@@ -47,7 +47,12 @@ pub fn query_accounts(input: String) -> FnResult<Json<QueryAccountsOutput>> {
         .map_err(|e| Error::msg(format!("invalid input: {e}")))?;
 
     let limit = input.limit.unwrap_or(10);
-    let soql = format!("SELECT Id, Name, Industry FROM Account LIMIT {limit}");
+    let limit_str = limit.to_string();
+    let escaped_limit = soql::escape_string(&limit_str);
+    let soql = format!(
+        "SELECT Id, Name, Industry FROM Account LIMIT {}",
+        escaped_limit
+    );
 
     let result = query(&soql)?;
 
