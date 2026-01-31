@@ -1047,9 +1047,9 @@ mod tests {
     fn test_metadata_component_dependency_query_construction_no_filter() {
         // Verify the SOQL query is constructed correctly without a filter
         let base_query = "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType FROM MetadataComponentDependency";
-        
+
         let query = base_query.to_string();
-        
+
         assert_eq!(query, base_query);
         assert!(query.contains("MetadataComponentId"));
         assert!(query.contains("RefMetadataComponentId"));
@@ -1062,9 +1062,9 @@ mod tests {
         // Verify the SOQL query is constructed correctly with a filter
         let base_query = "SELECT MetadataComponentId, MetadataComponentName, MetadataComponentNamespace, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentNamespace, RefMetadataComponentType FROM MetadataComponentDependency";
         let filter = "MetadataComponentType = 'ApexClass'";
-        
+
         let query = format!("{} WHERE {}", base_query, filter);
-        
+
         assert!(query.contains("WHERE MetadataComponentType = 'ApexClass'"));
         assert!(query.contains("MetadataComponentId"));
         assert!(query.contains("RefMetadataComponentId"));
