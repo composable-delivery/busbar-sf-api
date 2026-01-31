@@ -54,6 +54,7 @@ pub mod consent;
 mod describe;
 pub mod embedded_service;
 mod error;
+pub mod knowledge;
 mod layout;
 mod query;
 mod query_builder;
