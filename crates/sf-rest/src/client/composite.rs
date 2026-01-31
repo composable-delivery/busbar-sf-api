@@ -3,8 +3,8 @@ use tracing::instrument;
 use busbar_sf_client::security::soql;
 
 use crate::composite::{
-    CompositeBatchRequest, CompositeBatchResponse, CompositeRequest, CompositeResponse,
-    CompositeTreeRequest, CompositeTreeResponse,
+    CompositeBatchRequest, CompositeBatchResponse, CompositeGraphRequest, CompositeGraphResponse,
+    CompositeRequest, CompositeResponse, CompositeTreeRequest, CompositeTreeResponse,
 };
 use crate::error::{Error, ErrorKind, Result};
 
@@ -65,6 +65,23 @@ impl super::SalesforceRestClient {
         let path = format!("composite/tree/{}", sobject);
         self.client
             .rest_post(&path, request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Execute a composite graph request with multiple independent graphs.
+    ///
+    /// Each graph contains a set of composite subrequests that can reference
+    /// each other within the same graph. Different graphs are independent.
+    ///
+    /// Available since API v50.0.
+    #[instrument(skip(self, request))]
+    pub async fn composite_graph(
+        &self,
+        request: &CompositeGraphRequest,
+    ) -> Result<CompositeGraphResponse> {
+        self.client
+            .rest_post("composite/graph", request)
             .await
             .map_err(Into::into)
     }
