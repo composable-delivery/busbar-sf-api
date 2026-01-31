@@ -428,9 +428,7 @@ async fn test_tooling_error_invalid_log_id() {
 
 #[tokio::test]
 async fn test_tooling_completions_apex() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -466,9 +464,7 @@ async fn test_tooling_completions_apex() {
 
 #[tokio::test]
 async fn test_tooling_completions_visualforce() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
@@ -504,9 +500,7 @@ async fn test_tooling_completions_visualforce() {
 
 #[tokio::test]
 async fn test_tooling_apex_manifest() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
