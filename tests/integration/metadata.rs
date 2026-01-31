@@ -134,9 +134,7 @@ fn create_test_package() -> Vec<u8> {
 
 #[tokio::test]
 async fn test_metadata_cancel_deploy() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Create a test package
@@ -187,9 +185,7 @@ async fn test_metadata_cancel_deploy() {
 
 #[tokio::test]
 async fn test_metadata_deploy_recent_validation() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Create a test package
@@ -273,9 +269,7 @@ async fn test_metadata_deploy_recent_validation() {
 
 #[tokio::test]
 async fn test_metadata_cancel_deploy_invalid_id() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Try to cancel a non-existent deployment
@@ -289,9 +283,7 @@ async fn test_metadata_cancel_deploy_invalid_id() {
 
 #[tokio::test]
 async fn test_metadata_deploy_recent_validation_invalid_id() {
-    let Some(creds) = require_credentials().await else {
-        return;
-    };
+    let creds = get_credentials().await;
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     // Try to quick-deploy with a non-existent validation ID
