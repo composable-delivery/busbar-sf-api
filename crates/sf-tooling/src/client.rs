@@ -1118,4 +1118,322 @@ mod tests {
             "SELECT Id, Name, Body FROM ApexClass WHERE Id IN ('01p000000000001AAA', '01p000000000002AAA', '01p000000000003AAA')"
         );
     }
+
+    // =========================================================================
+    // Wiremock HTTP tests — update
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_update_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(
+                ".*/tooling/sobjects/TraceFlag/7tf000000000001AAA",
+            ))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let update_body = serde_json::json!({
+            "ExpirationDate": "2026-12-31T23:59:59.000Z"
+        });
+        let result = client
+            .update("TraceFlag", "7tf000000000001AAA", &update_body)
+            .await;
+        assert!(result.is_ok(), "update should succeed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_update_invalid_sobject() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client
+            .update(
+                "Robert'; DROP TABLE--",
+                "7tf000000000001AAA",
+                &serde_json::json!({}),
+            )
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_SOBJECT"),
+            "Expected INVALID_SOBJECT, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_invalid_id() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client
+            .update("TraceFlag", "not-valid-id!", &serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_ID"),
+            "Expected INVALID_ID, got: {err}"
+        );
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — query_all_records
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_query_all_records_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "totalSize": 2,
+            "done": true,
+            "records": [
+                {"Id": "01p000000000001AAA", "Name": "DeletedClass", "IsDeleted": true},
+                {"Id": "01p000000000002AAA", "Name": "ArchivedClass", "IsDeleted": true}
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/queryAll/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result: QueryResult<serde_json::Value> = client
+            .query_all_records("SELECT Id, Name FROM ApexClass WHERE IsDeleted = true")
+            .await
+            .expect("should succeed");
+        assert_eq!(result.total_size, 2);
+        assert_eq!(result.records.len(), 2);
+        assert!(result.done);
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — search
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_search_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "searchRecords": [
+                {
+                    "Id": "01p000000000001AAA",
+                    "attributes": {
+                        "type": "ApexClass",
+                        "url": "/services/data/v62.0/tooling/sobjects/ApexClass/01p000000000001AAA"
+                    }
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/search/"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result: SearchResult<serde_json::Value> = client
+            .search("FIND {test} IN ALL FIELDS RETURNING ApexClass(Id, Name)")
+            .await
+            .expect("should succeed");
+        assert_eq!(result.search_records.len(), 1);
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — describe_global
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_describe_global_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "encoding": "UTF-8",
+            "maxBatchSize": 200,
+            "sobjects": [
+                {
+                    "name": "ApexClass",
+                    "label": "Apex Class",
+                    "labelPlural": "Apex Classes",
+                    "keyPrefix": "01p",
+                    "custom": false,
+                    "queryable": true,
+                    "createable": true,
+                    "updateable": true,
+                    "deletable": true,
+                    "searchable": true,
+                    "retrieveable": true
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/sobjects$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.describe_global().await.expect("should succeed");
+        assert_eq!(result.encoding, "UTF-8");
+        assert_eq!(result.max_batch_size, 200);
+        assert_eq!(result.sobjects.len(), 1);
+        assert_eq!(result.sobjects[0].name, "ApexClass");
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — describe_sobject
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_describe_sobject_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "name": "ApexClass",
+            "label": "Apex Class",
+            "labelPlural": "Apex Classes",
+            "keyPrefix": "01p",
+            "custom": false,
+            "createable": true,
+            "updateable": true,
+            "deletable": true,
+            "queryable": true,
+            "searchable": true,
+            "retrieveable": true,
+            "fields": [
+                {
+                    "name": "Id",
+                    "label": "Apex Class ID",
+                    "type": "id"
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/sobjects/ApexClass/describe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_sobject("ApexClass")
+            .await
+            .expect("should succeed");
+        assert_eq!(result.name, "ApexClass");
+        assert_eq!(result.label, "Apex Class");
+        assert!(result.createable);
+        assert!(!result.fields.is_empty());
+        assert_eq!(result.fields[0].name, "Id");
+    }
+
+    #[tokio::test]
+    async fn test_describe_sobject_invalid_name() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client.describe_sobject("Robert'; DROP TABLE--").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_SOBJECT"),
+            "Expected INVALID_SOBJECT, got: {err}"
+        );
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — basic_info
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_basic_info_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "objectDescribe": {
+                "name": "ApexClass",
+                "label": "Apex Class",
+                "keyPrefix": "01p"
+            },
+            "recentItems": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/sobjects/ApexClass$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .basic_info("ApexClass")
+            .await
+            .expect("should succeed");
+        let describe = result
+            .get("objectDescribe")
+            .expect("should have objectDescribe");
+        assert_eq!(
+            describe.get("name").unwrap().as_str().unwrap(),
+            "ApexClass"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_basic_info_invalid_sobject() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
+        let result = client.basic_info("Robert'; DROP TABLE--").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("INVALID_SOBJECT"),
+            "Expected INVALID_SOBJECT, got: {err}"
+        );
+    }
+
+    // =========================================================================
+    // Wiremock HTTP tests — resources
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_resources_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({
+            "tooling": "/services/data/v62.0/tooling",
+            "query": "/services/data/v62.0/tooling/query",
+            "search": "/services/data/v62.0/tooling/search",
+            "sobjects": "/services/data/v62.0/tooling/sobjects"
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tooling/$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.resources().await.expect("should succeed");
+        assert!(result.get("query").is_some());
+        assert!(result.get("search").is_some());
+        assert!(result.get("sobjects").is_some());
+    }
 }
