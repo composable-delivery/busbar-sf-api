@@ -780,6 +780,291 @@ impl SalesforceRestClient {
         let url = format!("{}/services/data", self.client.instance_url());
         self.client.get_json(&url).await.map_err(Into::into)
     }
+
+    // =========================================================================
+    // Standalone REST Resources
+    // =========================================================================
+
+    /// Get all available tabs for the user.
+    ///
+    /// Returns information about all tabs available in the org, including
+    /// standard and custom tabs.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let tabs = client.tabs().await?;
+    /// for tab in tabs {
+    ///     println!("Tab: {}", tab["label"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_tabs.htm>
+    #[instrument(skip(self))]
+    pub async fn tabs(&self) -> Result<Vec<serde_json::Value>> {
+        self.client.rest_get("tabs").await.map_err(Into::into)
+    }
+
+    /// Get the theme information for the org.
+    ///
+    /// Returns theme colors, logo URLs, and custom branding information.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let theme = client.theme().await?;
+    /// println!("Theme: {:?}", theme);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_themes.htm>
+    #[instrument(skip(self))]
+    pub async fn theme(&self) -> Result<serde_json::Value> {
+        self.client.rest_get("theme").await.map_err(Into::into)
+    }
+
+    /// Get the app menu items.
+    ///
+    /// Returns a list of applications available to the user.
+    ///
+    /// # Parameters
+    ///
+    /// * `app_menu_type` - Type of app menu: `AppSwitcher`, `Salesforce1`, or `NetworkTabs`
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let apps = client.app_menu("AppSwitcher").await?;
+    /// for app in apps {
+    ///     println!("App: {}", app["label"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_appmenu.htm>
+    #[instrument(skip(self))]
+    pub async fn app_menu(&self, app_menu_type: &str) -> Result<serde_json::Value> {
+        // Validate app_menu_type to prevent URL path injection
+        let valid_types = ["AppSwitcher", "Salesforce1", "NetworkTabs"];
+        if !valid_types.contains(&app_menu_type) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_APP_MENU_TYPE".to_string(),
+                message: format!(
+                    "Invalid app menu type '{}'. Must be one of: AppSwitcher, Salesforce1, NetworkTabs",
+                    app_menu_type
+                ),
+            }));
+        }
+        let path = format!("appMenu/{}", app_menu_type);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get recently viewed items.
+    ///
+    /// Returns a list of recently viewed records across all objects.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let recent = client.recent_items().await?;
+    /// for item in recent {
+    ///     println!("Recently viewed: {} ({})", item["Name"], item["attributes"]["type"]);
+    /// }
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_recent_items.htm>
+    #[instrument(skip(self))]
+    pub async fn recent_items(&self) -> Result<Vec<serde_json::Value>> {
+        self.client.rest_get("recent").await.map_err(Into::into)
+    }
+
+    /// Get relevant items.
+    ///
+    /// Returns a contextual list of objects relevant to the user.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let relevant = client.relevant_items().await?;
+    /// println!("Relevant items: {:?}", relevant);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_relevant_items.htm>
+    #[instrument(skip(self))]
+    pub async fn relevant_items(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("relevantItems")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get global compact layouts for multiple objects.
+    ///
+    /// Returns compact layouts for the specified objects.
+    ///
+    /// # Parameters
+    ///
+    /// * `sobject_list` - Comma-separated list of object names
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let layouts = client.compact_layouts("Account,Contact").await?;
+    /// println!("Compact layouts: {:?}", layouts);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_compact_layouts.htm>
+    #[instrument(skip(self))]
+    pub async fn compact_layouts(&self, sobject_list: &str) -> Result<serde_json::Value> {
+        // Check for empty input
+        if sobject_list.trim().is_empty() {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_INPUT".to_string(),
+                message: "SObject list cannot be empty".to_string(),
+            }));
+        }
+
+        // Validate sobject names for safety
+        let objects: Vec<&str> = sobject_list.split(',').map(|s| s.trim()).collect();
+        for obj in &objects {
+            if obj.is_empty() {
+                return Err(Error::new(ErrorKind::Salesforce {
+                    error_code: "INVALID_INPUT".to_string(),
+                    message: "SObject list contains empty entries".to_string(),
+                }));
+            }
+            if !soql::is_safe_sobject_name(obj) {
+                return Err(Error::new(ErrorKind::Salesforce {
+                    error_code: "INVALID_SOBJECT".to_string(),
+                    message: format!("Invalid SObject name: {}", obj),
+                }));
+            }
+        }
+        let encoded = url_security::encode_param(sobject_list);
+        let path = format!("compactLayouts?q={}", encoded);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get the schema for a platform event.
+    ///
+    /// Returns the Avro-style schema definition for a specific platform event.
+    ///
+    /// # Parameters
+    ///
+    /// * `event_name` - Name of the platform event (e.g., "Order_Event__e")
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let schema = client.platform_event_schema("Order_Event__e").await?;
+    /// println!("Event schema: {:?}", schema);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_event_eventschema.htm>
+    #[instrument(skip(self))]
+    pub async fn platform_event_schema(&self, event_name: &str) -> Result<serde_json::Value> {
+        // Validate event name for safety
+        if !soql::is_safe_sobject_name(event_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_EVENT_NAME".to_string(),
+                message: "Invalid event name".to_string(),
+            }));
+        }
+        let path = format!("event/eventSchema/{}", event_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
+    /// Get Lightning toggle metrics.
+    ///
+    /// Returns metrics about Lightning Experience feature toggles.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let metrics = client.lightning_toggle_metrics().await?;
+    /// println!("Toggle metrics: {:?}", metrics);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_lightning_togglemetrics.htm>
+    #[instrument(skip(self))]
+    pub async fn lightning_toggle_metrics(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("lightning/toggleMetrics")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Get Lightning usage statistics.
+    ///
+    /// Returns Lightning Experience usage statistics for the org.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let usage = client.lightning_usage().await?;
+    /// println!("Lightning usage: {:?}", usage);
+    /// ```
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_lightning_usage.htm>
+    #[instrument(skip(self))]
+    pub async fn lightning_usage(&self) -> Result<serde_json::Value> {
+        self.client
+            .rest_get("lightning/usage")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Deploy metadata via REST API (multipart form data).
+    ///
+    /// This is an alternative to the SOAP-based metadata deploy operation.
+    /// It accepts a zip file containing metadata and deployment options.
+    ///
+    /// **Note**: This endpoint is currently not implemented and will return an error.
+    /// Full multipart/form-data support requires extending the HTTP client infrastructure.
+    /// For now, please use the SOAP-based metadata deploy in the `sf-metadata` crate.
+    ///
+    /// # Parameters
+    ///
+    /// * `zip_data` - Zip file contents as bytes
+    /// * `options` - Deployment options (JSON serializable struct)
+    ///
+    /// # Salesforce Documentation
+    ///
+    /// <https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/resources_deploy_metadata.htm>
+    #[instrument(skip(self, zip_data, _options))]
+    pub async fn rest_deploy<T: Serialize>(
+        &self,
+        zip_data: &[u8],
+        _options: &T,
+    ) -> Result<serde_json::Value> {
+        // This is a placeholder implementation that demonstrates the endpoint.
+        // Full multipart/form-data support would require extending the HTTP client.
+        let _url = self.client.rest_url("metadata/deployRequest");
+        let _zip_len = zip_data.len();
+
+        // For now, return an error indicating this needs to be implemented
+        Err(Error::new(ErrorKind::Other(
+            "REST Deploy endpoint requires multipart/form-data support. \
+             Please use the SOAP-based metadata deploy in sf-metadata crate for now."
+                .to_string(),
+        )))
+    }
 }
 
 /// Result of a SOSL search.
@@ -965,5 +1250,255 @@ mod tests {
 
         assert!(result["layouts"].is_array());
         assert_eq!(result["layouts"][0]["name"], "Global Layout");
+    }
+
+    // =========================================================================
+    // Standalone REST Resource Wiremock Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_tabs_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!([
+            {"label": "Home", "name": "standard-home", "custom": false},
+            {"label": "Accounts", "name": "standard-Account", "custom": false}
+        ]);
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/tabs$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.tabs().await.expect("tabs should succeed");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0]["label"], "Home");
+    }
+
+    #[tokio::test]
+    async fn test_theme_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"themeItems": [{"name": "Account", "colors": []}]});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/theme$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client.theme().await.expect("theme should succeed");
+        assert!(result["themeItems"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_app_menu_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"appMenuItems": [{"label": "Sales", "type": "Aloha"}]});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/appMenu/AppSwitcher$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .app_menu("AppSwitcher")
+            .await
+            .expect("app_menu should succeed");
+        assert!(result["appMenuItems"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_app_menu_invalid_type() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.app_menu("../../etc/passwd").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("INVALID_APP_MENU_TYPE"));
+    }
+
+    #[tokio::test]
+    async fn test_recent_items_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!([{"attributes": {"type": "Account"}, "Id": "001xx1", "Name": "Acme"}]);
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/recent$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .recent_items()
+            .await
+            .expect("recent_items should succeed");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0]["Name"], "Acme");
+    }
+
+    #[tokio::test]
+    async fn test_relevant_items_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"rules": [], "userPreferences": {}});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/relevantItems$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .relevant_items()
+            .await
+            .expect("relevant_items should succeed");
+        assert!(result.is_object());
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"Account": {"name": "System Default"}});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/compactLayouts"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .compact_layouts("Account")
+            .await
+            .expect("compact_layouts should succeed");
+        assert!(result["Account"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.compact_layouts("Account,Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_compact_layouts_empty_input() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.compact_layouts("").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_INPUT"));
+    }
+
+    #[tokio::test]
+    async fn test_platform_event_schema_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"name": "Order_Event__e", "type": "record", "fields": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/event/eventSchema/Order_Event__e$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .platform_event_schema("Order_Event__e")
+            .await
+            .expect("platform_event_schema should succeed");
+        assert_eq!(result["name"], "Order_Event__e");
+    }
+
+    #[tokio::test]
+    async fn test_platform_event_schema_invalid_name() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.platform_event_schema("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("INVALID_EVENT_NAME"));
+    }
+
+    #[tokio::test]
+    async fn test_lightning_toggle_metrics_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"metricsData": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/lightning/toggleMetrics$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .lightning_toggle_metrics()
+            .await
+            .expect("lightning_toggle_metrics should succeed");
+        assert!(result["metricsData"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_lightning_usage_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let body = serde_json::json!({"lightningUsageData": []});
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/lightning/usage$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .lightning_usage()
+            .await
+            .expect("lightning_usage should succeed");
+        assert!(result["lightningUsageData"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_rest_deploy_returns_error() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.rest_deploy(&[0u8; 10], &serde_json::json!({})).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("multipart/form-data"));
     }
 }
