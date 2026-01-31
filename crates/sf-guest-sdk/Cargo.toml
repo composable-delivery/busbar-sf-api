@@ -12,3 +12,4 @@ busbar-sf-wasm-types = { workspace = true }
 extism-pdk = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
+rmp-serde = { workspace = true }

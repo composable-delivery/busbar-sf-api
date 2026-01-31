@@ -544,12 +544,12 @@ where
     let state = state_arc.lock().unwrap();
 
     let input_bytes: Vec<u8> = plugin.memory_get_val(&inputs[0])?;
-    let request: Req = serde_json::from_slice(&input_bytes)
+    let request: Req = rmp_serde::from_slice(&input_bytes)
         .map_err(|e| extism::Error::msg(format!("deserialize request: {e}")))?;
 
     let result = handler(&state, request);
 
-    let output_bytes = serde_json::to_vec(&result)
+    let output_bytes = rmp_serde::to_vec_named(&result)
         .map_err(|e| extism::Error::msg(format!("serialize response: {e}")))?;
     let mem_handle = plugin.memory_new(&output_bytes)?;
     outputs[0] = plugin.memory_to_val(mem_handle);
@@ -572,7 +572,7 @@ where
 
     let result = handler(&state);
 
-    let output_bytes = serde_json::to_vec(&result)
+    let output_bytes = rmp_serde::to_vec_named(&result)
         .map_err(|e| extism::Error::msg(format!("serialize response: {e}")))?;
     let mem_handle = plugin.memory_new(&output_bytes)?;
     outputs[0] = plugin.memory_to_val(mem_handle);

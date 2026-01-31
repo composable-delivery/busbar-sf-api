@@ -607,6 +607,9 @@ pub fn metadata_describe() -> Result<MetadataDescribeResult, Error> {
 // =============================================================================
 
 /// Call a host function with serialization/deserialization.
+///
+/// Uses MessagePack for the WASM boundary (faster and smaller than JSON).
+/// The host side deserializes with the same format.
 fn call_host_fn<Req, Resp>(
     host_fn: impl FnOnce(Vec<u8>) -> Result<Vec<u8>, Error>,
     request: &Req,
@@ -615,10 +618,10 @@ where
     Req: serde::Serialize,
     Resp: serde::de::DeserializeOwned,
 {
-    let input = serde_json::to_vec(request)
+    let input = rmp_serde::to_vec_named(request)
         .map_err(|e| Error::msg(format!("serialize error: {e}")))?;
     let output = host_fn(input)?;
-    let result: BridgeResult<Resp> = serde_json::from_slice(&output)
+    let result: BridgeResult<Resp> = rmp_serde::from_slice(&output)
         .map_err(|e| Error::msg(format!("deserialize error: {e}")))?;
     result
         .into_result()
@@ -632,10 +635,10 @@ fn call_host_fn_no_input<Resp>(
 where
     Resp: serde::de::DeserializeOwned,
 {
-    let input = serde_json::to_vec(&serde_json::Value::Null)
+    let input = rmp_serde::to_vec_named(&())
         .map_err(|e| Error::msg(format!("serialize error: {e}")))?;
     let output = host_fn(input)?;
-    let result: BridgeResult<Resp> = serde_json::from_slice(&output)
+    let result: BridgeResult<Resp> = rmp_serde::from_slice(&output)
         .map_err(|e| Error::msg(format!("deserialize error: {e}")))?;
     result
         .into_result()
