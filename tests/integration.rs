@@ -9,6 +9,8 @@ mod auth;
 mod bulk;
 #[path = "integration/common.rs"]
 mod common;
+#[path = "integration/domain_endpoints.rs"]
+mod domain_endpoints;
 #[path = "integration/metadata.rs"]
 mod metadata;
 #[path = "integration/rest.rs"]
