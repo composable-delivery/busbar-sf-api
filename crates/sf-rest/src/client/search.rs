@@ -73,7 +73,7 @@ impl super::SalesforceRestClient {
         }
         let encoded_query = url_security::encode_param(query);
         let url = format!(
-            "{}/services/data/v{}/search/suggestions?q={}&sobjectType={}",
+            "{}/services/data/v{}/search/suggestions?q={}&sObjectType={}",
             self.client.instance_url(),
             self.client.api_version(),
             encoded_query,

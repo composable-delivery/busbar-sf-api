@@ -23,6 +23,7 @@ pub struct ListViewCollection {
     pub done: bool,
     #[serde(rename = "nextRecordsUrl")]
     pub next_records_url: Option<String>,
+    #[serde(alias = "listViews", default)]
     pub listviews: Vec<ListView>,
 }
 

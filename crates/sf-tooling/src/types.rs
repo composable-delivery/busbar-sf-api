@@ -574,18 +574,13 @@ pub struct RunTestsResponse {
 // ============================================================================
 
 /// Result from the completions endpoint.
+///
+/// The Salesforce completions API returns `{ "publicDeclarations": { "ClassName": [...], ... } }`
+/// where each key is a class/namespace name mapping to its members.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompletionsResult {
     #[serde(rename = "publicDeclarations")]
-    pub public_declarations: PublicDeclarations,
-}
-
-/// Public declarations structure containing completion suggestions.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PublicDeclarations {
-    #[serde(rename = "publicDeclarations")]
-    #[serde(default)]
-    pub public_declarations: Vec<CompletionItem>,
+    pub public_declarations: std::collections::HashMap<String, Vec<CompletionItem>>,
 }
 
 /// A single completion item.
@@ -788,12 +783,7 @@ mod tests {
     fn test_completions_result_deser() {
         let json = r#"{
             "publicDeclarations": {
-                "publicDeclarations": [
-                    {
-                        "name": "System",
-                        "type": "Class",
-                        "namespace": null
-                    },
+                "System": [
                     {
                         "name": "debug",
                         "type": "Method",
@@ -806,25 +796,25 @@ mod tests {
                             }
                         ]
                     }
+                ],
+                "Database": [
+                    {
+                        "name": "query",
+                        "type": "Method",
+                        "namespace": "Database"
+                    }
                 ]
             }
         }"#;
 
         let result: CompletionsResult = serde_json::from_str(json).unwrap();
-        assert_eq!(result.public_declarations.public_declarations.len(), 2);
-        assert_eq!(
-            result.public_declarations.public_declarations[0].name,
-            "System"
-        );
-        assert_eq!(
-            result.public_declarations.public_declarations[1].return_type,
-            Some("void".to_string())
-        );
-        assert_eq!(
-            result.public_declarations.public_declarations[1]
-                .parameters
-                .len(),
-            1
-        );
+        assert_eq!(result.public_declarations.len(), 2);
+        assert!(result.public_declarations.contains_key("System"));
+        assert!(result.public_declarations.contains_key("Database"));
+        let system_items = &result.public_declarations["System"];
+        assert_eq!(system_items.len(), 1);
+        assert_eq!(system_items[0].name, "debug");
+        assert_eq!(system_items[0].return_type, Some("void".to_string()));
+        assert_eq!(system_items[0].parameters.len(), 1);
     }
 }

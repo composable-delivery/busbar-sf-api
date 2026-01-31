@@ -13,30 +13,33 @@ pub struct QuickAction {
 }
 
 /// Detailed description of a quick action.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct QuickActionDescribe {
     pub name: String,
     pub label: String,
     #[serde(rename = "type")]
     pub action_type: String,
-    #[serde(rename = "targetSobjectType", default)]
-    pub target_sobject_type: String,
+    #[serde(rename = "targetSobjectType")]
+    pub target_sobject_type: Option<String>,
     #[serde(rename = "targetRecordTypeId")]
     pub target_record_type_id: Option<String>,
+    #[serde(rename = "targetParentField")]
+    pub target_parent_field: Option<String>,
     pub layout: Option<serde_json::Value>,
     #[serde(rename = "defaultValues")]
     pub default_values: Option<serde_json::Value>,
-    #[serde(default)]
     pub icons: Vec<QuickActionIcon>,
 }
 
 /// An icon associated with a quick action.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(default)]
 pub struct QuickActionIcon {
     pub url: String,
     pub theme: String,
-    pub height: u32,
-    pub width: u32,
+    pub height: Option<u32>,
+    pub width: Option<u32>,
     #[serde(rename = "contentType")]
     pub content_type: String,
 }
@@ -96,13 +99,13 @@ mod tests {
         });
         let describe: QuickActionDescribe = serde_json::from_value(json).unwrap();
         assert_eq!(describe.name, "NewCase");
-        assert_eq!(describe.target_sobject_type, "Case");
+        assert_eq!(describe.target_sobject_type.as_deref(), Some("Case"));
         assert_eq!(
             describe.target_record_type_id.as_deref(),
             Some("012000000000000AAA")
         );
         assert_eq!(describe.icons.len(), 1);
-        assert_eq!(describe.icons[0].height, 32);
+        assert_eq!(describe.icons[0].height, Some(32));
     }
 
     #[test]

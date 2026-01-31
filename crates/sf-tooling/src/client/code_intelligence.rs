@@ -35,12 +35,12 @@ mod tests {
 
         let mock_response = serde_json::json!({
             "publicDeclarations": {
-                "publicDeclarations": [
+                "System": [
                     {
-                        "name": "System",
-                        "type": "Class",
-                        "namespace": null,
-                        "signature": "System class"
+                        "name": "debug",
+                        "type": "Method",
+                        "namespace": "System",
+                        "signature": "void debug(Object)"
                     }
                 ]
             }
@@ -59,11 +59,9 @@ mod tests {
 
         assert!(result.is_ok());
         let completions = result.unwrap();
-        assert_eq!(completions.public_declarations.public_declarations.len(), 1);
-        assert_eq!(
-            completions.public_declarations.public_declarations[0].name,
-            "System"
-        );
+        assert!(completions.public_declarations.contains_key("System"));
+        assert_eq!(completions.public_declarations["System"].len(), 1);
+        assert_eq!(completions.public_declarations["System"][0].name, "debug");
     }
 
     #[tokio::test]
@@ -72,7 +70,7 @@ mod tests {
 
         let mock_response = serde_json::json!({
             "publicDeclarations": {
-                "publicDeclarations": [
+                "apex": [
                     {
                         "name": "apex:page",
                         "type": "Component",
@@ -95,10 +93,7 @@ mod tests {
 
         assert!(result.is_ok());
         let completions = result.unwrap();
-        assert_eq!(completions.public_declarations.public_declarations.len(), 1);
-        assert_eq!(
-            completions.public_declarations.public_declarations[0].name,
-            "apex:page"
-        );
+        assert!(completions.public_declarations.contains_key("apex"));
+        assert_eq!(completions.public_declarations["apex"][0].name, "apex:page");
     }
 }

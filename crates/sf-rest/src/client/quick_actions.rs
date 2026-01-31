@@ -165,7 +165,7 @@ mod tests {
             .await
             .expect("describe_quick_action should succeed");
         assert_eq!(result.name, "NewCase");
-        assert_eq!(result.target_sobject_type, "Case");
+        assert_eq!(result.target_sobject_type.as_deref(), Some("Case"));
     }
 
     #[tokio::test]

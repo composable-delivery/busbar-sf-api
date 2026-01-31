@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 pub struct ParameterizedSearchRequest {
     /// The search query string (required).
     pub q: String,
-    /// Comma-separated list of fields to return.
+    /// List of fields to return.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fields: Option<String>,
+    pub fields: Option<Vec<String>>,
     /// List of SObject-specific search specifications.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sobjects: Option<Vec<SearchSObjectSpec>>,
@@ -33,9 +33,9 @@ pub struct ParameterizedSearchRequest {
 pub struct SearchSObjectSpec {
     /// The SObject API name (e.g., "Account").
     pub name: String,
-    /// Comma-separated list of fields to return for this SObject.
+    /// List of fields to return for this SObject.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fields: Option<String>,
+    pub fields: Option<Vec<String>>,
     /// WHERE clause to filter results for this SObject.
     #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
     pub where_clause: Option<String>,
@@ -168,18 +168,18 @@ pub struct SearchLayoutInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SearchLayoutColumn {
-    /// The field API name.
-    #[serde(default)]
-    pub field: String,
+    /// The field API name (may be `fieldNameOrPath` in the response).
+    #[serde(default, alias = "fieldNameOrPath")]
+    pub field: Option<String>,
     /// The column display label.
     #[serde(default)]
-    pub label: String,
-    /// The field format type.
+    pub label: Option<String>,
+    /// The field format type (nullable for some column types).
     #[serde(default)]
-    pub format: String,
+    pub format: Option<String>,
     /// The column name.
     #[serde(default)]
-    pub name: String,
+    pub name: Option<String>,
 }
 
 #[cfg(test)]
@@ -299,9 +299,9 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].label, "Accounts");
         assert_eq!(results[0].columns.len(), 1);
-        assert_eq!(results[0].columns[0].field, "Account.Name");
-        assert_eq!(results[0].columns[0].label, "Account Name");
-        assert_eq!(results[0].columns[0].name, "Name");
+        assert_eq!(results[0].columns[0].field.as_deref(), Some("Account.Name"));
+        assert_eq!(results[0].columns[0].label.as_deref(), Some("Account Name"));
+        assert_eq!(results[0].columns[0].name.as_deref(), Some("Name"));
     }
 
     #[test]
