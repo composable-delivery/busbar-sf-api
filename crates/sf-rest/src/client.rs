@@ -1294,10 +1294,7 @@ mod tests {
                 .expect("should succeed");
             assert_eq!(result.name, "SendEmail");
             assert_eq!(result.action_type, "QuickAction");
-            assert_eq!(
-                result.target_sobject_type.as_deref(),
-                Some("EmailMessage")
-            );
+            assert_eq!(result.target_sobject_type.as_deref(), Some("EmailMessage"));
         }
 
         #[tokio::test]
@@ -1425,10 +1422,7 @@ mod tests {
                 .await;
 
             let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-            let result = client
-                .list_views("Account")
-                .await
-                .expect("should succeed");
+            let result = client.list_views("Account").await.expect("should succeed");
             assert!(result.done);
             assert_eq!(result.listviews.len(), 1);
             assert_eq!(result.listviews[0].developer_name, "AllAccounts");
@@ -1641,10 +1635,7 @@ mod tests {
                 .await;
 
             let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-            let result = client
-                .list_process_rules()
-                .await
-                .expect("should succeed");
+            let result = client.list_process_rules().await.expect("should succeed");
             assert_eq!(result.rules.len(), 1);
             assert_eq!(result.rules[0].name, "Account Approval");
         }
@@ -1678,10 +1669,7 @@ mod tests {
                 .await
                 .expect("should succeed");
             assert_eq!(result.rules.len(), 1);
-            assert_eq!(
-                result.rules[0].sobject_type.as_deref(),
-                Some("Account")
-            );
+            assert_eq!(result.rules[0].sobject_type.as_deref(), Some("Account"));
         }
 
         #[tokio::test]
@@ -1975,10 +1963,7 @@ mod tests {
                 .await;
 
             let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
-            let result = client
-                .list_custom_actions()
-                .await
-                .expect("should succeed");
+            let result = client.list_custom_actions().await.expect("should succeed");
             assert_eq!(result.actions.len(), 1);
             assert_eq!(result.actions[0].name, "MyCustomAction");
             assert_eq!(result.actions[0].action_type, "APEX");
@@ -2067,9 +2052,6 @@ mod tests {
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let result = client.limits().await.expect("should succeed");
         assert!(result.get("DailyApiRequests").is_some());
-        assert_eq!(
-            result["DailyApiRequests"]["Max"].as_u64().unwrap(),
-            15000
-        );
+        assert_eq!(result["DailyApiRequests"]["Max"].as_u64().unwrap(), 15000);
     }
 }
