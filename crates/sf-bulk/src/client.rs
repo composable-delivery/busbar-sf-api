@@ -779,4 +779,151 @@ mod tests {
 
         assert_eq!(client.max_wait, Duration::from_secs(120));
     }
+
+    #[test]
+    fn test_normalize_url_relative() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url("/services/data/v62.0/jobs/query/750xx/results/1"),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_absolute() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url("https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_bare_path() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url("services/data/v62.0/jobs/query/750xx/results/1"),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_parallel_query_results_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx000000001/results/1",
+                "/services/data/v62.0/jobs/query/750xx000000001/results/2"
+            ],
+            "nextRecordsUrl": null
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000001/parallelResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let batch = client
+            .get_parallel_query_results("750xx000000001", None)
+            .await
+            .expect("get_parallel_query_results should succeed");
+
+        assert_eq!(batch.result_url.len(), 2);
+        assert!(batch.result_url[0].contains("results/1"));
+        assert!(batch.result_url[1].contains("results/2"));
+        assert!(batch.next_records_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_parallel_query_results_with_max_records() {
+        use wiremock::matchers::{method, path_regex, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx000000002/results/1"
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000002/parallelResults"))
+            .and(query_param("maxRecords", "3"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let batch = client
+            .get_parallel_query_results("750xx000000002", Some(3))
+            .await
+            .expect("get_parallel_query_results with maxRecords should succeed");
+
+        assert_eq!(batch.result_url.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_query_results_parallel_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock parallel results endpoint
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                format!("{}/services/data/v62.0/jobs/query/750xx000000003/results/1", mock_server.uri()),
+                format!("{}/services/data/v62.0/jobs/query/750xx000000003/results/2", mock_server.uri())
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000003/parallelResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        // Mock result URL 1
+        Mock::given(method("GET"))
+            .and(path_regex(".*/results/1$"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("Id,Name\n001xx1,Account One\n001xx2,Account Two"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Mock result URL 2
+        Mock::given(method("GET"))
+            .and(path_regex(".*/results/2$"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("Id,Name\n001xx3,Account Three\n001xx4,Account Four"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let csv = client
+            .get_all_query_results_parallel("750xx000000003")
+            .await
+            .expect("get_all_query_results_parallel should succeed");
+
+        // First chunk has header, subsequent chunks have header stripped
+        assert!(csv.contains("Id,Name"));
+        assert!(csv.contains("Account One"));
+        assert!(csv.contains("Account Two"));
+        assert!(csv.contains("Account Three"));
+        assert!(csv.contains("Account Four"));
+    }
 }
