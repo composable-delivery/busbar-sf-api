@@ -793,7 +793,9 @@ mod tests {
     fn test_normalize_url_absolute() {
         let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
         assert_eq!(
-            client.normalize_url("https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"),
+            client.normalize_url(
+                "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+            ),
             "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
         );
     }
