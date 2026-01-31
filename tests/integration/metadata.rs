@@ -169,8 +169,10 @@ async fn test_metadata_deploy_recent_validation() {
     let client = MetadataClient::new(&creds).expect("Failed to create Metadata client");
 
     let package_zip = create_test_package();
-    let mut opts = DeployOptions::default();
-    opts.check_only = true;
+    let opts = DeployOptions {
+        check_only: true,
+        ..Default::default()
+    };
 
     let async_id = client
         .deploy(&package_zip, opts)

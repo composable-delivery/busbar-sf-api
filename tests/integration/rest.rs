@@ -1062,12 +1062,11 @@ async fn test_process_rules_error_invalid_id() {
 
     let result = client.trigger_process_rules(&request).await;
     // The API will likely fail with an invalid context ID
-    match result {
-        Ok(r) => assert!(
+    if let Ok(r) = result {
+        assert!(
             !r.success || !r.errors.is_empty(),
             "Should fail with invalid ID"
-        ),
-        Err(_) => {} // Expected
+        );
     }
 }
 
