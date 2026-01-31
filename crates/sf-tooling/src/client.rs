@@ -365,6 +365,202 @@ impl ToolingClient {
     }
 
     // =========================================================================
+    // Test Execution Operations
+    // =========================================================================
+
+    /// Run tests asynchronously.
+    ///
+    /// Queues tests for parallel execution and returns an AsyncApexJob ID.
+    /// Poll the ApexTestRunResult via tooling query to check completion status.
+    ///
+    /// # Arguments
+    /// * `request` - Test execution parameters (classes, suites, test level, etc.)
+    ///
+    /// # Returns
+    /// The AsyncApexJob ID that can be used to poll for results.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_tooling::{ToolingClient, RunTestsAsyncRequest};
+    ///
+    /// let request = RunTestsAsyncRequest {
+    ///     class_names: Some(vec!["TestClass1".to_string()]),
+    ///     test_level: Some("RunSpecifiedTests".to_string()),
+    ///     skip_code_coverage: Some(false),
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let job_id = client.run_tests_async(&request).await?;
+    /// println!("Test job queued: {}", job_id);
+    ///
+    /// // Poll for completion:
+    /// // SELECT Id, Status, ApexClassId FROM ApexTestQueueItem WHERE ParentJobId = '{job_id}'
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This is preferred for running multiple test classes or long-running tests
+    /// as it doesn't block. Use `run_tests_sync()` only for quick, single-class tests.
+    #[instrument(skip(self, request))]
+    pub async fn run_tests_async(&self, request: &RunTestsAsyncRequest) -> Result<String> {
+        let url = format!(
+            "{}/services/data/v{}/tooling/runTestsAsynchronous/",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+
+        let response: RunTestsAsyncResponse = self.client.post_json(&url, request).await?;
+        Ok(response.job_id)
+    }
+
+    /// Run tests synchronously.
+    ///
+    /// Executes tests and blocks until completion. Returns full results inline
+    /// including successes, failures, and code coverage.
+    ///
+    /// # Arguments
+    /// * `request` - Test execution parameters (test methods to run)
+    ///
+    /// # Security
+    ///
+    /// Requires "View Setup and Configuration" permission in API v40.0+.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_tooling::{ToolingClient, RunTestsSyncRequest};
+    ///
+    /// let request = RunTestsSyncRequest {
+    ///     tests: Some(vec!["TestClass.testMethod1".to_string()]),
+    ///     skip_code_coverage: Some(false),
+    /// };
+    ///
+    /// let result = client.run_tests_sync(&request).await?;
+    /// println!("Tests run: {}, Failures: {}", result.num_tests_run, result.num_failures);
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// **Limitations:**
+    /// - All test methods must be in the same class
+    /// - Blocks until tests complete (use `run_tests_async()` for long tests)
+    /// - Requires "View Setup" permission (API v40.0+)
+    ///
+    /// Prefer `run_tests_async()` for parallel execution of multiple classes.
+    #[instrument(skip(self, request))]
+    pub async fn run_tests_sync(
+        &self,
+        request: &RunTestsSyncRequest,
+    ) -> Result<RunTestsSyncResult> {
+        let url = format!(
+            "{}/services/data/v{}/tooling/runTestsSynchronous/",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+
+        self.client
+            .post_json(&url, request)
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Discover available tests (Apex and Flow tests).
+    ///
+    /// **Requires API v65.0 or later.**
+    ///
+    /// Lists all available Apex test methods and automated Flow tests in the org.
+    /// Use the returned test IDs with `run_tests()` to execute specific tests.
+    ///
+    /// # Arguments
+    /// * `category` - Optional filter: "apex" or "flow". If None, returns all tests.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Get all tests
+    /// let all_tests = client.discover_tests(None).await?;
+    ///
+    /// // Get only Apex tests
+    /// let apex_tests = client.discover_tests(Some("apex")).await?;
+    ///
+    /// // Get only Flow tests
+    /// let flow_tests = client.discover_tests(Some("flow")).await?;
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This is a v65.0+ feature. Ensure your client is configured with API v65.0+:
+    /// ```rust,ignore
+    /// let client = ToolingClient::new(url, token)?.with_api_version("65.0");
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn discover_tests(&self, category: Option<&str>) -> Result<TestDiscoveryResult> {
+        let mut url = format!(
+            "{}/services/data/v{}/tooling/tests/",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+
+        if let Some(cat) = category {
+            url = format!("{}?category={}", url, cat);
+        }
+
+        self.client.get_json(&url).await.map_err(Into::into)
+    }
+
+    /// Run tests using the unified Test Runner API.
+    ///
+    /// **Requires API v65.0 or later.**
+    ///
+    /// This is the newer unified API that supports both Apex and automated Flow tests.
+    /// It provides both asynchronous and synchronous execution modes.
+    ///
+    /// # Arguments
+    /// * `request` - Test execution parameters (test IDs, classes, suites, test level)
+    ///
+    /// # Returns
+    /// A test run ID that can be used to query results.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sf_tooling::{ToolingClient, RunTestsRequest};
+    ///
+    /// // Discover tests first
+    /// let tests = client.discover_tests(Some("apex")).await?;
+    ///
+    /// // Run specific tests
+    /// let request = RunTestsRequest {
+    ///     test_ids: Some(tests.tests.into_iter().map(|t| t.id).collect()),
+    ///     test_level: Some("RunSpecifiedTests".to_string()),
+    ///     skip_code_coverage: Some(false),
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let test_run_id = client.run_tests(&request).await?;
+    /// println!("Test run started: {}", test_run_id);
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This is a v65.0+ feature. Ensure your client is configured with API v65.0+:
+    /// ```rust,ignore
+    /// let client = ToolingClient::new(url, token)?.with_api_version("65.0");
+    /// ```
+    #[instrument(skip(self, request))]
+    pub async fn run_tests(&self, request: &RunTestsRequest) -> Result<String> {
+        let url = format!(
+            "{}/services/data/v{}/tooling/tests/",
+            self.client.instance_url(),
+            self.client.api_version()
+        );
+
+        let response: RunTestsResponse = self.client.post_json(&url, request).await?;
+        Ok(response.test_run_id)
+    }
+
+    // =========================================================================
     // Generic SObject Operations (Tooling)
     // =========================================================================
 
@@ -805,6 +1001,69 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // Test execution URL construction tests
+    // =========================================================================
+
+    #[test]
+    fn test_run_tests_async_url() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("65.0");
+
+        let expected_url =
+            "https://na1.salesforce.com/services/data/v65.0/tooling/runTestsAsynchronous/";
+        let actual_url = format!(
+            "{}/services/data/v{}/tooling/runTestsAsynchronous/",
+            client.instance_url(),
+            client.api_version()
+        );
+        assert_eq!(actual_url, expected_url);
+    }
+
+    #[test]
+    fn test_run_tests_sync_url() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("62.0");
+
+        let expected_url =
+            "https://na1.salesforce.com/services/data/v62.0/tooling/runTestsSynchronous/";
+        let actual_url = format!(
+            "{}/services/data/v{}/tooling/runTestsSynchronous/",
+            client.instance_url(),
+            client.api_version()
+        );
+        assert_eq!(actual_url, expected_url);
+    }
+
+    #[test]
+    fn test_discover_tests_url() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("65.0");
+
+        let url_no_cat = format!(
+            "{}/services/data/v{}/tooling/tests/",
+            client.instance_url(),
+            client.api_version()
+        );
+        assert_eq!(
+            url_no_cat,
+            "https://na1.salesforce.com/services/data/v65.0/tooling/tests/"
+        );
+
+        let url_with_cat = format!(
+            "{}/services/data/v{}/tooling/tests/?category=apex",
+            client.instance_url(),
+            client.api_version()
+        );
+        assert_eq!(
+            url_with_cat,
+            "https://na1.salesforce.com/services/data/v65.0/tooling/tests/?category=apex"
+        );
+    }
+
     #[test]
     fn test_composite_batch_url_construction() {
         let client = ToolingClient::new("https://na1.salesforce.com", "token").unwrap();
@@ -969,5 +1228,20 @@ mod tests {
             soql,
             "SELECT Id, Name, Body FROM ApexClass WHERE Id IN ('01p000000000001AAA', '01p000000000002AAA', '01p000000000003AAA')"
         );
+    }
+
+    #[test]
+    fn test_run_tests_url() {
+        let client = ToolingClient::new("https://na1.salesforce.com", "token")
+            .unwrap()
+            .with_api_version("65.0");
+
+        let expected_url = "https://na1.salesforce.com/services/data/v65.0/tooling/tests/";
+        let actual_url = format!(
+            "{}/services/data/v{}/tooling/tests/",
+            client.instance_url(),
+            client.api_version()
+        );
+        assert_eq!(actual_url, expected_url);
     }
 }
