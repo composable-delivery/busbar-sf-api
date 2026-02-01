@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KnowledgeSettings {
     #[serde(rename = "defaultLanguage", default)]
-    pub default_language: String,
+    pub default_language: Option<String>,
     #[serde(rename = "knowledgeEnabled", default)]
     pub knowledge_enabled: bool,
     #[serde(default)]
@@ -87,7 +87,7 @@ mod tests {
         });
         let settings: KnowledgeSettings = serde_json::from_value(json).unwrap();
         assert!(settings.knowledge_enabled);
-        assert_eq!(settings.default_language, "en_US");
+        assert_eq!(settings.default_language, Some("en_US".to_string()));
     }
 
     #[test]

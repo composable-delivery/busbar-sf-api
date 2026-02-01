@@ -2,7 +2,17 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize `null` as the default value for the type (e.g., empty Vec).
+/// Salesforce APIs often return `null` instead of `[]` for empty arrays.
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// A process rule definition.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -17,14 +27,16 @@ pub struct ProcessRule {
 /// Collection of process rules grouped by SObject type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleCollection {
+    #[serde(default)]
     pub rules: HashMap<String, Vec<ProcessRule>>,
 }
 
-/// Request to trigger a process rule.
+/// Request to trigger process rules for one or more records.
+/// All IDs must be for records on the same SObject type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleRequest {
-    #[serde(rename = "contextId")]
-    pub context_id: String,
+    #[serde(rename = "contextIds")]
+    pub context_ids: Vec<String>,
 }
 
 /// Result of triggering a process rule.
@@ -50,6 +62,7 @@ pub struct PendingApproval {
 /// Collection of pending approvals grouped by entity type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PendingApprovalCollection {
+    #[serde(default, deserialize_with = "null_as_default")]
     pub approvals: HashMap<String, Vec<PendingApproval>>,
 }
 
@@ -86,17 +99,21 @@ pub enum ApprovalActionType {
 /// Result of an approval action.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ApprovalResult {
-    #[serde(rename = "actorIds", default)]
+    #[serde(rename = "actorIds", default, deserialize_with = "null_as_default")]
     pub actor_ids: Vec<String>,
     #[serde(rename = "entityId")]
     pub entity_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub errors: Vec<crate::sobject::SalesforceError>,
     #[serde(rename = "instanceId")]
     pub instance_id: String,
     #[serde(rename = "instanceStatus")]
     pub instance_status: String,
-    #[serde(rename = "newWorkitemIds", default)]
+    #[serde(
+        rename = "newWorkitemIds",
+        default,
+        deserialize_with = "null_as_default"
+    )]
     pub new_workitem_ids: Vec<String>,
     pub success: bool,
 }
@@ -138,10 +155,10 @@ mod tests {
     #[test]
     fn test_process_rule_request_serialize() {
         let request = ProcessRuleRequest {
-            context_id: "001xx000003DgAAAS".to_string(),
+            context_ids: vec!["001xx000003DgAAAS".to_string()],
         };
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["contextId"], "001xx000003DgAAAS");
+        assert_eq!(json["contextIds"][0], "001xx000003DgAAAS");
     }
 
     #[test]

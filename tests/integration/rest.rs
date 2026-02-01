@@ -181,15 +181,20 @@ async fn test_rest_upsert_operation() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let unique_number = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
+    let unique_id = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
 
     let account_data = serde_json::json!({
-        "Name": format!("Upsert Test {}", unique_number),
-        "AccountNumber": unique_number
+        "Name": format!("Upsert Test {}", unique_id),
+        "BusbarIntTestExtId__c": unique_id
     });
 
     let upsert_result = client
-        .upsert("Account", "AccountNumber", &unique_number, &account_data)
+        .upsert(
+            "Account",
+            "BusbarIntTestExtId__c",
+            &unique_id,
+            &account_data,
+        )
         .await
         .expect("First upsert should succeed");
 
@@ -197,12 +202,17 @@ async fn test_rest_upsert_operation() {
     let account_id = upsert_result.id.clone();
 
     let updated_data = serde_json::json!({
-        "Name": format!("Upsert Test Updated {}", unique_number),
-        "AccountNumber": unique_number
+        "Name": format!("Upsert Test Updated {}", unique_id),
+        "BusbarIntTestExtId__c": unique_id
     });
 
     let upsert_result2 = client
-        .upsert("Account", "AccountNumber", &unique_number, &updated_data)
+        .upsert(
+            "Account",
+            "BusbarIntTestExtId__c",
+            &unique_id,
+            &updated_data,
+        )
         .await
         .expect("Second upsert should succeed");
 
@@ -1102,7 +1112,11 @@ async fn test_process_rules_list_all() {
         .expect("Failed to create REST client");
 
     let result = client.list_process_rules().await;
-    assert!(result.is_ok(), "list_process_rules should succeed");
+    assert!(
+        result.is_ok(),
+        "list_process_rules should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]
@@ -1111,14 +1125,11 @@ async fn test_process_rules_list_for_sobject() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let collection = client
+    let rules = client
         .list_process_rules_for_sobject("Account")
         .await
         .expect("list_process_rules_for_sobject should succeed");
-    assert!(
-        !collection.rules.is_empty(),
-        "Should have process rules for Account"
-    );
+    assert!(!rules.is_empty(), "Should have process rules for Account");
 }
 
 #[tokio::test]
@@ -1138,7 +1149,7 @@ async fn test_process_rules_trigger() {
         .expect("Account creation should succeed");
 
     let request = busbar_sf_rest::ProcessRuleRequest {
-        context_id: account_id.clone(),
+        context_ids: vec![account_id.clone()],
     };
 
     let result = client
@@ -1157,7 +1168,7 @@ async fn test_process_rules_error_invalid_id() {
         .expect("Failed to create REST client");
 
     let request = busbar_sf_rest::ProcessRuleRequest {
-        context_id: "bad-id-not-valid".to_string(),
+        context_ids: vec!["bad-id-not-valid".to_string()],
     };
 
     let result = client.trigger_process_rules(&request).await;
@@ -1178,7 +1189,11 @@ async fn test_approvals_list_pending() {
         .expect("Failed to create REST client");
 
     let result = client.list_pending_approvals().await;
-    assert!(result.is_ok(), "list_pending_approvals should succeed");
+    assert!(
+        result.is_ok(),
+        "list_pending_approvals should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[tokio::test]

@@ -19,11 +19,13 @@ impl super::SalesforceRestClient {
     }
 
     /// List process rules for a specific SObject type.
+    ///
+    /// Returns the array of rules for that SObject (not a collection map).
     #[instrument(skip(self))]
     pub async fn list_process_rules_for_sobject(
         &self,
         sobject: &str,
-    ) -> Result<ProcessRuleCollection> {
+    ) -> Result<Vec<crate::process::ProcessRule>> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -133,7 +135,7 @@ mod tests {
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let request = crate::process::ProcessRuleRequest {
-            context_id: "001xx000003DgAAAS".to_string(),
+            context_ids: vec!["001xx000003DgAAAS".to_string()],
         };
         let result = client
             .trigger_process_rules(&request)

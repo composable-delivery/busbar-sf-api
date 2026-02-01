@@ -130,8 +130,12 @@ async fn deploy_test_metadata(creds: &SalesforceCredentials) {
             br#"<?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <fields>
-        <fullName>AccountNumber</fullName>
+        <fullName>BusbarIntTestExtId__c</fullName>
         <externalId>true</externalId>
+        <label>BusbarIntTest External ID</label>
+        <type>Text</type>
+        <length>255</length>
+        <unique>true</unique>
     </fields>
     <listViews>
         <fullName>BusbarIntTest_AllAccounts</fullName>

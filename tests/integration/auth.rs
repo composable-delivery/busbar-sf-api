@@ -11,6 +11,7 @@ use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL
 fn login_url_for(creds: &busbar_sf_auth::SalesforceCredentials) -> &'static str {
     if creds.instance_url().contains("test.salesforce.com")
         || creds.instance_url().contains("sandbox")
+        || creds.instance_url().contains(".scratch.")
     {
         "https://test.salesforce.com"
     } else {
