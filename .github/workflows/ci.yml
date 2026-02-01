@@ -64,17 +64,6 @@ jobs:
           echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
           cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Debug LCOV report
-        if: always()
-        run: |
-          echo "=== LCOV file stats ==="
-          wc -l lcov-unit.info || echo "LCOV file not found"
-          ls -la lcov-unit.info || true
-          echo "=== First 5 lines ==="
-          head -5 lcov-unit.info || true
-          echo "=== SF entries ==="
-          grep -c "^SF:" lcov-unit.info || echo "No SF entries"
-
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v5
@@ -82,7 +71,6 @@ jobs:
           files: lcov-unit.info
           flags: unit-tests
           disable_search: true
-          verbose: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -144,17 +132,6 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
-      - name: Debug LCOV report
-        if: always()
-        run: |
-          echo "=== Integration LCOV file stats ==="
-          wc -l lcov-integration.info || echo "LCOV file not found"
-          ls -la lcov-integration.info || true
-          echo "=== First 5 lines ==="
-          head -5 lcov-integration.info || true
-          echo "=== SF entries ==="
-          grep -c "^SF:" lcov-integration.info || echo "No SF entries"
-
       - name: Generate summary
         if: always()
         env:
@@ -170,7 +147,6 @@ jobs:
           files: lcov-integration.info
           flags: integration-tests
           disable_search: true
-          verbose: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
