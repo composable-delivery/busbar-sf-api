@@ -117,9 +117,6 @@ async fn deploy_test_list_view(creds: &SalesforceCredentials) {
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <listViews>
         <fullName>BusbarIntTest_AllAccounts</fullName>
-        <columns>NAME</columns>
-        <columns>ACCOUNT.TYPE</columns>
-        <columns>ACCOUNT.PHONE1</columns>
         <filterScope>Everything</filterScope>
         <label>BusbarIntTest All Accounts</label>
     </listViews>
