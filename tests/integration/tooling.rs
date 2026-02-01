@@ -1,13 +1,14 @@
 //! Tooling API integration tests using SF_AUTH_URL.
 
 use std::sync::LazyLock;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
 use busbar_sf_tooling::{
-    CompositeBatchRequest, CompositeBatchSubrequest, CompositeRequest, CompositeSubrequest,
-    RunTestsAsyncRequest, ToolingClient,
+    ClientConfig, CompositeBatchRequest, CompositeBatchSubrequest, CompositeRequest,
+    CompositeSubrequest, RunTestsAsyncRequest, ToolingClient,
 };
 
 // Global mutex to serialize Apex class creation across tests
@@ -684,7 +685,12 @@ async fn test_tooling_run_tests_sync() {
 #[tokio::test]
 async fn test_tooling_completions_apex() {
     let creds = get_credentials().await;
-    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+    // Apex completions returns the entire Apex standard library — response is very large.
+    // Use a longer timeout than the default 30s to avoid retry exhaustion.
+    let config = ClientConfig::builder()
+        .with_timeout(Duration::from_secs(120))
+        .build();
+    let client = ToolingClient::with_config(creds.instance_url(), creds.access_token(), config)
         .expect("Failed to create Tooling client");
 
     let completions = client

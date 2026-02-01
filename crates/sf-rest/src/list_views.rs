@@ -31,13 +31,16 @@ pub struct ListViewCollection {
 }
 
 /// Detailed description of a list view.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ListViewDescribe {
+    #[serde(default)]
     pub id: String,
-    #[serde(rename = "developerName")]
+    #[serde(rename = "developerName", default)]
     pub developer_name: String,
+    #[serde(default)]
     pub label: String,
-    #[serde(rename = "sobjectType")]
+    #[serde(rename = "sobjectType", default)]
     pub sobject_type: String,
     #[serde(default)]
     pub query: Option<String>,
@@ -47,25 +50,35 @@ pub struct ListViewDescribe {
     pub order_by: Vec<ListViewOrderBy>,
     #[serde(rename = "whereCondition")]
     pub where_condition: Option<serde_json::Value>,
+    /// Extra fields from the API response not captured above.
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// A column in a list view.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ListViewColumn {
-    #[serde(rename = "fieldNameOrPath")]
+    #[serde(rename = "fieldNameOrPath", default)]
     pub field_name_or_path: String,
+    #[serde(default)]
     pub label: String,
+    #[serde(default)]
     pub sortable: bool,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub field_type: String,
+    /// Extra fields from the API response not captured above.
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Order by clause for a list view.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ListViewOrderBy {
-    #[serde(rename = "fieldNameOrPath")]
+    #[serde(rename = "fieldNameOrPath", default)]
     pub field_name_or_path: String,
-    #[serde(rename = "sortDirection")]
+    #[serde(rename = "sortDirection", default)]
     pub sort_direction: String,
     #[serde(rename = "nullsPosition")]
     pub nulls_position: Option<String>,
