@@ -1,0 +1,152 @@
+//! One-time scratch org setup for integration tests.
+//!
+//! Run this after creating a new scratch org to deploy test metadata
+//! and create test data. Idempotent — safe to re-run.
+//!
+//! ```sh
+//! export SF_AUTH_URL='force://PlatformCLI::...'
+//! cargo run --bin setup-scratch-org
+//! ```
+
+use busbar_sf_auth::{Credentials, SalesforceCredentials};
+use busbar_sf_metadata::{DeployOptions, MetadataClient};
+use busbar_sf_rest::SalesforceRestClient;
+use std::io::Write;
+use std::time::Duration;
+
+const TEST_ACCOUNT_NAMES: &[&str] = &[
+    "BusbarIntTest_Alpha Corp",
+    "BusbarIntTest_Beta Industries",
+    "BusbarIntTest_Gamma Solutions",
+];
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    println!("Setting up scratch org for integration tests...\n");
+
+    let auth_url = std::env::var("SF_AUTH_URL").unwrap_or_else(|_| {
+        eprintln!("Error: SF_AUTH_URL environment variable is not set.");
+        eprintln!();
+        eprintln!("  1. Authenticate: sf org login web -d");
+        eprintln!("  2. Get auth URL: sf org display --verbose");
+        eprintln!("  3. Export:       export SF_AUTH_URL='force://...'");
+        std::process::exit(1);
+    });
+
+    let creds = SalesforceCredentials::from_sfdx_auth_url(&auth_url)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Error: Failed to authenticate: {e}");
+            std::process::exit(1);
+        });
+
+    println!("  Authenticated to {}\n", creds.instance_url());
+
+    // 1. Create test accounts
+    print!("  Creating test accounts... ");
+    let count = ensure_test_accounts(&creds).await;
+    println!("{count} accounts ready");
+
+    // 2. Deploy test list view
+    print!("  Deploying test list view... ");
+    deploy_test_list_view(&creds).await;
+    println!("done");
+
+    println!("\nScratch org setup complete.");
+}
+
+async fn ensure_test_accounts(creds: &SalesforceCredentials) -> usize {
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let existing: Vec<serde_json::Value> = client
+        .query_all("SELECT Id, Name FROM Account WHERE Name LIKE 'BusbarIntTest_%' LIMIT 10")
+        .await
+        .expect("Query for test accounts failed");
+
+    if existing.len() >= TEST_ACCOUNT_NAMES.len() {
+        return existing.len();
+    }
+
+    let existing_names: Vec<String> = existing
+        .iter()
+        .filter_map(|r| r.get("Name").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+
+    let mut total = existing.len();
+    for name in TEST_ACCOUNT_NAMES {
+        if !existing_names.iter().any(|n| n == name) {
+            client
+                .create("Account", &serde_json::json!({"Name": name}))
+                .await
+                .unwrap_or_else(|e| panic!("Failed to create account '{name}': {e}"));
+            total += 1;
+        }
+    }
+    total
+}
+
+async fn deploy_test_list_view(creds: &SalesforceCredentials) {
+    let client = MetadataClient::new(creds).expect("Failed to create Metadata client");
+
+    let mut buf = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("package.xml", options).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>Account.BusbarIntTest_AllAccounts</members>
+        <name>ListView</name>
+    </types>
+    <version>62.0</version>
+</Package>"#,
+        )
+        .unwrap();
+
+        zip.start_file(
+            "objects/Account/listViews/BusbarIntTest_AllAccounts.listView-meta.xml",
+            options,
+        )
+        .unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>BusbarIntTest_AllAccounts</fullName>
+    <columns>FULL_NAME</columns>
+    <columns>ACCOUNT_TYPE</columns>
+    <columns>ACCOUNT_OWNER_ALIAS</columns>
+    <filterScope>Everything</filterScope>
+    <label>BusbarIntTest All Accounts</label>
+</ListView>"#,
+        )
+        .unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    let opts = DeployOptions {
+        single_package: true,
+        rollback_on_error: true,
+        ..Default::default()
+    };
+
+    let result = client
+        .deploy_and_wait(&buf, opts, Duration::from_secs(120), Duration::from_secs(3))
+        .await
+        .expect("ListView deploy failed");
+
+    if !result.success {
+        eprintln!(
+            "ListView deploy failed. Status: {:?}, Errors: {:?}",
+            result.status, result.component_failures
+        );
+        std::process::exit(1);
+    }
+}

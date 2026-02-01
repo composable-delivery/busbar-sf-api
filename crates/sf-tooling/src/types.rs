@@ -1,6 +1,19 @@
 //! Types for Salesforce Tooling API.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize a value that may be `null` or missing as `T::default()`.
+///
+/// Serde's `#[serde(default)]` only handles missing keys. This also handles
+/// explicit `null` values from the Salesforce API (e.g., `"parameters": null`
+/// instead of `"parameters": []`).
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 // ============================================================================
 // Search Types
@@ -584,7 +597,8 @@ pub struct CompletionsResult {
 }
 
 /// A single completion item.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct CompletionItem {
     pub name: String,
 
@@ -598,24 +612,26 @@ pub struct CompletionItem {
     #[serde(rename = "returnType")]
     pub return_type: Option<String>,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub parameters: Vec<Parameter>,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub references: Vec<Reference>,
 }
 
 /// Method parameter information.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Parameter {
     pub name: String,
 
     #[serde(rename = "type")]
-    pub param_type: String,
+    pub param_type: Option<String>,
 }
 
 /// Reference to documentation or related types.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Reference {
     pub name: String,
 
@@ -816,5 +832,33 @@ mod tests {
         assert_eq!(system_items[0].name, "debug");
         assert_eq!(system_items[0].return_type, Some("void".to_string()));
         assert_eq!(system_items[0].parameters.len(), 1);
+    }
+
+    #[test]
+    fn test_completions_result_null_fields() {
+        // Salesforce API can return null for arrays and missing fields
+        let json = r#"{
+            "publicDeclarations": {
+                "System": [
+                    {
+                        "name": "debug",
+                        "parameters": null,
+                        "references": null
+                    },
+                    {
+                        "name": "assert"
+                    }
+                ]
+            }
+        }"#;
+
+        let result: CompletionsResult = serde_json::from_str(json).unwrap();
+        let items = &result.public_declarations["System"];
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "debug");
+        assert!(items[0].parameters.is_empty());
+        assert!(items[0].references.is_empty());
+        assert_eq!(items[1].name, "assert");
+        assert!(items[1].parameters.is_empty());
     }
 }

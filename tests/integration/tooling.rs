@@ -687,32 +687,24 @@ async fn test_tooling_completions_apex() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
-    let result = client.completions_apex().await;
-    match result {
-        Ok(completions) => {
-            assert!(
-                !completions.public_declarations.is_empty(),
-                "Should have some Apex completions"
-            );
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            // The Apex completions endpoint returns a very large response that
-            // can occasionally time out. If all retries are exhausted, accept
-            // the timeout as a transient infrastructure issue.
-            if err_str.contains("retry")
-                || err_str.contains("timeout")
-                || err_str.contains("timed out")
-            {
-                println!(
-                    "completions_apex timed out (transient — large response): {}",
-                    err_str
-                );
-            } else {
-                panic!("completions_apex failed unexpectedly: {}", err_str);
-            }
-        }
-    }
+    let completions = client
+        .completions_apex()
+        .await
+        .expect("completions_apex should succeed");
+    assert!(
+        !completions.public_declarations.is_empty(),
+        "Should have Apex completions (System, Database, etc.)"
+    );
+    // Verify a well-known namespace exists
+    assert!(
+        completions.public_declarations.contains_key("System"),
+        "Should contain System namespace. Keys: {:?}",
+        completions
+            .public_declarations
+            .keys()
+            .take(10)
+            .collect::<Vec<_>>()
+    );
 }
 
 #[tokio::test]
@@ -721,32 +713,14 @@ async fn test_tooling_completions_visualforce() {
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
-    let result = client.completions_visualforce().await;
-    match result {
-        Ok(completions) => {
-            assert!(
-                !completions.public_declarations.is_empty(),
-                "Should have some Visualforce completions"
-            );
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            // The completions endpoints return large responses that can time out
-            // or have different response shapes across API versions.
-            if err_str.contains("retry")
-                || err_str.contains("timeout")
-                || err_str.contains("timed out")
-                || err_str.contains("decoding response body")
-            {
-                println!(
-                    "completions_visualforce failed (transient or response shape issue): {}",
-                    err_str
-                );
-            } else {
-                panic!("completions_visualforce failed unexpectedly: {}", err_str);
-            }
-        }
-    }
+    let completions = client
+        .completions_visualforce()
+        .await
+        .expect("completions_visualforce should succeed");
+    assert!(
+        !completions.public_declarations.is_empty(),
+        "Should have Visualforce completions"
+    );
 }
 
 // ============================================================================
