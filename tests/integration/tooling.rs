@@ -14,6 +14,33 @@ use busbar_sf_tooling::{
 // Global mutex to serialize Apex class creation across tests
 static APEX_CLASS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Create an ApexClass via the Tooling API, retrying on "admin operation already in progress".
+/// Salesforce can take a few seconds to finish compiling a previously created/deleted class.
+async fn create_apex_class_with_retry(
+    client: &ToolingClient,
+    name: &str,
+    body: &str,
+) -> String {
+    let payload = serde_json::json!({
+        "Name": name,
+        "Body": body
+    });
+    for attempt in 0..6 {
+        match client.create("ApexClass", &payload).await {
+            Ok(id) => return id,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("admin operation already in progress") && attempt < 5 {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+                panic!("ApexClass creation failed after retries: {e}");
+            }
+        }
+    }
+    unreachable!()
+}
+
 // ============================================================================
 // Tooling API Tests
 // ============================================================================
@@ -551,16 +578,7 @@ async fn test_tooling_run_tests_async() {
         test_class_name
     );
 
-    let class_id = client
-        .create(
-            "ApexClass",
-            &serde_json::json!({
-                "Name": test_class_name,
-                "Body": test_body
-            }),
-        )
-        .await
-        .expect("ApexClass creation should succeed");
+    let class_id = create_apex_class_with_retry(&client, &test_class_name, &test_body).await;
 
     // Run tests async
     let request = RunTestsAsyncRequest {
@@ -593,16 +611,7 @@ async fn test_tooling_run_tests_sync() {
         test_class_name
     );
 
-    let class_id = client
-        .create(
-            "ApexClass",
-            &serde_json::json!({
-                "Name": test_class_name,
-                "Body": test_body
-            }),
-        )
-        .await
-        .expect("ApexClass creation should succeed");
+    let class_id = create_apex_class_with_retry(&client, &test_class_name, &test_body).await;
 
     // Run tests synchronously
     let request = busbar_sf_tooling::RunTestsSyncRequest {
