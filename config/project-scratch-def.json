@@ -4,7 +4,8 @@
   "description": "Scratch org definition for busbar-sf-api integration tests. Create with: sf org create scratch -f config/project-scratch-def.json -a busbar-test -d 7",
   "features": [
     "Knowledge",
-    "ServiceCloud"
+    "ServiceCloud",
+    "ConsentManagement"
   ],
   "settings": {
     "knowledgeSettings": {

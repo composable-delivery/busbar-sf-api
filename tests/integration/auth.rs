@@ -7,112 +7,79 @@ use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL
 // OAuth Token Revocation - Integration Tests
 // ============================================================================
 
-#[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
-async fn test_revoke_access_token() {
-    let creds = get_credentials().await;
-
-    // Determine login URL based on instance URL
-    let login_url = if creds.instance_url().contains("test.salesforce.com")
+/// Determine the login URL based on instance URL.
+fn login_url_for(creds: &busbar_sf_auth::SalesforceCredentials) -> &'static str {
+    if creds.instance_url().contains("test.salesforce.com")
         || creds.instance_url().contains("sandbox")
     {
         "https://test.salesforce.com"
     } else {
         PRODUCTION_LOGIN_URL
-    };
+    }
+}
 
-    // Test revoking access token using revoke_session convenience method
+#[tokio::test]
+async fn test_revoke_access_token() {
+    let creds = get_credentials().await;
+    let login_url = login_url_for(&creds);
+
+    // Each get_credentials() call exchanges the refresh token for a NEW access token,
+    // so revoking this access token does not affect other tests.
     let result = creds.revoke_session(false, login_url).await;
-
-    // Should succeed (returns 200 even if token is already invalid)
     assert!(
         result.is_ok(),
         "Failed to revoke access token: {:?}",
         result.err()
     );
-
-    println!("✓ Successfully revoked access token");
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set with refresh token
 async fn test_revoke_refresh_token() {
     let creds = get_credentials().await;
+    let login_url = login_url_for(&creds);
 
-    // Check if refresh token is available
-    if creds.refresh_token().is_none() {
-        eprintln!("skipping: No refresh token available in credentials");
-        return;
-    }
+    // We MUST NOT revoke the real refresh token — it is shared across all tests
+    // and across CI runs. Instead, create credentials with a dummy refresh token
+    // to exercise the revoke_session(true, ...) code path. Salesforce's revoke
+    // endpoint returns 200 for any token (valid, expired, or fabricated).
+    let creds_with_dummy = busbar_sf_auth::SalesforceCredentials::new(
+        creds.instance_url(),
+        creds.access_token(),
+        creds.api_version(),
+    )
+    .with_refresh_token("dummy-refresh-token-for-revocation-test");
 
-    // Determine login URL based on instance URL
-    let login_url = if creds.instance_url().contains("test.salesforce.com")
-        || creds.instance_url().contains("sandbox")
-    {
-        "https://test.salesforce.com"
-    } else {
-        PRODUCTION_LOGIN_URL
-    };
-
-    // Test revoking refresh token (also invalidates all access tokens)
-    let result = creds.revoke_session(true, login_url).await;
-
-    // Should succeed (returns 200 even if token is already invalid)
+    let result = creds_with_dummy.revoke_session(true, login_url).await;
     assert!(
         result.is_ok(),
-        "Failed to revoke refresh token: {:?}",
+        "Failed to revoke dummy refresh token: {:?}",
         result.err()
     );
-
-    println!("✓ Successfully revoked refresh token");
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_with_oauth_client() {
     let creds = get_credentials().await;
+    let login_url = login_url_for(&creds);
 
-    // Create OAuth client
     let config = OAuthConfig::new("test_revoke_client");
     let oauth_client = OAuthClient::new(config);
 
-    // Determine login URL based on instance URL
-    let login_url = if creds.instance_url().contains("test.salesforce.com")
-        || creds.instance_url().contains("sandbox")
-    {
-        "https://test.salesforce.com"
-    } else {
-        PRODUCTION_LOGIN_URL
-    };
-
-    // Test revoking access token directly with OAuthClient
     let result = oauth_client
         .revoke_token(creds.access_token(), login_url)
         .await;
 
-    // Should succeed (returns 200 even if token is already invalid)
     assert!(
         result.is_ok(),
         "Failed to revoke token with OAuthClient: {:?}",
         result.err()
     );
-
-    println!("✓ Successfully revoked token using OAuthClient");
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_token_idempotency() {
     let creds = get_credentials().await;
-
-    // Determine login URL based on instance URL
-    let login_url = if creds.instance_url().contains("test.salesforce.com")
-        || creds.instance_url().contains("sandbox")
-    {
-        "https://test.salesforce.com"
-    } else {
-        PRODUCTION_LOGIN_URL
-    };
+    let login_url = login_url_for(&creds);
 
     // First revocation
     let result1 = creds.revoke_session(false, login_url).await;
@@ -122,21 +89,19 @@ async fn test_revoke_token_idempotency() {
         result1.err()
     );
 
-    // Second revocation of the same token (idempotent)
+    // Second revocation of the same token (idempotent — Salesforce returns 200)
     let result2 = creds.revoke_session(false, login_url).await;
     assert!(
         result2.is_ok(),
         "Second revocation failed (idempotency): {:?}",
         result2.err()
     );
-
-    println!("✓ Successfully verified idempotent token revocation");
 }
 
 #[tokio::test]
-#[ignore] // Requires SF_AUTH_URL to be set
 async fn test_revoke_session_without_refresh_token() {
     let creds = get_credentials().await;
+    let login_url = login_url_for(&creds);
 
     // Create credentials without refresh token
     let creds_no_refresh = busbar_sf_auth::SalesforceCredentials::new(
@@ -145,22 +110,10 @@ async fn test_revoke_session_without_refresh_token() {
         creds.api_version(),
     );
 
-    let login_url = if creds.instance_url().contains("test.salesforce.com")
-        || creds.instance_url().contains("sandbox")
-    {
-        "https://test.salesforce.com"
-    } else {
-        PRODUCTION_LOGIN_URL
-    };
-
-    // Try to revoke refresh token when none exists
+    // Try to revoke refresh token when none exists — should fail with InvalidInput
     let result = creds_no_refresh.revoke_session(true, login_url).await;
-
-    // Should fail with InvalidInput error
     assert!(
         result.is_err(),
         "Should fail when trying to revoke non-existent refresh token"
     );
-
-    println!("✓ Correctly handles missing refresh token error");
 }

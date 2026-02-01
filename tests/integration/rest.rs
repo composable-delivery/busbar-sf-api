@@ -176,7 +176,6 @@ async fn test_rest_query_pagination() {
 }
 
 #[tokio::test]
-#[ignore = "requires AccountNumber configured as external ID on Account"]
 async fn test_rest_upsert_operation() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -1107,7 +1106,6 @@ async fn test_process_rules_list_all() {
 }
 
 #[tokio::test]
-#[ignore = "requires active process rules configured on Account"]
 async fn test_process_rules_list_for_sobject() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -1124,14 +1122,14 @@ async fn test_process_rules_list_for_sobject() {
 }
 
 #[tokio::test]
-#[ignore = "requires active process rules configured on Account"]
 async fn test_process_rules_trigger() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
+    // Name must start with "BusbarIntTest_ProcessRule" to match the deployed workflow rule
     let test_name = format!(
-        "Process Rule Test {}",
+        "BusbarIntTest_ProcessRule_{}",
         chrono::Utc::now().timestamp_millis()
     );
     let account_id = client
@@ -1184,7 +1182,6 @@ async fn test_approvals_list_pending() {
 }
 
 #[tokio::test]
-#[ignore = "requires approval process configured on Account"]
 async fn test_approvals_submit() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -1202,8 +1199,8 @@ async fn test_approvals_submit() {
         context_actor_id: None,
         comments: Some("Integration test submission".to_string()),
         next_approver_ids: None,
-        process_definition_name_or_id: None,
-        skip_entry_criteria: None,
+        process_definition_name_or_id: Some("BusbarIntTest_Approval".to_string()),
+        skip_entry_criteria: Some(true),
     };
 
     let result = client
@@ -1495,14 +1492,24 @@ async fn test_invocable_actions_error_invalid_name() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires consent management configured in org"]
 async fn test_consent_read() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
+    // Query for a real Account ID to use in consent check
+    let accounts: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM Account WHERE Name LIKE 'BusbarIntTest_%' LIMIT 1")
+        .await
+        .expect("Account query should succeed");
+    assert!(
+        !accounts.is_empty(),
+        "Should have at least one BusbarIntTest account (created by setup-scratch-org)"
+    );
+    let account_id = accounts[0]["Id"].as_str().expect("Account should have Id");
+
     let _response = client
-        .read_consent("email", &["001000000000000AAA"])
+        .read_consent("email", &[account_id])
         .await
         .expect("read_consent should succeed");
 }
@@ -1512,7 +1519,6 @@ async fn test_consent_read() {
 // ============================================================================
 
 #[tokio::test]
-#[ignore = "requires Knowledge enabled in scratch org definition"]
 async fn test_knowledge_settings() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -1529,7 +1535,6 @@ async fn test_knowledge_settings() {
 }
 
 #[tokio::test]
-#[ignore = "requires Knowledge enabled in scratch org definition"]
 async fn test_data_category_groups() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())

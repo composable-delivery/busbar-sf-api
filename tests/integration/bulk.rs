@@ -455,7 +455,6 @@ async fn test_parallel_query_results_empty_job() {
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
-#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_query_metadata_component_dependencies() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -497,7 +496,6 @@ async fn test_bulk_query_metadata_component_dependencies() {
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
-#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_query_metadata_component_dependencies_with_filter() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -528,7 +526,6 @@ async fn test_bulk_query_metadata_component_dependencies_with_filter() {
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
-#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_metadata_component_dependency_type_deserialization() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
