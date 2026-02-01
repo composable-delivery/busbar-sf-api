@@ -360,27 +360,30 @@ pub struct ApexCodeCoverageAggregate {
 // ============================================================================
 
 /// Request for running tests asynchronously.
+///
+/// The Salesforce `runTestsAsynchronous` endpoint accepts comma-separated
+/// strings for `classids`, `classNames`, `suiteids`, and `suiteNames`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RunTestsAsyncRequest {
-    /// Test class IDs to run.
+    /// Comma-separated list of test class IDs to run.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "classids")]
-    pub class_ids: Option<Vec<String>>,
+    pub class_ids: Option<String>,
 
-    /// Test class names to run (alternative to class_ids).
+    /// Comma-separated list of test class names to run (alternative to class_ids).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "classNames")]
-    pub class_names: Option<Vec<String>>,
+    pub class_names: Option<String>,
 
-    /// Test suite IDs to run.
+    /// Comma-separated list of test suite IDs to run.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "suiteids")]
-    pub suite_ids: Option<Vec<String>>,
+    pub suite_ids: Option<String>,
 
-    /// Test suite names to run (alternative to suite_ids).
+    /// Comma-separated list of test suite names to run (alternative to suite_ids).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "suiteNames")]
-    pub suite_names: Option<Vec<String>>,
+    pub suite_names: Option<String>,
 
     /// Maximum number of failed tests before stopping (-1 for no limit).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -398,12 +401,41 @@ pub struct RunTestsAsyncRequest {
     pub skip_code_coverage: Option<bool>,
 }
 
+/// A test class descriptor for synchronous test execution.
+///
+/// Salesforce `runTestsSynchronous` expects objects with `className` and
+/// optional `testMethods`, not plain class name strings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncTestItem {
+    /// The Apex test class name (required).
+    #[serde(rename = "className")]
+    pub class_name: String,
+
+    /// Specific test methods to run. If `None`, all test methods are executed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "testMethods")]
+    pub test_methods: Option<Vec<String>>,
+
+    /// Namespace prefix (for managed packages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+}
+
 /// Request for running tests synchronously.
+///
+/// The `tests` field is an array of [`SyncTestItem`] objects containing
+/// `className` and optional `testMethods`. Only one test class is allowed
+/// per synchronous request.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RunTestsSyncRequest {
-    /// Apex class names or test methods to run.
+    /// Test class descriptors to run.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tests: Option<Vec<String>>,
+    pub tests: Option<Vec<SyncTestItem>>,
+
+    /// Maximum number of failed tests before stopping (-1 for no limit).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "maxFailedTests")]
+    pub max_failed_tests: Option<i32>,
 
     /// Whether to skip code coverage calculation.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -703,7 +735,7 @@ mod tests {
     #[test]
     fn test_run_tests_async_request_ser() {
         let req = RunTestsAsyncRequest {
-            class_names: Some(vec!["TestClass1".to_string()]),
+            class_names: Some("TestClass1".to_string()),
             test_level: Some("RunSpecifiedTests".to_string()),
             skip_code_coverage: Some(false),
             ..Default::default()
@@ -711,9 +743,40 @@ mod tests {
 
         let json = serde_json::to_string(&req).unwrap();
         assert!(json.contains("classNames"));
+        assert!(json.contains("\"TestClass1\""));
         assert!(json.contains("testLevel"));
         assert!(json.contains("skipCodeCoverage"));
         assert!(!json.contains("classids"));
+    }
+
+    #[test]
+    fn test_run_tests_async_request_multiple_classes() {
+        let req = RunTestsAsyncRequest {
+            class_names: Some("TestClass1,TestClass2,TestClass3".to_string()),
+            test_level: Some("RunSpecifiedTests".to_string()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("TestClass1,TestClass2,TestClass3"));
+    }
+
+    #[test]
+    fn test_run_tests_sync_request_ser() {
+        let req = RunTestsSyncRequest {
+            tests: Some(vec![SyncTestItem {
+                class_name: "MyTestClass".to_string(),
+                test_methods: Some(vec!["testMethod1".to_string()]),
+                namespace: None,
+            }]),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&req).unwrap();
+        assert!(json.contains("className"));
+        assert!(json.contains("MyTestClass"));
+        assert!(json.contains("testMethods"));
+        assert!(json.contains("testMethod1"));
     }
 
     #[test]

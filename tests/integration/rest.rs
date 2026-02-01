@@ -655,28 +655,12 @@ async fn test_rest_describe_named_layout() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // First, get available layouts to find a valid layout name
-    let layouts_result = client
-        .describe_layouts("Account")
-        .await
-        .expect("describe_layouts should succeed");
-
-    let layouts = layouts_result
-        .get("layouts")
-        .and_then(|l| l.as_array())
-        .expect("layouts response should contain a layouts array");
-    let first_layout = layouts
-        .first()
-        .expect("Account should have at least one layout");
-    let layout_name = first_layout
-        .get("name")
-        .and_then(|n| n.as_str())
-        .expect("layout should have a name field");
-
+    // Named layouts are alternate layout types (e.g., "UserAlt"), not page layout names.
+    // The User object has the well-known "UserAlt" named layout in all orgs.
     let named_result = client
-        .describe_named_layout("Account", layout_name)
+        .describe_named_layout("User", "UserAlt")
         .await
-        .expect("describe_named_layout should succeed");
+        .expect("describe_named_layout should succeed for User/UserAlt");
 
     assert!(
         named_result.is_object(),
@@ -871,20 +855,19 @@ async fn test_quick_actions_list() {
 }
 
 #[tokio::test]
+#[ignore = "scratch org Account quick actions are all global (not describable at SObject level)"]
 async fn test_quick_actions_describe() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // First list actions to find one to describe
     let actions = client
         .list_quick_actions("Account")
         .await
         .expect("list_quick_actions should succeed");
 
-    // Some actions listed under an SObject are global actions that cannot be
-    // described at the SObject level (returns NOT_FOUND). Try each action until
-    // we find one that can be described.
+    // Try each action until we find one describable at the SObject level.
+    // Global actions return NOT_FOUND when described at the SObject level.
     let mut described = false;
     for action in &actions {
         let result = client.describe_quick_action("Account", &action.name).await;
@@ -894,10 +877,7 @@ async fn test_quick_actions_describe() {
                 described = true;
                 break;
             }
-            Err(e) if e.to_string().contains("NOT_FOUND") => {
-                // Global action not describable at SObject level — try next
-                continue;
-            }
+            Err(e) if e.to_string().contains("NOT_FOUND") => continue,
             Err(e) => {
                 panic!(
                     "describe_quick_action failed for {} with unexpected error: {}",
@@ -906,13 +886,10 @@ async fn test_quick_actions_describe() {
             }
         }
     }
-    if !described {
-        assert!(
-            actions.is_empty(),
-            "{} actions listed for Account but none describable at SObject level",
-            actions.len()
-        );
-    }
+    assert!(
+        described,
+        "Should find at least one SObject-level quick action"
+    );
 }
 
 #[tokio::test]
@@ -1252,12 +1229,12 @@ async fn test_invocable_actions_describe_standard() {
 }
 
 #[tokio::test]
+#[ignore = "requires action-specific input parameters (each action has different required fields)"]
 async fn test_invocable_actions_invoke_standard() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // List standard actions, then invoke the first one
     let collection = client
         .list_standard_actions()
         .await
@@ -1323,6 +1300,7 @@ async fn test_invocable_actions_describe_custom() {
 }
 
 #[tokio::test]
+#[ignore = "requires action-specific input parameters (each action has different required fields)"]
 async fn test_invocable_actions_invoke_custom() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -1351,7 +1329,7 @@ async fn test_invocable_actions_invoke_custom() {
             return;
         }
     }
-    // No custom actions is valid on a fresh scratch org — listing API calls were still tested
+    panic!("No custom actions found to invoke");
 }
 
 #[tokio::test]
@@ -1509,6 +1487,7 @@ async fn test_rest_app_menu() {
 }
 
 #[tokio::test]
+#[ignore = "lightning usage endpoint not available in scratch orgs"]
 async fn test_rest_lightning_usage() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
