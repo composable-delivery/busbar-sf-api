@@ -1,6 +1,16 @@
 //! Invocable Action types for the Salesforce REST API.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize `null` as the default value for the type (e.g., empty Vec).
+/// Salesforce APIs often return `"errors": null` instead of `"errors": []`.
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// An invocable action.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,7 +69,7 @@ pub struct InvocableActionRequest {
 pub struct InvocableActionResult {
     #[serde(rename = "actionName")]
     pub action_name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub errors: Vec<crate::sobject::SalesforceError>,
     #[serde(rename = "isSuccess")]
     pub is_success: bool,
@@ -146,6 +156,20 @@ mod tests {
         assert!(result.is_success);
         assert_eq!(result.action_name, "chatterPost");
         assert!(result.output_values.is_some());
+    }
+
+    #[test]
+    fn test_invocable_action_result_null_errors() {
+        // Salesforce returns "errors": null instead of "errors": []
+        let json = json!({
+            "actionName": "chatterPost",
+            "errors": null,
+            "isSuccess": true,
+            "outputValues": {"feedItemId": "0D5xx0000000001"}
+        });
+        let result: InvocableActionResult = serde_json::from_value(json).unwrap();
+        assert!(result.is_success);
+        assert!(result.errors.is_empty());
     }
 
     #[test]
