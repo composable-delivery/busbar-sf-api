@@ -238,51 +238,51 @@ async fn test_tooling_collections_get_multiple() {
 }
 
 #[tokio::test]
-#[ignore = "incomplete test - no create/update/delete operations performed"]
-async fn test_tooling_collections_create_update_delete() {
+async fn test_tooling_delete_record() {
     let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
-    let debug_levels: Vec<serde_json::Value> = client
-        .query_all("SELECT Id FROM DebugLevel LIMIT 1")
-        .await
-        .expect("Query DebugLevel should succeed");
+    // Create a DebugLevel, then delete it via single-record delete
+    let debug_level = serde_json::json!({
+        "DeveloperName": format!("IntTest_{}", chrono::Utc::now().timestamp_millis()),
+        "MasterLabel": "Integration Test Delete",
+        "Database": "NONE",
+        "System": "NONE",
+        "Callout": "NONE",
+        "ApexCode": "DEBUG",
+        "ApexProfiling": "NONE",
+        "Validation": "NONE",
+        "Visualforce": "NONE",
+        "Workflow": "NONE",
+        "Nba": "NONE",
+        "Wave": "NONE"
+    });
 
+    let created_id = client
+        .create("DebugLevel", &debug_level)
+        .await
+        .expect("create DebugLevel should succeed");
+    assert!(!created_id.is_empty(), "Created ID should not be empty");
+
+    // Now delete via single-record endpoint
+    client
+        .delete("DebugLevel", &created_id)
+        .await
+        .expect("delete DebugLevel should succeed");
+
+    // Verify it's gone
+    let get_result = client
+        .get::<serde_json::Value>("DebugLevel", &created_id)
+        .await;
     assert!(
-        !debug_levels.is_empty(),
-        "Org should have at least one DebugLevel"
+        get_result.is_err(),
+        "GET after delete should fail (record should be gone)"
     );
-
-    // TODO: Implement actual create/update/delete test with TraceFlag
-    panic!("Test not implemented - needs actual CRUD operations");
 }
 
 #[tokio::test]
-#[ignore = "SObject Collections endpoint not available on Tooling API"]
-async fn test_tooling_collections_delete_multiple() {
-    let creds = get_credentials().await;
-    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create Tooling client");
-
-    let fake_ids = vec!["000000000000000AAA", "000000000000000AAB"];
-
-    let results = client
-        .delete_multiple(&fake_ids, false)
-        .await
-        .expect("delete_multiple should return results even for invalid IDs");
-    assert_eq!(results.len(), 2, "Should have 2 delete results");
-    for res in &results {
-        assert!(
-            !res.success || !res.errors.is_empty(),
-            "Fake ID deletion should fail or have errors"
-        );
-    }
-}
-
-#[tokio::test]
-#[ignore = "SObject Collections endpoint not available on Tooling API"]
-async fn test_tooling_create_multiple_trace_flags() {
+async fn test_tooling_create_trace_flag() {
     let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
@@ -320,26 +320,26 @@ async fn test_tooling_create_multiple_trace_flags() {
     let now = chrono::Utc::now();
     let expiration = now + chrono::Duration::hours(1);
 
-    let trace_flags = vec![serde_json::json!({
+    let trace_flag = serde_json::json!({
         "TracedEntityId": user_id,
         "DebugLevelId": debug_level_id,
         "StartDate": now.to_rfc3339(),
         "ExpirationDate": expiration.to_rfc3339(),
         "LogType": "USER_DEBUG"
-    })];
+    });
 
-    // Attempt to create - this may fail if trace flag already exists
-    let result = client
-        .create_multiple("TraceFlag", &trace_flags, false)
-        .await;
+    // Use single create (not create_multiple — Tooling API composite/sobjects is unreliable)
+    let created_id = client
+        .create("TraceFlag", &trace_flag)
+        .await
+        .expect("create TraceFlag should succeed");
+    assert!(
+        !created_id.is_empty(),
+        "Created TraceFlag ID should not be empty"
+    );
 
-    let results = result.expect("create_multiple TraceFlag should succeed");
-    assert_eq!(results.len(), 1, "Should have 1 result");
-
-    // Clean up if successful
-    if let Some(id) = results[0].id.as_ref() {
-        let _ = client.delete("TraceFlag", id).await;
-    }
+    // Clean up
+    let _ = client.delete("TraceFlag", &created_id).await;
 }
 
 // ============================================================================

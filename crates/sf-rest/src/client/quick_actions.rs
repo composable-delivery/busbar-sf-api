@@ -6,6 +6,31 @@ use crate::error::{Error, ErrorKind, Result};
 use crate::quick_actions::{QuickAction, QuickActionDescribe, QuickActionResult};
 
 impl super::SalesforceRestClient {
+    /// List all global quick actions.
+    #[instrument(skip(self))]
+    pub async fn list_global_quick_actions(&self) -> Result<Vec<QuickAction>> {
+        self.client
+            .rest_get("quickActions")
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Describe a global quick action.
+    #[instrument(skip(self))]
+    pub async fn describe_global_quick_action(
+        &self,
+        action_name: &str,
+    ) -> Result<QuickActionDescribe> {
+        if !soql::is_safe_action_name(action_name) {
+            return Err(Error::new(ErrorKind::Salesforce {
+                error_code: "INVALID_ACTION".to_string(),
+                message: "Invalid action name".to_string(),
+            }));
+        }
+        let path = format!("quickActions/{}", action_name);
+        self.client.rest_get(&path).await.map_err(Into::into)
+    }
+
     /// List all quick actions available for an SObject.
     #[instrument(skip(self))]
     pub async fn list_quick_actions(&self, sobject: &str) -> Result<Vec<QuickAction>> {
@@ -148,6 +173,66 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_list_global_quick_actions_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!([
+            {"name": "NewCase", "label": "New Case", "type": "Create"},
+            {"name": "LogACall", "label": "Log a Call", "type": "LogACall"}
+        ]);
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/quickActions$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .list_global_quick_actions()
+            .await
+            .expect("list_global_quick_actions should succeed");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name, "NewCase");
+    }
+
+    #[tokio::test]
+    async fn test_describe_global_quick_action_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "name": "LogACall",
+            "label": "Log a Call",
+            "type": "LogACall",
+            "targetSobjectType": "Task",
+            "targetRecordTypeId": null,
+            "layout": null,
+            "defaultValues": null,
+            "icons": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/quickActions/LogACall$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_global_quick_action("LogACall")
+            .await
+            .expect("describe_global_quick_action should succeed");
+        assert_eq!(result.name, "LogACall");
+        assert_eq!(result.target_sobject_type.as_deref(), Some("Task"));
     }
 
     #[tokio::test]
