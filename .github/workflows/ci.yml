@@ -48,12 +48,15 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
 
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
       - name: Run unit tests with coverage
         run: cargo llvm-cov --workspace --all-features --lib --no-report
 
       - name: Generate LCOV report
         if: always()
-        run: cargo llvm-cov report --lcov --output-path lcov-unit.info
+        run: cargo llvm-cov report --workspace --lcov --output-path lcov-unit.info
 
       - name: Run doc tests
         run: cargo test --workspace --doc
@@ -62,7 +65,7 @@ jobs:
         if: always()
         run: |
           echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Debug LCOV report
         if: always()
@@ -138,6 +141,9 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: cargo run --bin setup-scratch-org
 
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
       - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
@@ -147,7 +153,7 @@ jobs:
         if: always()
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov report --lcov --output-path lcov-integration.info
+        run: cargo llvm-cov report --workspace --lcov --output-path lcov-integration.info
 
       - name: Debug LCOV report
         if: always()
@@ -166,7 +172,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
