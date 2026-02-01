@@ -39,7 +39,8 @@ pub struct ListViewDescribe {
     pub label: String,
     #[serde(rename = "sobjectType")]
     pub sobject_type: String,
-    pub query: String,
+    #[serde(default)]
+    pub query: Option<String>,
     #[serde(default)]
     pub columns: Vec<ListViewColumn>,
     #[serde(rename = "orderBy", default)]

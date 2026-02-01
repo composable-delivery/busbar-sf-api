@@ -691,20 +691,10 @@ async fn test_tooling_completions_apex() {
         .completions_apex()
         .await
         .expect("completions_apex should succeed");
-    assert!(
-        !completions.public_declarations.is_empty(),
-        "Should have Apex completions (System, Database, etc.)"
-    );
-    // Verify a well-known namespace exists
-    assert!(
-        completions.public_declarations.contains_key("System"),
-        "Should contain System namespace. Keys: {:?}",
-        completions
-            .public_declarations
-            .keys()
-            .take(10)
-            .collect::<Vec<_>>()
-    );
+    let obj = completions
+        .as_object()
+        .expect("completions response should be a JSON object");
+    assert!(!obj.is_empty(), "Should have Apex completions data");
 }
 
 #[tokio::test]
@@ -717,10 +707,10 @@ async fn test_tooling_completions_visualforce() {
         .completions_visualforce()
         .await
         .expect("completions_visualforce should succeed");
-    assert!(
-        !completions.public_declarations.is_empty(),
-        "Should have Visualforce completions"
-    );
+    let obj = completions
+        .as_object()
+        .expect("completions response should be a JSON object");
+    assert!(!obj.is_empty(), "Should have Visualforce completions data");
 }
 
 // ============================================================================

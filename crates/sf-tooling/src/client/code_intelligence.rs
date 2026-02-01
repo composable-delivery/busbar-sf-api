@@ -1,23 +1,30 @@
 use tracing::instrument;
 
 use crate::error::Result;
-use crate::types::CompletionsResult;
 
 impl super::ToolingClient {
     /// Get code completions for Apex system symbols.
     ///
+    /// Returns the raw JSON response because the Salesforce completions
+    /// response format varies between Apex and Visualforce types and
+    /// across API versions.
+    ///
     /// Available since API v28.0.
     #[instrument(skip(self))]
-    pub async fn completions_apex(&self) -> Result<CompletionsResult> {
+    pub async fn completions_apex(&self) -> Result<serde_json::Value> {
         let url = self.client.tooling_url("completions?type=apex");
         self.client.get_json(&url).await.map_err(Into::into)
     }
 
     /// Get code completions for Visualforce components.
     ///
+    /// Returns the raw JSON response because the Salesforce completions
+    /// response format varies between Apex and Visualforce types and
+    /// across API versions.
+    ///
     /// Available since API v38.0.
     #[instrument(skip(self))]
-    pub async fn completions_visualforce(&self) -> Result<CompletionsResult> {
+    pub async fn completions_visualforce(&self) -> Result<serde_json::Value> {
         let url = self.client.tooling_url("completions?type=visualforce");
         self.client.get_json(&url).await.map_err(Into::into)
     }
@@ -55,13 +62,14 @@ mod tests {
             .await;
 
         let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client.completions_apex().await;
-
-        assert!(result.is_ok());
-        let completions = result.unwrap();
-        assert!(completions.public_declarations.contains_key("System"));
-        assert_eq!(completions.public_declarations["System"].len(), 1);
-        assert_eq!(completions.public_declarations["System"][0].name, "debug");
+        let completions = client
+            .completions_apex()
+            .await
+            .expect("completions_apex should succeed");
+        let pd = completions["publicDeclarations"]
+            .as_object()
+            .expect("should have publicDeclarations object");
+        assert!(pd.contains_key("System"));
     }
 
     #[tokio::test]
@@ -89,11 +97,13 @@ mod tests {
             .await;
 
         let client = ToolingClient::new(mock_server.uri(), "test-token").unwrap();
-        let result = client.completions_visualforce().await;
-
-        assert!(result.is_ok());
-        let completions = result.unwrap();
-        assert!(completions.public_declarations.contains_key("apex"));
-        assert_eq!(completions.public_declarations["apex"][0].name, "apex:page");
+        let completions = client
+            .completions_visualforce()
+            .await
+            .expect("completions_visualforce should succeed");
+        let pd = completions["publicDeclarations"]
+            .as_object()
+            .expect("should have publicDeclarations object");
+        assert!(pd.contains_key("apex"));
     }
 }

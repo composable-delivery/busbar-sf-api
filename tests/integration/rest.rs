@@ -1019,12 +1019,16 @@ async fn test_list_views_describe() {
         .expect("list_views should succeed");
 
     if let Some(lv) = collection.listviews.first() {
-        let result = client.describe_list_view("Account", &lv.id).await;
-        assert!(result.is_ok(), "describe_list_view should succeed");
-        let describe = result.unwrap();
+        let describe = client
+            .describe_list_view("Account", &lv.id)
+            .await
+            .unwrap_or_else(|e| panic!("describe_list_view failed for ID {}: {e}", lv.id));
         assert!(!describe.columns.is_empty(), "Should have columns");
     } else {
-        println!("Note: No list views found for Account, skipping describe test");
+        panic!(
+            "Account should have list views (deployed by setup-scratch-org). \
+             Run: cargo run --bin setup-scratch-org"
+        );
     }
 }
 
