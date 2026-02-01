@@ -188,6 +188,7 @@ async fn deploy_test_metadata(creds: &SalesforceCredentials) {
                 <name>Owner</name>
                 <type>relatedUserField</type>
             </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
         </assignedApprover>
         <label>Step 1</label>
         <name>Step_1</name>
