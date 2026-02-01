@@ -976,7 +976,10 @@ async fn test_list_views_list() {
         .rest_get("sobjects/Account/listviews")
         .await
         .expect("raw list_views GET should succeed");
-    let raw_keys: Vec<&String> = raw.as_object().map(|m| m.keys().collect()).unwrap_or_default();
+    let raw_keys: Vec<&String> = raw
+        .as_object()
+        .map(|m| m.keys().collect())
+        .unwrap_or_default();
     let raw_listviews = raw.get("listviews").or_else(|| raw.get("listViews"));
     let raw_count = raw_listviews
         .and_then(|v| v.as_array())

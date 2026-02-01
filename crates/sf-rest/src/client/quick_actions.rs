@@ -125,7 +125,9 @@ mod tests {
         });
 
         Mock::given(method("GET"))
-            .and(path_regex(".*/sobjects/Account/quickActions/FeedItem.TextPost$"))
+            .and(path_regex(
+                ".*/sobjects/Account/quickActions/FeedItem.TextPost$",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&body))
             .mount(&mock_server)
             .await;
