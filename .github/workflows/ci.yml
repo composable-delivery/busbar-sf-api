@@ -118,6 +118,11 @@ jobs:
             exit 1
           fi
 
+      - name: Setup scratch org test data
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo run --bin setup-scratch-org
+
       - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}

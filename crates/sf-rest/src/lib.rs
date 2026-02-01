@@ -49,16 +49,29 @@
 mod client;
 mod collections;
 mod composite;
+mod consent;
 mod describe;
+mod embedded_service;
 mod error;
+mod invocable_actions;
+mod knowledge;
 mod layout;
+mod list_views;
+mod process;
 mod query;
 mod query_builder;
+mod quick_actions;
+mod scheduler;
+mod search;
 mod sobject;
 mod types;
+mod user_password;
 
 // Main client
-pub use client::{ApiVersion, SalesforceRestClient, SearchResult};
+pub use client::{
+    ApiVersion, DeletedRecord, GetDeletedResult, GetUpdatedResult, SObjectInfo,
+    SObjectInfoDescribe, SalesforceRestClient, SearchResult,
+};
 
 // Collection operations
 pub use collections::{CollectionRequest, CollectionResult};
@@ -66,10 +79,17 @@ pub use collections::{CollectionRequest, CollectionResult};
 // Composite API
 pub use composite::{
     CompositeBatchRequest, CompositeBatchResponse, CompositeBatchSubrequest,
-    CompositeBatchSubresponse, CompositeRequest, CompositeResponse, CompositeSubrequest,
-    CompositeSubresponse, CompositeTreeAttributes, CompositeTreeError, CompositeTreeRecord,
-    CompositeTreeRequest, CompositeTreeResponse, CompositeTreeResult,
+    CompositeBatchSubresponse, CompositeGraphRequest, CompositeGraphResponse, CompositeRequest,
+    CompositeResponse, CompositeSubrequest, CompositeSubresponse, CompositeTreeAttributes,
+    CompositeTreeError, CompositeTreeRecord, CompositeTreeRequest, CompositeTreeResponse,
+    CompositeTreeResult, GraphRequest, GraphResponse, GraphResponseBody,
 };
+
+// Convenience aliases for SObject Tree types
+pub use composite::CompositeBatchSubrequest as BatchSubrequest;
+pub use composite::CompositeTreeAttributes as SObjectTreeAttributes;
+pub use composite::CompositeTreeRecord as SObjectTreeRecord;
+pub use composite::CompositeTreeRequest as SObjectTreeRequest;
 
 // Describe types
 pub use describe::{
@@ -82,6 +102,13 @@ pub use describe::{
 pub use layout::{
     ApprovalLayoutsResult, CompactLayoutsResult, DescribeLayoutsResult,
     GlobalPublisherLayoutsResult, NamedLayoutResult,
+};
+
+// Search types
+pub use search::{
+    ParameterizedSearchRequest, ParameterizedSearchResponse, ScopeEntity, SearchLayoutColumn,
+    SearchLayoutInfo, SearchMetadata, SearchRecordAttributes, SearchRecordGroup, SearchSObjectSpec,
+    SearchSuggestionResult, Suggestion, SuggestionAttributes,
 };
 
 // Error types
@@ -98,6 +125,49 @@ pub use sobject::{CreateResult, DeleteResult, SalesforceError, UpdateResult, Ups
 
 // Common types
 pub use types::*;
+
+// PR #53: Quick Actions types
+pub use quick_actions::{QuickAction, QuickActionDescribe, QuickActionIcon, QuickActionResult};
+
+// PR #53: List View types
+pub use list_views::{
+    ListView, ListViewCollection, ListViewColumn, ListViewDescribe, ListViewOrderBy, ListViewResult,
+};
+
+// PR #53: Process and Approval types
+pub use process::{
+    ApprovalActionType, ApprovalRequest, ApprovalResult, PendingApproval,
+    PendingApprovalCollection, ProcessRule, ProcessRuleCollection, ProcessRuleRequest,
+    ProcessRuleResult,
+};
+
+// PR #53: Invocable Action types
+pub use invocable_actions::{
+    InvocableAction, InvocableActionCollection, InvocableActionDescribe, InvocableActionParameter,
+    InvocableActionRequest, InvocableActionResult, InvocableActionTypeMap,
+};
+
+// PR #54: Consent types
+pub use consent::{
+    ConsentRecord, ConsentResponse, ConsentWriteRecord, ConsentWriteRequest, MultiConsentResponse,
+};
+
+// PR #54: Knowledge types
+pub use knowledge::{
+    DataCategoriesResponse, DataCategory, DataCategoryGroup, DataCategoryGroupsResponse,
+    KnowledgeArticle, KnowledgeArticlesResponse, KnowledgeSettings,
+};
+
+// PR #54: User Password types
+pub use user_password::{SetPasswordRequest, SetPasswordResponse, UserPasswordStatus};
+
+// PR #54: Scheduler types
+pub use scheduler::{
+    AppointmentCandidate, AppointmentCandidatesRequest, AppointmentCandidatesResponse,
+};
+
+// PR #54: Embedded Service types
+pub use embedded_service::EmbeddedServiceConfig;
 
 // Re-export sf-client types that users might need
 pub use busbar_sf_client::{ClientConfig, ClientConfigBuilder};

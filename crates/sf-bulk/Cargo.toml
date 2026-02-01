@@ -18,6 +18,7 @@ busbar-sf-auth.workspace = true
 busbar-sf-rest = { workspace = true, optional = true }
 reqwest.workspace = true
 tokio.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 csv.workspace = true
@@ -30,6 +31,7 @@ urlencoding.workspace = true
 [features]
 default = ["query-builder"]
 query-builder = ["busbar-sf-rest"]
+dependencies = ["busbar-sf-client/dependencies"]
 
 [dev-dependencies]
 wiremock.workspace = true

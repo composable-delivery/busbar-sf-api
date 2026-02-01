@@ -60,8 +60,10 @@ mod retrieve;
 mod types;
 
 pub use client::MetadataClient;
-pub use deploy::{ComponentFailure, DeployOptions, DeployResult, DeployStatus};
-pub use describe::{DescribeMetadataResult, MetadataType};
+pub use deploy::{CancelDeployResult, ComponentFailure, DeployOptions, DeployResult, DeployStatus};
+pub use describe::{
+    DescribeMetadataResult, DescribeValueTypeResult, MetadataType, PicklistEntry, ValueTypeField,
+};
 pub use error::{Error, ErrorKind, Result};
 pub use list::MetadataComponent;
 pub use retrieve::{
@@ -69,5 +71,6 @@ pub use retrieve::{
     RetrieveStatus,
 };
 pub use types::{
-    ComponentSuccess, FileProperties, SoapFault, TestFailure, TestLevel, DEFAULT_API_VERSION,
+    ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
+    SoapFault, TestFailure, TestLevel, UpsertResult, DEFAULT_API_VERSION,
 };

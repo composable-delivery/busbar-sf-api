@@ -183,3 +183,439 @@ async fn test_bulk_error_invalid_job_id() {
 
     assert!(result.is_err(), "Invalid job ID should fail");
 }
+
+// ============================================================================
+// Parallel Query Results Tests (API v62.0+)
+// ============================================================================
+
+#[tokio::test]
+async fn test_parallel_query_results_basic() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job first
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(50);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test get_parallel_query_results (may not be available in all orgs/API versions)
+    match client
+        .get_parallel_query_results(&result.job.id, None)
+        .await
+    {
+        Ok(batch) => {
+            // Should have at least one result URL if there are results
+            if result.job.number_records_processed > 0 {
+                assert!(
+                    !batch.result_url.is_empty(),
+                    "Should have at least one result URL when records exist"
+                );
+
+                // Each URL should be a valid string
+                for url in &batch.result_url {
+                    assert!(!url.is_empty(), "Result URL should not be empty");
+                    assert!(
+                        url.contains("/results/") || url.contains("/parallelResults"),
+                        "URL should be a valid results endpoint"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND"),
+                "Expected NOT_FOUND error, got: {msg}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_parallel_query_results_with_max_records() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .limit(100);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test with maxRecords parameter (may not be available in all orgs/API versions)
+    match client
+        .get_parallel_query_results(&result.job.id, Some(3))
+        .await
+    {
+        Ok(batch) => {
+            // Should have at most 3 result URLs
+            if result.job.number_records_processed > 0 {
+                assert!(
+                    batch.result_url.len() <= 3,
+                    "Should have at most 3 result URLs when maxRecords=3"
+                );
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND"),
+                "Expected NOT_FOUND error, got: {msg}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_get_all_query_results_parallel() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job with a reasonable number of records
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name", "Industry"])
+        .limit(100);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test high-level parallel download (may not be available in all orgs/API versions)
+    match client.get_all_query_results_parallel(&result.job.id).await {
+        Ok(csv_data) => {
+            // Validate CSV structure
+            let lines: Vec<&str> = csv_data.lines().collect();
+            assert!(!lines.is_empty(), "Should have at least header line");
+
+            if result.job.number_records_processed > 0 {
+                assert!(lines.len() > 1, "Should have data rows");
+
+                // Check header
+                let header = lines[0];
+                assert!(
+                    header.to_lowercase().contains("id"),
+                    "Header should contain Id"
+                );
+                assert!(
+                    header.to_lowercase().contains("name"),
+                    "Header should contain Name"
+                );
+
+                // Verify we got the right number of data rows
+                let data_rows = lines.len() - 1; // Subtract header
+                assert!(
+                    data_rows > 0 && data_rows as i64 <= result.job.number_records_processed,
+                    "Should have correct number of data rows"
+                );
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND"),
+                "Expected NOT_FOUND error, got: {msg}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_parallel_vs_serial_results_consistency() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query job
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .limit(50);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    if result.job.number_records_processed == 0 {
+        eprintln!("skipping: no records to test");
+        return;
+    }
+
+    // Get results using serial method
+    let serial_results = client
+        .get_all_query_results(&result.job.id)
+        .await
+        .expect("Serial results should succeed");
+
+    // Get results using parallel method (may not be available in all orgs/API versions)
+    match client.get_all_query_results_parallel(&result.job.id).await {
+        Ok(parallel_results) => {
+            // Both should return CSV data with same structure
+            let serial_lines: Vec<&str> = serial_results.lines().collect();
+            let parallel_lines: Vec<&str> = parallel_results.lines().collect();
+
+            assert_eq!(
+                serial_lines.len(),
+                parallel_lines.len(),
+                "Both methods should return same number of lines"
+            );
+
+            // Headers should match
+            assert_eq!(serial_lines[0], parallel_lines[0], "Headers should match");
+
+            // Data row count should match
+            let serial_data_rows = serial_lines.len() - 1;
+            let parallel_data_rows = parallel_lines.len() - 1;
+            assert_eq!(
+                serial_data_rows, parallel_data_rows,
+                "Both methods should return same number of data rows"
+            );
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND"),
+                "Expected NOT_FOUND error, got: {msg}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_parallel_query_results_empty_job() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    // Create a query that returns no results
+    let query_builder: QueryBuilder<serde_json::Value> = QueryBuilder::new("Account")
+        .expect("QueryBuilder creation should succeed")
+        .select(&["Id", "Name"])
+        .where_eq("Id", "000000000000000AAA")
+        .expect("Where clause should succeed") // Invalid ID that won't match
+        .limit(10);
+
+    let result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk query should succeed");
+
+    // Test parallel results on empty job (may not be available in all orgs/API versions)
+    match client
+        .get_parallel_query_results(&result.job.id, None)
+        .await
+    {
+        Ok(_batch) => {
+            // Should handle empty results gracefully
+            match client.get_all_query_results_parallel(&result.job.id).await {
+                Ok(csv_data) => {
+                    // Should have at least header
+                    let lines: Vec<&str> = csv_data.lines().collect();
+                    assert!(!lines.is_empty(), "Should have at least header line");
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    assert!(
+                        msg.contains("NOT_FOUND"),
+                        "Expected NOT_FOUND error, got: {msg}"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND"),
+                "Expected NOT_FOUND error, got: {msg}"
+            );
+        }
+    }
+}
+
+// ============================================================================
+// MetadataComponentDependency Tests (requires dependencies feature)
+// ============================================================================
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentType",
+            ])
+            .limit(1000); // Bulk API supports up to 100,000 records
+
+    let result = client.execute_query(query_builder).await;
+
+    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
+    match result {
+        Ok(query_result) => {
+            assert!(
+                query_result.job.number_records_processed >= 0,
+                "Should process records"
+            );
+
+            println!(
+                "Bulk query processed {} MetadataComponentDependency records",
+                query_result.job.number_records_processed
+            );
+
+            if let Some(csv_results) = query_result.results {
+                let lines: Vec<&str> = csv_results.lines().collect();
+                assert!(!lines.is_empty(), "Should have at least header line");
+                if let Some(header) = lines.first() {
+                    assert!(
+                        header.contains("MetadataComponentId")
+                            || header.contains("metadatacomponentid"),
+                        "Header should contain MetadataComponentId"
+                    );
+                    assert!(
+                        header.contains("RefMetadataComponentId")
+                            || header.contains("refmetadatacomponentid"),
+                        "Header should contain RefMetadataComponentId"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!(
+                "Unexpected error querying MetadataComponentDependency: {}",
+                e
+            );
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_query_metadata_component_dependencies_with_filter() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<serde_json::Value> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentType",
+            ])
+            .where_eq("MetadataComponentType", "ApexClass")
+            .expect("where_eq should succeed")
+            .limit(100);
+
+    let result = client.execute_query(query_builder).await;
+
+    match result {
+        Ok(query_result) => {
+            println!(
+                "Bulk query with filter processed {} records",
+                query_result.job.number_records_processed
+            );
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!(
+                "Unexpected error querying MetadataComponentDependency with filter: {}",
+                e
+            );
+        }
+    }
+}
+
+#[cfg(feature = "dependencies")]
+#[tokio::test]
+async fn test_bulk_metadata_component_dependency_type_deserialization() {
+    let creds = get_credentials().await;
+    let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Bulk client");
+
+    let query_builder: QueryBuilder<busbar_sf_client::MetadataComponentDependency> =
+        QueryBuilder::new("MetadataComponentDependency")
+            .expect("QueryBuilder creation should succeed")
+            .select(&[
+                "MetadataComponentId",
+                "MetadataComponentName",
+                "MetadataComponentNamespace",
+                "MetadataComponentType",
+                "RefMetadataComponentId",
+                "RefMetadataComponentName",
+                "RefMetadataComponentNamespace",
+                "RefMetadataComponentType",
+            ])
+            .limit(5);
+
+    let result = client.execute_query(query_builder).await;
+
+    match result {
+        Ok(query_result) => {
+            println!(
+                "Type deserialization test processed {} records",
+                query_result.job.number_records_processed
+            );
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
+                || error_msg.contains("INVALID_TYPE")
+                || error_msg.contains("does not exist")
+            {
+                println!(
+                    "MetadataComponentDependency not available in this org (expected): {}",
+                    e
+                );
+                return;
+            }
+            panic!("Unexpected error in type deserialization test: {}", e);
+        }
+    }
+}

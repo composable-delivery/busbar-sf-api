@@ -197,7 +197,7 @@ impl SalesforceClient {
     #[instrument(skip(self), fields(url = %url))]
     pub async fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
         let full_url = self.url(url);
-        let request = self.get(&full_url);
+        let request = self.get(&full_url).header("Accept", "application/json");
         let response = self.http.execute(request).await?;
         response.json().await
     }
@@ -220,7 +220,10 @@ impl SalesforceClient {
         body: &B,
     ) -> Result<T> {
         let full_url = self.url(url);
-        let request = self.post(&full_url).json(body)?;
+        let request = self
+            .post(&full_url)
+            .header("Accept", "application/json")
+            .json(body)?;
         let response = self.http.execute(request).await?;
         response.json().await
     }
