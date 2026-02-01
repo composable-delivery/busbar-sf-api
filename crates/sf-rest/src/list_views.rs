@@ -3,17 +3,20 @@
 use serde::{Deserialize, Serialize};
 
 /// A list view definition.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ListView {
+    #[serde(default)]
     pub id: String,
-    #[serde(rename = "developerName")]
+    #[serde(rename = "developerName", default)]
     pub developer_name: String,
+    #[serde(default)]
     pub label: String,
-    #[serde(rename = "describeUrl")]
+    #[serde(rename = "describeUrl", default)]
     pub describe_url: String,
-    #[serde(rename = "resultsUrl")]
+    #[serde(rename = "resultsUrl", default)]
     pub results_url: String,
-    #[serde(rename = "sobjectType")]
+    #[serde(rename = "sobjectType", default)]
     pub sobject_type: String,
 }
 
