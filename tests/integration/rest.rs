@@ -970,16 +970,36 @@ async fn test_list_views_list() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.list_views("Account").await;
-    assert!(
-        result.is_ok(),
-        "list_views should succeed for Account: {:?}",
-        result.err()
+    // First fetch raw JSON to diagnose any deserialization issues
+    let raw: serde_json::Value = client
+        .inner()
+        .rest_get("sobjects/Account/listviews")
+        .await
+        .expect("raw list_views GET should succeed");
+    let raw_keys: Vec<&String> = raw.as_object().map(|m| m.keys().collect()).unwrap_or_default();
+    let raw_listviews = raw.get("listviews").or_else(|| raw.get("listViews"));
+    let raw_count = raw_listviews
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+    println!(
+        "Raw list views response keys: {:?}, listviews count: {}, size: {:?}",
+        raw_keys,
+        raw_count,
+        raw.get("size")
     );
-    let collection = result.unwrap();
+
+    // Now test the typed deserialization
+    let collection = client
+        .list_views("Account")
+        .await
+        .expect("list_views should succeed for Account");
     assert!(
         !collection.listviews.is_empty(),
-        "Account should have default list views (All Accounts, My Accounts, etc.)"
+        "Account should have default list views (All Accounts, My Accounts, etc.). \
+         Raw response had {} items under listviews key. Raw keys: {:?}",
+        raw_count,
+        raw_keys
     );
 }
 

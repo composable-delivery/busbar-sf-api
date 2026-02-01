@@ -139,6 +139,51 @@ mod tests {
     }
 
     #[test]
+    fn test_list_view_collection_camel_case_alias() {
+        // Salesforce API may return "listViews" (camelCase) — verify alias works
+        let json = json!({
+            "done": true,
+            "nextRecordsUrl": null,
+            "listViews": [{
+                "id": "00Bxx0000000001",
+                "developerName": "AllAccounts",
+                "label": "All Accounts",
+                "describeUrl": "/describe",
+                "resultsUrl": "/results",
+                "sobjectType": "Account"
+            }]
+        });
+        let collection: ListViewCollection = serde_json::from_value(json).unwrap();
+        assert!(collection.done);
+        assert_eq!(collection.listviews.len(), 1);
+        assert_eq!(collection.listviews[0].developer_name, "AllAccounts");
+    }
+
+    #[test]
+    fn test_list_view_collection_full_salesforce_response() {
+        // Full Salesforce response includes size and sobjectType fields
+        let json = json!({
+            "done": true,
+            "listviews": [{
+                "describeUrl": "/services/data/v62.0/sobjects/Account/listviews/00Bxx0000000001/describe",
+                "developerName": "AllAccounts",
+                "id": "00Bxx0000000001",
+                "label": "All Accounts",
+                "resultsUrl": "/services/data/v62.0/sobjects/Account/listviews/00Bxx0000000001/results",
+                "sobjectType": "Account",
+                "soqlCompatible": true,
+                "url": "/services/data/v62.0/sobjects/Account/listviews/00Bxx0000000001"
+            }],
+            "nextRecordsUrl": null,
+            "size": 1,
+            "sobjectType": "Account"
+        });
+        let collection: ListViewCollection = serde_json::from_value(json).unwrap();
+        assert!(collection.done);
+        assert_eq!(collection.listviews.len(), 1);
+    }
+
+    #[test]
     fn test_list_view_describe_deserialize() {
         let json = json!({
             "id": "00Bxx0000000001",

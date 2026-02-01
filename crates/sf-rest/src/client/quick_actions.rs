@@ -20,6 +20,9 @@ impl super::SalesforceRestClient {
     }
 
     /// Describe a specific quick action.
+    ///
+    /// Action names can contain dots for SObject-scoped actions
+    /// (e.g., `FeedItem.TextPost`, `FeedItem.ContentPost`).
     #[instrument(skip(self))]
     pub async fn describe_quick_action(
         &self,
@@ -32,7 +35,7 @@ impl super::SalesforceRestClient {
                 message: "Invalid SObject name".to_string(),
             }));
         }
-        if !soql::is_safe_field_name(action_name) {
+        if !soql::is_safe_action_name(action_name) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ACTION".to_string(),
                 message: "Invalid action name".to_string(),
@@ -43,6 +46,9 @@ impl super::SalesforceRestClient {
     }
 
     /// Invoke a quick action on an SObject.
+    ///
+    /// Action names can contain dots for SObject-scoped actions
+    /// (e.g., `FeedItem.TextPost`, `FeedItem.ContentPost`).
     #[instrument(skip(self, body))]
     pub async fn invoke_quick_action(
         &self,
@@ -56,7 +62,7 @@ impl super::SalesforceRestClient {
                 message: "Invalid SObject name".to_string(),
             }));
         }
-        if !soql::is_safe_field_name(action_name) {
+        if !soql::is_safe_action_name(action_name) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_ACTION".to_string(),
                 message: "Invalid action name".to_string(),
@@ -97,6 +103,39 @@ mod tests {
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("INVALID_ACTION"));
+    }
+
+    #[tokio::test]
+    async fn test_describe_quick_action_dotted_name_allowed() {
+        // Salesforce quick action names can contain dots (e.g., FeedItem.TextPost)
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "name": "FeedItem.TextPost",
+            "label": "Post",
+            "type": "Create",
+            "targetSobjectType": "FeedItem",
+            "targetRecordTypeId": null,
+            "layout": null,
+            "defaultValues": null,
+            "icons": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/sobjects/Account/quickActions/FeedItem.TextPost$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .describe_quick_action("Account", "FeedItem.TextPost")
+            .await
+            .expect("describe_quick_action should accept dotted action names");
+        assert_eq!(result.name, "FeedItem.TextPost");
     }
 
     #[tokio::test]

@@ -175,6 +175,31 @@ pub mod soql {
         is_safe_field_name(name)
     }
 
+    /// Validate that a quick action name is safe.
+    ///
+    /// Quick action names can contain dots (e.g., `FeedItem.TextPost`,
+    /// `FeedItem.ContentPost`) where each dot-separated segment must be
+    /// a valid field name.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use busbar_sf_client::security::soql;
+    ///
+    /// assert!(soql::is_safe_action_name("NewCase"));
+    /// assert!(soql::is_safe_action_name("FeedItem.TextPost"));
+    /// assert!(!soql::is_safe_action_name("Bad'; DROP--"));
+    /// assert!(!soql::is_safe_action_name(".LeadingDot"));
+    /// ```
+    #[must_use]
+    pub fn is_safe_action_name(name: &str) -> bool {
+        if name.is_empty() {
+            return false;
+        }
+        // Each dot-separated segment must be a valid field name
+        name.split('.').all(is_safe_field_name)
+    }
+
     /// Build a safe SELECT field list from user-provided field names.
     ///
     /// Filters out any unsafe field names and joins them with commas.
@@ -367,6 +392,26 @@ mod tests {
             assert!(!is_safe_field_name("field.name")); // contains dot
             assert!(!is_safe_field_name("field'name")); // contains quote
             assert!(!is_safe_field_name("field; DROP")); // injection
+        }
+
+        #[test]
+        fn test_is_safe_action_name() {
+            // Simple names (no dot)
+            assert!(is_safe_action_name("NewCase"));
+            assert!(is_safe_action_name("LogACall"));
+
+            // Dot-separated names (SObject.ActionName format)
+            assert!(is_safe_action_name("FeedItem.TextPost"));
+            assert!(is_safe_action_name("FeedItem.ContentPost"));
+            assert!(is_safe_action_name("Case.LogACall"));
+
+            // Invalid names
+            assert!(!is_safe_action_name("")); // empty
+            assert!(!is_safe_action_name(".")); // just a dot
+            assert!(!is_safe_action_name(".LeadingDot")); // leading dot
+            assert!(!is_safe_action_name("TrailingDot.")); // trailing dot
+            assert!(!is_safe_action_name("Bad'; DROP--")); // injection
+            assert!(!is_safe_action_name("Feed.Bad'; DROP--")); // injection in segment
         }
 
         #[test]
