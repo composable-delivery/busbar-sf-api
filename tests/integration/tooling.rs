@@ -16,11 +16,7 @@ static APEX_CLASS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Create an ApexClass via the Tooling API, retrying on "admin operation already in progress".
 /// Salesforce can take a few seconds to finish compiling a previously created/deleted class.
-async fn create_apex_class_with_retry(
-    client: &ToolingClient,
-    name: &str,
-    body: &str,
-) -> String {
+async fn create_apex_class_with_retry(client: &ToolingClient, name: &str, body: &str) -> String {
     let payload = serde_json::json!({
         "Name": name,
         "Body": body
