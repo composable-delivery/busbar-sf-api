@@ -185,7 +185,8 @@ async fn deploy_test_metadata(creds: &SalesforceCredentials) {
         <allowDelegate>false</allowDelegate>
         <assignedApprover>
             <approver>
-                <type>userHierarchyField</type>
+                <name>Owner</name>
+                <type>relatedUserField</type>
             </approver>
         </assignedApprover>
         <label>Step 1</label>
