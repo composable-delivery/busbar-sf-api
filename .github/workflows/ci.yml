@@ -70,6 +70,7 @@ jobs:
         with:
           files: lcov-unit.info
           flags: unit-tests
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -148,6 +149,7 @@ jobs:
         with:
           files: lcov-integration.info
           flags: integration-tests
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
