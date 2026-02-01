@@ -352,10 +352,11 @@ async fn test_parallel_vs_serial_results_consistency() {
         .await
         .expect("Bulk query should succeed");
 
-    if result.job.number_records_processed == 0 {
-        eprintln!("skipping: no records to test");
-        return;
-    }
+    assert!(
+        result.job.number_records_processed > 0,
+        "Should have Account records (created by setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org"
+    );
 
     // Get results using serial method
     let serial_results = client
@@ -454,6 +455,7 @@ async fn test_parallel_query_results_empty_job() {
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
+#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_query_metadata_component_dependencies() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -470,62 +472,32 @@ async fn test_bulk_query_metadata_component_dependencies() {
                 "RefMetadataComponentName",
                 "RefMetadataComponentType",
             ])
-            .limit(1000); // Bulk API supports up to 100,000 records
+            .limit(1000);
 
-    let result = client.execute_query(query_builder).await;
+    let query_result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Bulk MetadataComponentDependency query should succeed");
 
-    // MetadataComponentDependency is a Beta feature and may not be available in all orgs
-    match result {
-        Ok(query_result) => {
-            assert!(
-                query_result.job.number_records_processed >= 0,
-                "Should process records"
-            );
+    assert!(
+        query_result.job.number_records_processed >= 0,
+        "Should process records"
+    );
 
-            println!(
-                "Bulk query processed {} MetadataComponentDependency records",
-                query_result.job.number_records_processed
-            );
-
-            if let Some(csv_results) = query_result.results {
-                let lines: Vec<&str> = csv_results.lines().collect();
-                assert!(!lines.is_empty(), "Should have at least header line");
-                if let Some(header) = lines.first() {
-                    assert!(
-                        header.contains("MetadataComponentId")
-                            || header.contains("metadatacomponentid"),
-                        "Header should contain MetadataComponentId"
-                    );
-                    assert!(
-                        header.contains("RefMetadataComponentId")
-                            || header.contains("refmetadatacomponentid"),
-                        "Header should contain RefMetadataComponentId"
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
-                || error_msg.contains("INVALID_TYPE")
-                || error_msg.contains("does not exist")
-            {
-                println!(
-                    "MetadataComponentDependency not available in this org (expected): {}",
-                    e
-                );
-                return;
-            }
-            panic!(
-                "Unexpected error querying MetadataComponentDependency: {}",
-                e
-            );
-        }
+    if let Some(csv_results) = query_result.results {
+        let lines: Vec<&str> = csv_results.lines().collect();
+        assert!(!lines.is_empty(), "Should have at least header line");
+        let header = lines[0];
+        assert!(
+            header.contains("MetadataComponentId") || header.contains("metadatacomponentid"),
+            "Header should contain MetadataComponentId"
+        );
     }
 }
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
+#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_query_metadata_component_dependencies_with_filter() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -543,37 +515,20 @@ async fn test_bulk_query_metadata_component_dependencies_with_filter() {
             .expect("where_eq should succeed")
             .limit(100);
 
-    let result = client.execute_query(query_builder).await;
+    let query_result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Filtered MetadataComponentDependency query should succeed");
 
-    match result {
-        Ok(query_result) => {
-            println!(
-                "Bulk query with filter processed {} records",
-                query_result.job.number_records_processed
-            );
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
-                || error_msg.contains("INVALID_TYPE")
-                || error_msg.contains("does not exist")
-            {
-                println!(
-                    "MetadataComponentDependency not available in this org (expected): {}",
-                    e
-                );
-                return;
-            }
-            panic!(
-                "Unexpected error querying MetadataComponentDependency with filter: {}",
-                e
-            );
-        }
-    }
+    assert!(
+        query_result.job.number_records_processed >= 0,
+        "Should process records"
+    );
 }
 
 #[cfg(feature = "dependencies")]
 #[tokio::test]
+#[ignore = "MetadataComponentDependency not supported via Bulk API in scratch orgs"]
 async fn test_bulk_metadata_component_dependency_type_deserialization() {
     let creds = get_credentials().await;
     let client = BulkApiClient::new(creds.instance_url(), creds.access_token())
@@ -594,28 +549,13 @@ async fn test_bulk_metadata_component_dependency_type_deserialization() {
             ])
             .limit(5);
 
-    let result = client.execute_query(query_builder).await;
+    let query_result = client
+        .execute_query(query_builder)
+        .await
+        .expect("Type deserialization query should succeed");
 
-    match result {
-        Ok(query_result) => {
-            println!(
-                "Type deserialization test processed {} records",
-                query_result.job.number_records_processed
-            );
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("sObject type 'MetadataComponentDependency' is not supported")
-                || error_msg.contains("INVALID_TYPE")
-                || error_msg.contains("does not exist")
-            {
-                println!(
-                    "MetadataComponentDependency not available in this org (expected): {}",
-                    e
-                );
-                return;
-            }
-            panic!("Unexpected error in type deserialization test: {}", e);
-        }
-    }
+    assert!(
+        query_result.job.number_records_processed >= 0,
+        "Should process records"
+    );
 }

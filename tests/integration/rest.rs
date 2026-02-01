@@ -176,6 +176,7 @@ async fn test_rest_query_pagination() {
 }
 
 #[tokio::test]
+#[ignore = "requires AccountNumber configured as external ID on Account"]
 async fn test_rest_upsert_operation() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
@@ -188,35 +189,31 @@ async fn test_rest_upsert_operation() {
         "AccountNumber": unique_number
     });
 
-    let result1 = client
+    let upsert_result = client
         .upsert("Account", "AccountNumber", &unique_number, &account_data)
-        .await;
+        .await
+        .expect("First upsert should succeed");
 
-    if let Ok(upsert_result) = result1 {
-        assert!(upsert_result.created, "First upsert should create record");
-        let account_id = upsert_result.id.clone();
+    assert!(upsert_result.created, "First upsert should create record");
+    let account_id = upsert_result.id.clone();
 
-        let updated_data = serde_json::json!({
-            "Name": format!("Upsert Test Updated {}", unique_number),
-            "AccountNumber": unique_number
-        });
+    let updated_data = serde_json::json!({
+        "Name": format!("Upsert Test Updated {}", unique_number),
+        "AccountNumber": unique_number
+    });
 
-        let result2 = client
-            .upsert("Account", "AccountNumber", &unique_number, &updated_data)
-            .await;
+    let upsert_result2 = client
+        .upsert("Account", "AccountNumber", &unique_number, &updated_data)
+        .await
+        .expect("Second upsert should succeed");
 
-        if let Ok(upsert_result2) = result2 {
-            assert!(
-                !upsert_result2.created,
-                "Second upsert should update record"
-            );
-            assert_eq!(upsert_result2.id, account_id, "Should be same account ID");
-        }
+    assert!(
+        !upsert_result2.created,
+        "Second upsert should update record"
+    );
+    assert_eq!(upsert_result2.id, account_id, "Should be same account ID");
 
-        let _ = client.delete("Account", &account_id).await;
-    } else {
-        println!("Note: Upsert test skipped - AccountNumber may not be set as external ID");
-    }
+    let _ = client.delete("Account", &account_id).await;
 }
 
 // ============================================================================
@@ -664,28 +661,27 @@ async fn test_rest_describe_named_layout() {
         .await
         .expect("describe_layouts should succeed");
 
-    // Try to extract a layout name from the response
-    if let Some(layouts) = layouts_result.get("layouts").and_then(|l| l.as_array()) {
-        if let Some(first_layout) = layouts.first() {
-            if let Some(layout_name) = first_layout.get("name").and_then(|n| n.as_str()) {
-                let named_result = client
-                    .describe_named_layout("Account", layout_name)
-                    .await
-                    .expect("describe_named_layout should succeed");
+    let layouts = layouts_result
+        .get("layouts")
+        .and_then(|l| l.as_array())
+        .expect("layouts response should contain a layouts array");
+    let first_layout = layouts
+        .first()
+        .expect("Account should have at least one layout");
+    let layout_name = first_layout
+        .get("name")
+        .and_then(|n| n.as_str())
+        .expect("layout should have a name field");
 
-                assert!(
-                    named_result.is_object(),
-                    "Named layout response should be a JSON object"
-                );
-            } else {
-                println!("Note: No layout name found in first layout, skipping named layout test");
-            }
-        } else {
-            println!("Note: No layouts found for Account, skipping named layout test");
-        }
-    } else {
-        println!("Note: layouts not in expected format, skipping named layout test");
-    }
+    let named_result = client
+        .describe_named_layout("Account", layout_name)
+        .await
+        .expect("describe_named_layout should succeed");
+
+    assert!(
+        named_result.is_object(),
+        "Named layout response should be a JSON object"
+    );
 }
 
 // ============================================================================
@@ -910,41 +906,38 @@ async fn test_quick_actions_describe() {
             }
         }
     }
-    if !described && !actions.is_empty() {
-        println!(
-            "Note: {} actions listed for Account but none describable at SObject level",
+    if !described {
+        assert!(
+            actions.is_empty(),
+            "{} actions listed for Account but none describable at SObject level",
             actions.len()
         );
     }
 }
 
 #[tokio::test]
+#[ignore = "requires knowledge of quick action required fields"]
 async fn test_quick_actions_invoke() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // List actions to find a create-type action
     let actions = client
         .list_quick_actions("Account")
         .await
         .expect("list_quick_actions should succeed");
 
-    if let Some(action) = actions.iter().find(|a| a.action_type == "Create") {
-        let result = client
-            .invoke_quick_action("Account", &action.name, &serde_json::json!({"record": {}}))
-            .await;
-        // The invoke may fail if required fields are missing, but we test the API call works
-        match result {
-            Ok(r) => println!("Quick action invoked: success={}", r.success),
-            Err(e) => println!(
-                "Quick action invoke failed (may be expected without required fields): {}",
-                e
-            ),
-        }
-    } else {
-        println!("Note: No Create-type quick actions found for Account, skipping invoke test");
-    }
+    let action = actions
+        .iter()
+        .find(|a| a.action_type == "Create")
+        .expect("Account should have a Create-type quick action");
+
+    let result = client
+        .invoke_quick_action("Account", &action.name, &serde_json::json!({"record": {}}))
+        .await
+        .expect("invoke_quick_action should succeed");
+
+    assert!(result.success, "Quick action invoke should succeed");
 }
 
 #[tokio::test]
@@ -997,14 +990,15 @@ async fn test_list_views_get() {
         .await
         .expect("list_views should succeed");
 
-    if let Some(lv) = collection.listviews.first() {
-        let result = client.get_list_view("Account", &lv.id).await;
-        assert!(result.is_ok(), "get_list_view should succeed");
-        let view = result.unwrap();
-        assert_eq!(view.id, lv.id);
-    } else {
-        println!("Note: No list views found for Account, skipping get test");
-    }
+    let lv = collection.listviews.first().expect(
+        "Account should have list views (deployed by setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org",
+    );
+    let view = client
+        .get_list_view("Account", &lv.id)
+        .await
+        .expect("get_list_view should succeed");
+    assert_eq!(view.id, lv.id);
 }
 
 #[tokio::test]
@@ -1043,13 +1037,15 @@ async fn test_list_views_execute() {
         .await
         .expect("list_views should succeed");
 
-    if let Some(lv) = collection.listviews.first() {
-        let result: Result<busbar_sf_rest::ListViewResult<serde_json::Value>, _> =
-            client.execute_list_view("Account", &lv.id).await;
-        assert!(result.is_ok(), "execute_list_view should succeed");
-    } else {
-        println!("Note: No list views found for Account, skipping execute test");
-    }
+    let lv = collection.listviews.first().expect(
+        "Account should have list views (deployed by setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org",
+    );
+    let result: busbar_sf_rest::ListViewResult<serde_json::Value> = client
+        .execute_list_view("Account", &lv.id)
+        .await
+        .expect("execute_list_view should succeed");
+    assert!(result.done, "List view execution should complete");
 }
 
 #[tokio::test]
@@ -1077,29 +1073,29 @@ async fn test_process_rules_list_all() {
 }
 
 #[tokio::test]
+#[ignore = "requires active process rules configured on Account"]
 async fn test_process_rules_list_for_sobject() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.list_process_rules_for_sobject("Account").await;
-    // May return empty or error if no rules exist for Account
-    match result {
-        Ok(collection) => println!("Process rules for Account: {:?}", collection.rules.keys()),
-        Err(e) => println!(
-            "list_process_rules_for_sobject failed (may be expected): {}",
-            e
-        ),
-    }
+    let collection = client
+        .list_process_rules_for_sobject("Account")
+        .await
+        .expect("list_process_rules_for_sobject should succeed");
+    assert!(
+        !collection.rules.is_empty(),
+        "Should have process rules for Account"
+    );
 }
 
 #[tokio::test]
+#[ignore = "requires active process rules configured on Account"]
 async fn test_process_rules_trigger() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Create a test account to try triggering rules on
     let test_name = format!(
         "Process Rule Test {}",
         chrono::Utc::now().timestamp_millis()
@@ -1113,12 +1109,11 @@ async fn test_process_rules_trigger() {
         context_id: account_id.clone(),
     };
 
-    let result = client.trigger_process_rules(&request).await;
-    // May fail if no process rules are active, but tests the API call
-    match result {
-        Ok(r) => println!("Process rules triggered: success={}", r.success),
-        Err(e) => println!("trigger_process_rules failed (may be expected): {}", e),
-    }
+    let result = client
+        .trigger_process_rules(&request)
+        .await
+        .expect("trigger_process_rules should succeed");
+    assert!(result.success, "Process rule trigger should succeed");
 
     let _ = client.delete("Account", &account_id).await;
 }
@@ -1134,13 +1129,10 @@ async fn test_process_rules_error_invalid_id() {
     };
 
     let result = client.trigger_process_rules(&request).await;
-    // The API will likely fail with an invalid context ID
-    if let Ok(r) = result {
-        assert!(
-            !r.success || !r.errors.is_empty(),
-            "Should fail with invalid ID"
-        );
-    }
+    assert!(
+        result.is_err(),
+        "trigger_process_rules with invalid ID should fail"
+    );
 }
 
 // ============================================================================
@@ -1158,12 +1150,12 @@ async fn test_approvals_list_pending() {
 }
 
 #[tokio::test]
+#[ignore = "requires approval process configured on Account"]
 async fn test_approvals_submit() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Create a test account to try submitting for approval
     let test_name = format!("Approval Test {}", chrono::Utc::now().timestamp_millis());
     let account_id = client
         .create("Account", &serde_json::json!({"Name": test_name}))
@@ -1180,15 +1172,11 @@ async fn test_approvals_submit() {
         skip_entry_criteria: None,
     };
 
-    let result = client.submit_approval(&request).await;
-    // May fail if no approval process is configured, but tests the API call
-    match result {
-        Ok(r) => println!("Approval submitted: success={}", r.success),
-        Err(e) => println!(
-            "submit_approval failed (may be expected if no approval process): {}",
-            e
-        ),
-    }
+    let result = client
+        .submit_approval(&request)
+        .await
+        .expect("submit_approval should succeed");
+    assert!(result.success, "Approval submission should succeed");
 
     let _ = client.delete("Account", &account_id).await;
 }
@@ -1284,11 +1272,11 @@ async fn test_invocable_actions_invoke_standard() {
         inputs: vec![serde_json::json!({})],
     };
 
-    // Invoke may fail due to missing required inputs — that's expected
-    // behavior for an empty-input invocation. The test validates the
-    // API call itself works (auth, endpoint, serialization).
-    let _result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> =
-        client.invoke_standard_action(&action.name, &request).await;
+    let results = client
+        .invoke_standard_action(&action.name, &request)
+        .await
+        .expect("invoke_standard_action should succeed");
+    assert!(!results.is_empty(), "Should have at least one result");
 }
 
 #[tokio::test]
@@ -1355,14 +1343,15 @@ async fn test_invocable_actions_invoke_custom() {
                 inputs: vec![serde_json::json!({})],
             };
 
-            let _result: Result<Vec<busbar_sf_rest::InvocableActionResult>, _> = client
+            let results = client
                 .invoke_custom_action(action_type_name, &action.name, &request)
-                .await;
+                .await
+                .expect("invoke_custom_action should succeed");
+            assert!(!results.is_empty(), "Should have at least one result");
             return;
         }
     }
-    // No custom actions is valid on a fresh scratch org
-    println!("No custom actions found — scratch org has no custom actions deployed");
+    // No custom actions is valid on a fresh scratch org — listing API calls were still tested
 }
 
 #[tokio::test]
@@ -1383,20 +1372,20 @@ async fn test_invocable_actions_error_invalid_name() {
 // ============================================================================
 
 #[tokio::test]
+#[ignore = "requires consent management configured in org"]
 async fn test_consent_read() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // Read consent may fail if consent is not configured, but the API call should be valid
-    let result = client.read_consent("email", &["001000000000000AAA"]).await;
-    match result {
-        Ok(response) => println!("Consent response: {:?}", response),
-        Err(e) => println!(
-            "Consent read failed (may be expected if not configured): {}",
-            e
-        ),
-    }
+    let response = client
+        .read_consent("email", &["001000000000000AAA"])
+        .await
+        .expect("read_consent should succeed");
+    assert!(
+        response.is_object(),
+        "Consent response should be a JSON object"
+    );
 }
 
 // ============================================================================
@@ -1404,50 +1393,37 @@ async fn test_consent_read() {
 // ============================================================================
 
 #[tokio::test]
+#[ignore = "requires Knowledge enabled in scratch org definition"]
 async fn test_knowledge_settings() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.knowledge_settings().await;
-    match result {
-        Ok(settings) => println!("Knowledge enabled: {}", settings.knowledge_enabled),
-        Err(e) => println!("Knowledge settings failed (may not be enabled): {}", e),
-    }
+    let settings = client
+        .knowledge_settings()
+        .await
+        .expect("knowledge_settings should succeed");
+    assert!(
+        settings.knowledge_enabled,
+        "Knowledge should be enabled in org"
+    );
 }
 
 #[tokio::test]
+#[ignore = "requires Knowledge enabled in scratch org definition"]
 async fn test_data_category_groups() {
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // This endpoint requires Knowledge to be enabled in the scratch org.
-    // Create the org with: sf org create scratch -f config/project-scratch-def.json
-    let result = client.data_category_groups(None).await;
-    match result {
-        Ok(groups) => println!(
-            "Found {} data category groups",
-            groups.category_groups.len()
-        ),
-        Err(e) => {
-            let err_str = e.to_string();
-            // NOT_FOUND means Knowledge is not enabled in the scratch org —
-            // this is expected if the scratch org was created without the
-            // Knowledge feature. The API call itself was valid.
-            if err_str.contains("NOT_FOUND") {
-                println!(
-                    "data_category_groups returned NOT_FOUND — Knowledge is not enabled in this scratch org. \
-                     Enable it via config/project-scratch-def.json"
-                );
-            } else {
-                panic!(
-                    "data_category_groups failed with unexpected error: {}",
-                    err_str
-                );
-            }
-        }
-    }
+    let groups = client
+        .data_category_groups(None)
+        .await
+        .expect("data_category_groups should succeed");
+    assert!(
+        !groups.category_groups.is_empty(),
+        "Should have data category groups"
+    );
 }
 
 // ============================================================================
@@ -1466,15 +1442,16 @@ async fn test_user_password_status() {
         .await
         .expect("User query should succeed");
 
-    if let Some(user) = users.first() {
-        if let Some(user_id) = user.get("Id").and_then(|v| v.as_str()) {
-            let result = client.get_user_password_status(user_id).await;
-            match result {
-                Ok(status) => println!("Password expired: {}", status.is_expired),
-                Err(e) => println!("Password status check failed: {}", e),
-            }
-        }
-    }
+    let user = users.first().expect("Should have at least one active user");
+    let user_id = user
+        .get("Id")
+        .and_then(|v| v.as_str())
+        .expect("User should have an Id field");
+
+    let _status = client
+        .get_user_password_status(user_id)
+        .await
+        .expect("get_user_password_status should succeed");
 }
 
 // ============================================================================
@@ -1541,12 +1518,14 @@ async fn test_rest_lightning_usage() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let result = client.lightning_usage().await;
-    // May not be available in all orgs
-    match result {
-        Ok(usage) => assert!(usage.is_object() || usage.is_array()),
-        Err(e) => println!("Lightning usage not available: {}", e),
-    }
+    let usage = client
+        .lightning_usage()
+        .await
+        .expect("lightning_usage should succeed");
+    assert!(
+        usage.is_object() || usage.is_array(),
+        "Lightning usage should return JSON object or array"
+    );
 }
 
 // ============================================================================
