@@ -102,29 +102,28 @@ async fn deploy_test_list_view(creds: &SalesforceCredentials) {
             br#"<?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
     <types>
-        <members>Account.BusbarIntTest_AllAccounts</members>
-        <name>ListView</name>
+        <members>Account</members>
+        <name>CustomObject</name>
     </types>
     <version>62.0</version>
 </Package>"#,
         )
         .unwrap();
 
-        zip.start_file(
-            "objects/Account/listViews/BusbarIntTest_AllAccounts.listView-meta.xml",
-            options,
-        )
-        .unwrap();
+        // mdapi format: ListView is nested inside the .object file
+        zip.start_file("objects/Account.object", options).unwrap();
         zip.write_all(
             br#"<?xml version="1.0" encoding="UTF-8"?>
-<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
-    <fullName>BusbarIntTest_AllAccounts</fullName>
-    <columns>FULL_NAME</columns>
-    <columns>ACCOUNT_TYPE</columns>
-    <columns>ACCOUNT_OWNER_ALIAS</columns>
-    <filterScope>Everything</filterScope>
-    <label>BusbarIntTest All Accounts</label>
-</ListView>"#,
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <listViews>
+        <fullName>BusbarIntTest_AllAccounts</fullName>
+        <columns>FULL_NAME</columns>
+        <columns>ACCOUNT_TYPE</columns>
+        <columns>ACCOUNT_OWNER_ALIAS</columns>
+        <filterScope>Everything</filterScope>
+        <label>BusbarIntTest All Accounts</label>
+    </listViews>
+</CustomObject>"#,
         )
         .unwrap();
 
