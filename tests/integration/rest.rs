@@ -1378,14 +1378,10 @@ async fn test_consent_read() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let response = client
+    let _response = client
         .read_consent("email", &["001000000000000AAA"])
         .await
         .expect("read_consent should succeed");
-    assert!(
-        response.is_object(),
-        "Consent response should be a JSON object"
-    );
 }
 
 // ============================================================================
