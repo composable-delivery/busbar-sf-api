@@ -444,15 +444,16 @@ pub struct RunTestsSyncRequest {
 }
 
 /// Result from running tests synchronously.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct RunTestsSyncResult {
-    #[serde(rename = "numTestsRun")]
+    #[serde(alias = "numTestsRun", default)]
     pub num_tests_run: u32,
 
-    #[serde(rename = "numFailures")]
+    #[serde(alias = "numFailures", default)]
     pub num_failures: u32,
 
-    #[serde(rename = "totalTime")]
+    #[serde(alias = "totalTime", default)]
     pub total_time: f64,
 
     #[serde(default)]
@@ -461,89 +462,98 @@ pub struct RunTestsSyncResult {
     #[serde(default)]
     pub failures: Vec<TestFailure>,
 
-    #[serde(rename = "codeCoverage", default)]
+    #[serde(alias = "codeCoverage", default)]
     pub code_coverage: Vec<CodeCoverageResult>,
 
-    #[serde(rename = "codeCoverageWarnings", default)]
+    #[serde(alias = "codeCoverageWarnings", default)]
     pub code_coverage_warnings: Vec<CodeCoverageWarning>,
 }
 
 /// Successful test result.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct TestSuccess {
-    #[serde(rename = "Id")]
+    #[serde(alias = "Id", alias = "id", default)]
     pub id: String,
 
-    #[serde(rename = "MethodName")]
+    #[serde(alias = "MethodName", alias = "methodName", default)]
     pub method_name: String,
 
-    #[serde(rename = "Name")]
+    #[serde(alias = "Name", alias = "name", default)]
     pub name: String,
 
-    #[serde(rename = "NamespacePrefix")]
+    #[serde(alias = "NamespacePrefix", alias = "namespacePrefix")]
     pub namespace_prefix: Option<String>,
 
-    #[serde(rename = "Time")]
+    #[serde(alias = "Time", alias = "time", default)]
     pub time: f64,
 }
 
 /// Failed test result.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct TestFailure {
-    #[serde(rename = "Id")]
+    #[serde(alias = "Id", alias = "id", default)]
     pub id: String,
 
-    #[serde(rename = "MethodName")]
+    #[serde(alias = "MethodName", alias = "methodName", default)]
     pub method_name: String,
 
-    #[serde(rename = "Name")]
+    #[serde(alias = "Name", alias = "name", default)]
     pub name: String,
 
-    #[serde(rename = "NamespacePrefix")]
+    #[serde(alias = "NamespacePrefix", alias = "namespacePrefix")]
     pub namespace_prefix: Option<String>,
 
-    #[serde(rename = "Time")]
+    #[serde(alias = "Time", alias = "time", default)]
     pub time: f64,
 
-    #[serde(rename = "Message")]
+    #[serde(alias = "Message", alias = "message", default)]
     pub message: String,
 
-    #[serde(rename = "StackTrace")]
+    #[serde(alias = "StackTrace", alias = "stackTrace")]
     pub stack_trace: Option<String>,
 
-    #[serde(rename = "Type")]
+    #[serde(alias = "Type", rename = "type")]
     pub failure_type: Option<String>,
 }
 
 /// Code coverage result for a single class or trigger.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct CodeCoverageResult {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub name: String,
     pub namespace: Option<String>,
 
-    #[serde(rename = "numLocations")]
+    #[serde(alias = "numLocations", default)]
     pub num_locations: u32,
 
-    #[serde(rename = "numLocationsNotCovered")]
+    #[serde(alias = "numLocationsNotCovered", default)]
     pub num_locations_not_covered: u32,
 
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     pub coverage_type: String,
 
-    #[serde(rename = "locationsNotCovered", default)]
+    #[serde(alias = "locationsNotCovered", default)]
     pub locations_not_covered: Vec<CodeLocation>,
 }
 
 /// Code location (line number and column).
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
 pub struct CodeLocation {
+    #[serde(default)]
     pub line: u32,
+    #[serde(default)]
     pub column: u32,
 
-    #[serde(rename = "numExecutions")]
+    #[serde(alias = "numExecutions", default)]
     pub num_executions: u32,
 
+    #[serde(default)]
     pub time: f64,
 }
 
