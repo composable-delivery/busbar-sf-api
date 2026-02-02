@@ -1068,6 +1068,172 @@ pub struct GetUpdatedResult {
 }
 
 // =============================================================================
+// Priority 2: Invocable Actions, Layouts, Knowledge, Standalone, etc.
+// =============================================================================
+
+/// Request to invoke an invocable action (standard or custom).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvokeActionRequest {
+    pub action_name: String,
+    pub inputs: Vec<serde_json::Value>,
+}
+
+/// Request to invoke a custom action (requires action_type + action_name).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvokeCustomActionRequest {
+    pub action_type: String,
+    pub action_name: String,
+    pub inputs: Vec<serde_json::Value>,
+}
+
+/// Request for describe custom action.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DescribeCustomActionRequest {
+    pub action_type: String,
+    pub action_name: String,
+}
+
+/// Request for list custom actions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListCustomActionsRequest {
+    pub action_type: String,
+}
+
+/// Request for describe named layout.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DescribeNamedLayoutRequest {
+    pub sobject: String,
+    pub layout_name: String,
+}
+
+/// Request for knowledge articles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeArticlesRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+}
+
+/// Request for data category groups.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataCategoryGroupsRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sobject: Option<String>,
+}
+
+/// Request for data categories.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataCategoriesRequest {
+    pub group: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sobject: Option<String>,
+}
+
+/// Request for app menu.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppMenuRequest {
+    pub app_menu_type: String,
+}
+
+/// Request for compact layouts (multi-sobject).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactLayoutsMultiRequest {
+    pub sobject_list: String,
+}
+
+/// Request for platform event schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlatformEventSchemaRequest {
+    pub event_name: String,
+}
+
+/// Request for set user password.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetUserPasswordRequest {
+    pub user_id: String,
+    pub password: String,
+}
+
+/// Request for read consent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadConsentRequest {
+    pub action: String,
+    pub ids: Vec<String>,
+}
+
+/// Request for write consent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteConsentRequest {
+    pub action: String,
+    pub records: Vec<ConsentWriteRecord>,
+}
+
+/// Individual consent record for write operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsentWriteRecord {
+    pub id: String,
+    pub result: String,
+}
+
+/// Request for read multi consent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadMultiConsentRequest {
+    pub actions: Vec<String>,
+    pub ids: Vec<String>,
+}
+
+/// Request for get blob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetBlobRequest {
+    pub sobject: String,
+    pub id: String,
+    pub field: String,
+}
+
+/// Response for get blob (base64-encoded).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetBlobResponse {
+    pub data_base64: String,
+}
+
+/// Request for get rich text image.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetRichTextImageRequest {
+    pub sobject: String,
+    pub id: String,
+    pub field: String,
+    pub content_reference_id: String,
+}
+
+/// Response for get rich text image (base64-encoded).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetRichTextImageResponse {
+    pub data_base64: String,
+}
+
+/// Request for get relationship.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetRelationshipRequest {
+    pub sobject: String,
+    pub id: String,
+    pub relationship_name: String,
+}
+
+/// Request for search suggestions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchSuggestionsRequest {
+    pub query: String,
+    pub sobject: String,
+}
+
+/// Request for search result layouts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResultLayoutsRequest {
+    pub sobjects: Vec<String>,
+}
+
+// =============================================================================
 // Host Function Names (constants for ABI contract)
 // =============================================================================
 
@@ -1147,6 +1313,70 @@ pub mod host_fn_names {
     pub const METADATA_CHECK_RETRIEVE_STATUS: &str = "sf_metadata_check_retrieve_status";
     pub const METADATA_LIST: &str = "sf_metadata_list";
     pub const METADATA_DESCRIBE: &str = "sf_metadata_describe";
+
+    // REST API: Invocable Actions
+    pub const LIST_STANDARD_ACTIONS: &str = "sf_list_standard_actions";
+    pub const LIST_CUSTOM_ACTION_TYPES: &str = "sf_list_custom_action_types";
+    pub const LIST_CUSTOM_ACTIONS: &str = "sf_list_custom_actions";
+    pub const DESCRIBE_STANDARD_ACTION: &str = "sf_describe_standard_action";
+    pub const DESCRIBE_CUSTOM_ACTION: &str = "sf_describe_custom_action";
+    pub const INVOKE_STANDARD_ACTION: &str = "sf_invoke_standard_action";
+    pub const INVOKE_CUSTOM_ACTION: &str = "sf_invoke_custom_action";
+
+    // REST API: Layouts
+    pub const DESCRIBE_LAYOUTS: &str = "sf_describe_layouts";
+    pub const DESCRIBE_NAMED_LAYOUT: &str = "sf_describe_named_layout";
+    pub const DESCRIBE_APPROVAL_LAYOUTS: &str = "sf_describe_approval_layouts";
+    pub const DESCRIBE_COMPACT_LAYOUTS: &str = "sf_describe_compact_layouts";
+    pub const DESCRIBE_GLOBAL_PUBLISHER_LAYOUTS: &str = "sf_describe_global_publisher_layouts";
+
+    // REST API: Knowledge
+    pub const KNOWLEDGE_SETTINGS: &str = "sf_knowledge_settings";
+    pub const KNOWLEDGE_ARTICLES: &str = "sf_knowledge_articles";
+    pub const DATA_CATEGORY_GROUPS: &str = "sf_data_category_groups";
+    pub const DATA_CATEGORIES: &str = "sf_data_categories";
+
+    // REST API: Standalone
+    pub const TABS: &str = "sf_tabs";
+    pub const THEME: &str = "sf_theme";
+    pub const APP_MENU: &str = "sf_app_menu";
+    pub const RECENT_ITEMS: &str = "sf_recent_items";
+    pub const RELEVANT_ITEMS: &str = "sf_relevant_items";
+    pub const COMPACT_LAYOUTS_MULTI: &str = "sf_compact_layouts_multi";
+    pub const PLATFORM_EVENT_SCHEMA: &str = "sf_platform_event_schema";
+    pub const LIGHTNING_TOGGLE_METRICS: &str = "sf_lightning_toggle_metrics";
+    pub const LIGHTNING_USAGE: &str = "sf_lightning_usage";
+
+    // REST API: User Password
+    pub const GET_USER_PASSWORD_STATUS: &str = "sf_get_user_password_status";
+    pub const SET_USER_PASSWORD: &str = "sf_set_user_password";
+    pub const RESET_USER_PASSWORD: &str = "sf_reset_user_password";
+
+    // REST API: Scheduler
+    pub const APPOINTMENT_CANDIDATES: &str = "sf_appointment_candidates";
+    pub const APPOINTMENT_SLOTS: &str = "sf_appointment_slots";
+
+    // REST API: Consent
+    pub const READ_CONSENT: &str = "sf_read_consent";
+    pub const WRITE_CONSENT: &str = "sf_write_consent";
+    pub const READ_MULTI_CONSENT: &str = "sf_read_multi_consent";
+
+    // REST API: Binary
+    pub const GET_BLOB: &str = "sf_get_blob";
+    pub const GET_RICH_TEXT_IMAGE: &str = "sf_get_rich_text_image";
+    pub const GET_RELATIONSHIP: &str = "sf_get_relationship";
+
+    // REST API: Embedded Service
+    pub const GET_EMBEDDED_SERVICE_CONFIG: &str = "sf_get_embedded_service_config";
+
+    // REST API: Search Enhancements
+    pub const PARAMETERIZED_SEARCH: &str = "sf_parameterized_search";
+    pub const SEARCH_SUGGESTIONS: &str = "sf_search_suggestions";
+    pub const SEARCH_SCOPE_ORDER: &str = "sf_search_scope_order";
+    pub const SEARCH_RESULT_LAYOUTS: &str = "sf_search_result_layouts";
+
+    // REST API: Composite Enhancement
+    pub const COMPOSITE_GRAPH: &str = "sf_composite_graph";
 }
 
 /// The Extism namespace used for all bridge host functions.
@@ -2080,7 +2310,7 @@ mod tests {
         let req: MetadataRetrieveRequest = serde_json::from_value(json).unwrap();
         assert!(!req.is_packaged);
         assert!(req.types.is_empty());
-        assert_eq!(req.api_version, "62.0");
+        assert_eq!(req.api_version, "65.0");
     }
 
     #[test]
@@ -2252,12 +2482,55 @@ mod tests {
             METADATA_CHECK_RETRIEVE_STATUS,
             METADATA_LIST,
             METADATA_DESCRIBE,
+            // Priority 2
+            LIST_STANDARD_ACTIONS,
+            LIST_CUSTOM_ACTION_TYPES,
+            LIST_CUSTOM_ACTIONS,
+            DESCRIBE_STANDARD_ACTION,
+            DESCRIBE_CUSTOM_ACTION,
+            INVOKE_STANDARD_ACTION,
+            INVOKE_CUSTOM_ACTION,
+            DESCRIBE_LAYOUTS,
+            DESCRIBE_NAMED_LAYOUT,
+            DESCRIBE_APPROVAL_LAYOUTS,
+            DESCRIBE_COMPACT_LAYOUTS,
+            DESCRIBE_GLOBAL_PUBLISHER_LAYOUTS,
+            KNOWLEDGE_SETTINGS,
+            KNOWLEDGE_ARTICLES,
+            DATA_CATEGORY_GROUPS,
+            DATA_CATEGORIES,
+            TABS,
+            THEME,
+            APP_MENU,
+            RECENT_ITEMS,
+            RELEVANT_ITEMS,
+            COMPACT_LAYOUTS_MULTI,
+            PLATFORM_EVENT_SCHEMA,
+            LIGHTNING_TOGGLE_METRICS,
+            LIGHTNING_USAGE,
+            GET_USER_PASSWORD_STATUS,
+            SET_USER_PASSWORD,
+            RESET_USER_PASSWORD,
+            APPOINTMENT_CANDIDATES,
+            APPOINTMENT_SLOTS,
+            READ_CONSENT,
+            WRITE_CONSENT,
+            READ_MULTI_CONSENT,
+            GET_BLOB,
+            GET_RICH_TEXT_IMAGE,
+            GET_RELATIONSHIP,
+            GET_EMBEDDED_SERVICE_CONFIG,
+            PARAMETERIZED_SEARCH,
+            SEARCH_SUGGESTIONS,
+            SEARCH_SCOPE_ORDER,
+            SEARCH_RESULT_LAYOUTS,
+            COMPOSITE_GRAPH,
         ];
         let mut unique = std::collections::HashSet::new();
         for name in &names {
             assert!(unique.insert(name), "duplicate host function name: {name}");
         }
-        assert_eq!(unique.len(), 56);
+        assert_eq!(unique.len(), 98);
     }
 
     #[test]
@@ -2320,6 +2593,49 @@ mod tests {
             METADATA_CHECK_RETRIEVE_STATUS,
             METADATA_LIST,
             METADATA_DESCRIBE,
+            // Priority 2
+            LIST_STANDARD_ACTIONS,
+            LIST_CUSTOM_ACTION_TYPES,
+            LIST_CUSTOM_ACTIONS,
+            DESCRIBE_STANDARD_ACTION,
+            DESCRIBE_CUSTOM_ACTION,
+            INVOKE_STANDARD_ACTION,
+            INVOKE_CUSTOM_ACTION,
+            DESCRIBE_LAYOUTS,
+            DESCRIBE_NAMED_LAYOUT,
+            DESCRIBE_APPROVAL_LAYOUTS,
+            DESCRIBE_COMPACT_LAYOUTS,
+            DESCRIBE_GLOBAL_PUBLISHER_LAYOUTS,
+            KNOWLEDGE_SETTINGS,
+            KNOWLEDGE_ARTICLES,
+            DATA_CATEGORY_GROUPS,
+            DATA_CATEGORIES,
+            TABS,
+            THEME,
+            APP_MENU,
+            RECENT_ITEMS,
+            RELEVANT_ITEMS,
+            COMPACT_LAYOUTS_MULTI,
+            PLATFORM_EVENT_SCHEMA,
+            LIGHTNING_TOGGLE_METRICS,
+            LIGHTNING_USAGE,
+            GET_USER_PASSWORD_STATUS,
+            SET_USER_PASSWORD,
+            RESET_USER_PASSWORD,
+            APPOINTMENT_CANDIDATES,
+            APPOINTMENT_SLOTS,
+            READ_CONSENT,
+            WRITE_CONSENT,
+            READ_MULTI_CONSENT,
+            GET_BLOB,
+            GET_RICH_TEXT_IMAGE,
+            GET_RELATIONSHIP,
+            GET_EMBEDDED_SERVICE_CONFIG,
+            PARAMETERIZED_SEARCH,
+            SEARCH_SUGGESTIONS,
+            SEARCH_SCOPE_ORDER,
+            SEARCH_RESULT_LAYOUTS,
+            COMPOSITE_GRAPH,
         ];
         for name in &names {
             assert!(name.starts_with("sf_"), "{name} must start with sf_");

@@ -32,7 +32,7 @@ pub struct CompositeResponse {
 }
 
 /// Response from a single subrequest.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositeSubresponse {
     pub body: serde_json::Value,
     #[serde(rename = "httpHeaders")]
@@ -144,13 +144,13 @@ pub struct CompositeTreeError {
 ///
 /// Allows multiple independent graphs that each contain composite subrequests.
 /// Available since API v50.0.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositeGraphRequest {
     pub graphs: Vec<GraphRequest>,
 }
 
 /// A single graph within a composite graph request.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphRequest {
     pub graph_id: String,
@@ -158,13 +158,13 @@ pub struct GraphRequest {
 }
 
 /// Response from a composite graph request.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositeGraphResponse {
     pub graphs: Vec<GraphResponse>,
 }
 
 /// Response from a single graph.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphResponse {
     pub graph_id: String,
@@ -173,7 +173,7 @@ pub struct GraphResponse {
 }
 
 /// Body of a graph response containing the composite responses.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphResponseBody {
     #[serde(rename = "compositeResponse")]

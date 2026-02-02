@@ -632,6 +632,333 @@ fn create_plugin(wasm_bytes: &[u8], state: BridgeState) -> Result<Plugin> {
             user_data.clone(),
             host_fn_metadata_describe,
         )
+        // =====================================================================
+        // Priority 2: Invocable Actions
+        // =====================================================================
+        .with_function(
+            host_fn_names::LIST_STANDARD_ACTIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_standard_actions,
+        )
+        .with_function(
+            host_fn_names::LIST_CUSTOM_ACTION_TYPES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_custom_action_types,
+        )
+        .with_function(
+            host_fn_names::LIST_CUSTOM_ACTIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_custom_actions,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_STANDARD_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_standard_action,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_CUSTOM_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_custom_action,
+        )
+        .with_function(
+            host_fn_names::INVOKE_STANDARD_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_invoke_standard_action,
+        )
+        .with_function(
+            host_fn_names::INVOKE_CUSTOM_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_invoke_custom_action,
+        )
+        // =====================================================================
+        // Priority 2: Layouts
+        // =====================================================================
+        .with_function(
+            host_fn_names::DESCRIBE_LAYOUTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_layouts,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_NAMED_LAYOUT,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_named_layout,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_APPROVAL_LAYOUTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_approval_layouts,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_COMPACT_LAYOUTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_compact_layouts,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_GLOBAL_PUBLISHER_LAYOUTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_global_publisher_layouts,
+        )
+        // =====================================================================
+        // Priority 2: Knowledge
+        // =====================================================================
+        .with_function(
+            host_fn_names::KNOWLEDGE_SETTINGS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_knowledge_settings,
+        )
+        .with_function(
+            host_fn_names::KNOWLEDGE_ARTICLES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_knowledge_articles,
+        )
+        .with_function(
+            host_fn_names::DATA_CATEGORY_GROUPS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_data_category_groups,
+        )
+        .with_function(
+            host_fn_names::DATA_CATEGORIES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_data_categories,
+        )
+        // =====================================================================
+        // Priority 2: Standalone
+        // =====================================================================
+        .with_function(
+            host_fn_names::TABS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_tabs,
+        )
+        .with_function(
+            host_fn_names::THEME,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_theme,
+        )
+        .with_function(
+            host_fn_names::APP_MENU,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_app_menu,
+        )
+        .with_function(
+            host_fn_names::RECENT_ITEMS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_recent_items,
+        )
+        .with_function(
+            host_fn_names::RELEVANT_ITEMS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_relevant_items,
+        )
+        .with_function(
+            host_fn_names::COMPACT_LAYOUTS_MULTI,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_compact_layouts_multi,
+        )
+        .with_function(
+            host_fn_names::PLATFORM_EVENT_SCHEMA,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_platform_event_schema,
+        )
+        .with_function(
+            host_fn_names::LIGHTNING_TOGGLE_METRICS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_lightning_toggle_metrics,
+        )
+        .with_function(
+            host_fn_names::LIGHTNING_USAGE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_lightning_usage,
+        )
+        // =====================================================================
+        // Priority 2: User Password
+        // =====================================================================
+        .with_function(
+            host_fn_names::GET_USER_PASSWORD_STATUS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_user_password_status,
+        )
+        .with_function(
+            host_fn_names::SET_USER_PASSWORD,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_set_user_password,
+        )
+        .with_function(
+            host_fn_names::RESET_USER_PASSWORD,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_reset_user_password,
+        )
+        // =====================================================================
+        // Priority 2: Scheduler
+        // =====================================================================
+        .with_function(
+            host_fn_names::APPOINTMENT_CANDIDATES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_appointment_candidates,
+        )
+        .with_function(
+            host_fn_names::APPOINTMENT_SLOTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_appointment_slots,
+        )
+        // =====================================================================
+        // Priority 2: Consent
+        // =====================================================================
+        .with_function(
+            host_fn_names::READ_CONSENT,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_read_consent,
+        )
+        .with_function(
+            host_fn_names::WRITE_CONSENT,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_write_consent,
+        )
+        .with_function(
+            host_fn_names::READ_MULTI_CONSENT,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_read_multi_consent,
+        )
+        // =====================================================================
+        // Priority 2: Binary
+        // =====================================================================
+        .with_function(
+            host_fn_names::GET_BLOB,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_blob,
+        )
+        .with_function(
+            host_fn_names::GET_RICH_TEXT_IMAGE,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_rich_text_image,
+        )
+        .with_function(
+            host_fn_names::GET_RELATIONSHIP,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_relationship,
+        )
+        // =====================================================================
+        // Priority 2: Embedded Service
+        // =====================================================================
+        .with_function(
+            host_fn_names::GET_EMBEDDED_SERVICE_CONFIG,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_embedded_service_config,
+        )
+        // =====================================================================
+        // Priority 2: Search Enhancements
+        // =====================================================================
+        .with_function(
+            host_fn_names::PARAMETERIZED_SEARCH,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_parameterized_search,
+        )
+        .with_function(
+            host_fn_names::SEARCH_SUGGESTIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_search_suggestions,
+        )
+        .with_function(
+            host_fn_names::SEARCH_SCOPE_ORDER,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_search_scope_order,
+        )
+        .with_function(
+            host_fn_names::SEARCH_RESULT_LAYOUTS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_search_result_layouts,
+        )
+        // =====================================================================
+        // Priority 2: Composite Enhancement
+        // =====================================================================
+        .with_function(
+            host_fn_names::COMPOSITE_GRAPH,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_composite_graph,
+        )
         .build()?;
 
     Ok(plugin)
@@ -1465,5 +1792,573 @@ fn host_fn_metadata_describe(
         let client = s.metadata_client();
         s.handle
             .block_on(host_functions::handle_metadata_describe(&client))
+    })
+}
+
+// =============================================================================
+// Priority 2 host function wrappers
+// =============================================================================
+
+fn host_fn_list_standard_actions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_list_standard_actions(&s.rest_client))
+    })
+}
+
+fn host_fn_list_custom_action_types(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_list_custom_action_types(
+                &s.rest_client,
+            ))
+    })
+}
+
+fn host_fn_list_custom_actions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_list_custom_actions(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_standard_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_standard_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_custom_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_custom_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_invoke_standard_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_invoke_standard_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_invoke_custom_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_invoke_custom_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_layouts(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_layouts(&s.rest_client, r))
+    })
+}
+
+fn host_fn_describe_named_layout(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_named_layout(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_approval_layouts(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_approval_layouts(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_compact_layouts(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_compact_layouts(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_describe_global_publisher_layouts(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_describe_global_publisher_layouts(
+                &s.rest_client,
+            ))
+    })
+}
+
+fn host_fn_knowledge_settings(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_knowledge_settings(&s.rest_client))
+    })
+}
+
+fn host_fn_knowledge_articles(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_knowledge_articles(&s.rest_client, r))
+    })
+}
+
+fn host_fn_data_category_groups(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_data_category_groups(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_data_categories(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_data_categories(&s.rest_client, r))
+    })
+}
+
+fn host_fn_tabs(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_tabs(&s.rest_client))
+    })
+}
+
+fn host_fn_theme(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_theme(&s.rest_client))
+    })
+}
+
+fn host_fn_app_menu(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_app_menu(&s.rest_client, r))
+    })
+}
+
+fn host_fn_recent_items(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_recent_items(&s.rest_client))
+    })
+}
+
+fn host_fn_relevant_items(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_relevant_items(&s.rest_client))
+    })
+}
+
+fn host_fn_compact_layouts_multi(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_compact_layouts_multi(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_platform_event_schema(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_platform_event_schema(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_lightning_toggle_metrics(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_lightning_toggle_metrics(
+                &s.rest_client,
+            ))
+    })
+}
+
+fn host_fn_lightning_usage(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_lightning_usage(&s.rest_client))
+    })
+}
+
+fn host_fn_get_user_password_status(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_user_password_status(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_set_user_password(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_set_user_password(&s.rest_client, r))
+    })
+}
+
+fn host_fn_reset_user_password(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_reset_user_password(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_appointment_candidates(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_appointment_candidates(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_appointment_slots(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_appointment_slots(&s.rest_client, r))
+    })
+}
+
+fn host_fn_read_consent(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_read_consent(&s.rest_client, r))
+    })
+}
+
+fn host_fn_write_consent(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_write_consent(&s.rest_client, r))
+    })
+}
+
+fn host_fn_read_multi_consent(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_read_multi_consent(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_blob(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_blob(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_rich_text_image(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_rich_text_image(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_get_relationship(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_relationship(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_embedded_service_config(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_embedded_service_config(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_parameterized_search(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_parameterized_search(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_search_suggestions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_search_suggestions(&s.rest_client, r))
+    })
+}
+
+fn host_fn_search_scope_order(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_search_scope_order(&s.rest_client))
+    })
+}
+
+fn host_fn_search_result_layouts(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_search_result_layouts(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_composite_graph(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_composite_graph(&s.rest_client, r))
     })
 }

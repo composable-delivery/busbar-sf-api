@@ -2613,3 +2613,668 @@ mod tests {
         assert_eq!(sf_request.subrequests.len(), 1);
     }
 }
+
+// =============================================================================
+// Priority 2: Invocable Actions
+// =============================================================================
+
+pub async fn handle_list_standard_actions(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.list_standard_actions().await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_list_custom_action_types(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.list_custom_action_types().await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_list_custom_actions(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: ListCustomActionsRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.list_custom_actions(&req.action_type).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_standard_action(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeSObjectRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.describe_standard_action(&req.sobject).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_custom_action(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeCustomActionRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest
+        .describe_custom_action(&req.action_type, &req.action_name)
+        .await
+    {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_invoke_standard_action(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: InvokeActionRequest,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    let sf_request = busbar_sf_rest::InvocableActionRequest { inputs: req.inputs };
+    match rest
+        .invoke_standard_action(&req.action_name, &sf_request)
+        .await
+    {
+        Ok(results) => BridgeResult::ok(
+            results
+                .into_iter()
+                .map(|r| serde_json::to_value(r).unwrap())
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_invoke_custom_action(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: InvokeCustomActionRequest,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    let sf_request = busbar_sf_rest::InvocableActionRequest { inputs: req.inputs };
+    match rest
+        .invoke_custom_action(&req.action_type, &req.action_name, &sf_request)
+        .await
+    {
+        Ok(results) => BridgeResult::ok(
+            results
+                .into_iter()
+                .map(|r| serde_json::to_value(r).unwrap())
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Layouts
+// =============================================================================
+
+pub async fn handle_describe_layouts(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeSObjectRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.describe_layouts(&req.sobject).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_named_layout(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeNamedLayoutRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest
+        .describe_named_layout(&req.sobject, &req.layout_name)
+        .await
+    {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_approval_layouts(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeSObjectRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.describe_approval_layouts(&req.sobject).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_compact_layouts(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DescribeSObjectRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.describe_compact_layouts(&req.sobject).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_describe_global_publisher_layouts(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.describe_global_publisher_layouts().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Knowledge
+// =============================================================================
+
+pub async fn handle_knowledge_settings(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.knowledge_settings().await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_knowledge_articles(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: KnowledgeArticlesRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest
+        .knowledge_articles(req.query.as_deref(), req.channel.as_deref())
+        .await
+    {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_data_category_groups(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DataCategoryGroupsRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.data_category_groups(req.sobject.as_deref()).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_data_categories(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: DataCategoriesRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest
+        .data_categories(&req.group, req.sobject.as_deref())
+        .await
+    {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Standalone
+// =============================================================================
+
+pub async fn handle_tabs(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    match rest.tabs().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_theme(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.theme().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_app_menu(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: AppMenuRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.app_menu(&req.app_menu_type).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_recent_items(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    match rest.recent_items().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_relevant_items(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.relevant_items().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_compact_layouts_multi(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: CompactLayoutsMultiRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.compact_layouts(&req.sobject_list).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_platform_event_schema(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: PlatformEventSchemaRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.platform_event_schema(&req.event_name).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_lightning_toggle_metrics(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.lightning_toggle_metrics().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_lightning_usage(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<serde_json::Value> {
+    match rest.lightning_usage().await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: User Password
+// =============================================================================
+
+pub async fn handle_get_user_password_status(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.get_user_password_status(&req.id).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_set_user_password(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: SetUserPasswordRequest,
+) -> BridgeResult<()> {
+    let sf_request = busbar_sf_rest::SetPasswordRequest {
+        new_password: req.password,
+    };
+    match rest.set_user_password(&req.user_id, &sf_request).await {
+        Ok(()) => BridgeResult::ok(()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_reset_user_password(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.reset_user_password(&req.id).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Scheduler
+// =============================================================================
+
+pub async fn handle_appointment_candidates(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: serde_json::Value,
+) -> BridgeResult<serde_json::Value> {
+    let sf_request: busbar_sf_rest::AppointmentCandidatesRequest = match serde_json::from_value(req)
+    {
+        Ok(r) => r,
+        Err(e) => return BridgeResult::err("INVALID_REQUEST", e.to_string()),
+    };
+    match rest.appointment_candidates(&sf_request).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_appointment_slots(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: serde_json::Value,
+) -> BridgeResult<serde_json::Value> {
+    match rest.appointment_slots(&req).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Consent
+// =============================================================================
+
+pub async fn handle_read_consent(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: ReadConsentRequest,
+) -> BridgeResult<serde_json::Value> {
+    let ids: Vec<&str> = req.ids.iter().map(|s| s.as_str()).collect();
+    match rest.read_consent(&req.action, &ids).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_write_consent(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: WriteConsentRequest,
+) -> BridgeResult<()> {
+    let sf_request = busbar_sf_rest::ConsentWriteRequest {
+        records: req
+            .records
+            .into_iter()
+            .map(|r| busbar_sf_rest::ConsentWriteRecord {
+                id: r.id,
+                result: r.result,
+            })
+            .collect(),
+    };
+    match rest.write_consent(&req.action, &sf_request).await {
+        Ok(()) => BridgeResult::ok(()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_read_multi_consent(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: ReadMultiConsentRequest,
+) -> BridgeResult<serde_json::Value> {
+    let actions: Vec<&str> = req.actions.iter().map(|s| s.as_str()).collect();
+    let ids: Vec<&str> = req.ids.iter().map(|s| s.as_str()).collect();
+    match rest.read_multi_consent(&actions, &ids).await {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Binary
+// =============================================================================
+
+pub async fn handle_get_blob(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetBlobRequest,
+) -> BridgeResult<GetBlobResponse> {
+    match rest.get_blob(&req.sobject, &req.id, &req.field).await {
+        Ok(bytes) => {
+            let encoded = general_purpose::STANDARD.encode(&bytes);
+            BridgeResult::ok(GetBlobResponse {
+                data_base64: encoded,
+            })
+        }
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_get_rich_text_image(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetRichTextImageRequest,
+) -> BridgeResult<GetRichTextImageResponse> {
+    match rest
+        .get_rich_text_image(&req.sobject, &req.id, &req.field, &req.content_reference_id)
+        .await
+    {
+        Ok(bytes) => {
+            let encoded = general_purpose::STANDARD.encode(&bytes);
+            BridgeResult::ok(GetRichTextImageResponse {
+                data_base64: encoded,
+            })
+        }
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_get_relationship(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetRelationshipRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest
+        .get_relationship::<serde_json::Value>(&req.sobject, &req.id, &req.relationship_name)
+        .await
+    {
+        Ok(result) => BridgeResult::ok(result),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Embedded Service
+// =============================================================================
+
+pub async fn handle_get_embedded_service_config(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: GetRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.get_embedded_service_config(&req.id).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Search Enhancements
+// =============================================================================
+
+pub async fn handle_parameterized_search(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: serde_json::Value,
+) -> BridgeResult<serde_json::Value> {
+    let sf_request: busbar_sf_rest::ParameterizedSearchRequest = match serde_json::from_value(req) {
+        Ok(r) => r,
+        Err(e) => return BridgeResult::err("INVALID_REQUEST", e.to_string()),
+    };
+    match rest.parameterized_search(&sf_request).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_search_suggestions(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: SearchSuggestionsRequest,
+) -> BridgeResult<serde_json::Value> {
+    match rest.search_suggestions(&req.query, &req.sobject).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_search_scope_order(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    match rest.search_scope_order().await {
+        Ok(result) => BridgeResult::ok(
+            result
+                .into_iter()
+                .map(|s| serde_json::to_value(s).unwrap())
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+pub async fn handle_search_result_layouts(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: SearchResultLayoutsRequest,
+) -> BridgeResult<Vec<serde_json::Value>> {
+    let sobjects: Vec<&str> = req.sobjects.iter().map(|s| s.as_str()).collect();
+    match rest.search_result_layouts(&sobjects).await {
+        Ok(result) => BridgeResult::ok(
+            result
+                .into_iter()
+                .map(|s| serde_json::to_value(s).unwrap())
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
+
+// =============================================================================
+// Priority 2: Composite Enhancement
+// =============================================================================
+
+pub async fn handle_composite_graph(
+    rest: &busbar_sf_rest::SalesforceRestClient,
+    req: serde_json::Value,
+) -> BridgeResult<serde_json::Value> {
+    let sf_request: busbar_sf_rest::CompositeGraphRequest = match serde_json::from_value(req) {
+        Ok(r) => r,
+        Err(e) => return BridgeResult::err("INVALID_REQUEST", e.to_string()),
+    };
+    match rest.composite_graph(&sf_request).await {
+        Ok(result) => BridgeResult::ok(serde_json::to_value(result).unwrap()),
+        Err(e) => {
+            let (code, msg) = sanitize_rest_error(&e);
+            BridgeResult::err(code, msg)
+        }
+    }
+}
