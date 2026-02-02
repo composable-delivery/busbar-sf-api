@@ -8,6 +8,8 @@
 //! - **Metadata Query** - Query ApexClass, ApexTrigger, and other tooling objects
 //! - **Debug Logs** - Retrieve and manage debug logs
 //! - **Trace Flags** - Manage debug trace flags
+//! - **Test Execution** - Run Apex and Flow tests (async/sync, discovery, v65.0+ unified API)
+//! - **Code Coverage** - Get code coverage information
 //! - **Describe** - Get tooling object metadata
 //!
 //! ## Example
@@ -60,4 +62,5 @@ pub use busbar_sf_rest::{
     CompositeBatchSubrequest, CompositeBatchSubresponse, CompositeRequest, CompositeResponse,
     CompositeSubrequest, CompositeSubresponse, CompositeTreeAttributes, CompositeTreeError,
     CompositeTreeRecord, CompositeTreeRequest, CompositeTreeResponse, CompositeTreeResult,
+    DescribeGlobalResult, DescribeSObjectResult,
 };

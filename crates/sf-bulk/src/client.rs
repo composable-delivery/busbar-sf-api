@@ -522,6 +522,162 @@ impl BulkApiClient {
         Ok(all_results)
     }
 
+    /// Get a batch of parallel result URLs for concurrent download (GA since API v62.0+).
+    ///
+    /// Returns up to 5 result URLs per call that can be downloaded concurrently,
+    /// dramatically reducing download time for large datasets.
+    ///
+    /// # Arguments
+    ///
+    /// * `job_id` - The query job ID
+    /// * `max_records` - Optional maximum number of result URLs to return (up to 5)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::BulkApiClient;
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // Get first batch of result URLs
+    /// let batch = client.get_parallel_query_results(job_id, None).await?;
+    ///
+    /// // For simple use cases, prefer the high-level method:
+    /// let csv_data = client.get_all_query_results_parallel(job_id).await?;
+    /// ```
+    ///
+    /// # API Version
+    ///
+    /// This endpoint requires API version 62.0 or higher (Winter '25+).
+    #[instrument(skip(self))]
+    pub async fn get_parallel_query_results(
+        &self,
+        job_id: &str,
+        max_records: Option<u32>,
+    ) -> Result<ParallelResultsBatch> {
+        let mut url = format!(
+            "{}/{}/parallelResults",
+            self.client.bulk_url("query"),
+            job_id
+        );
+
+        if let Some(max) = max_records {
+            url = format!("{}?maxRecords={}", url, max);
+        }
+
+        let batch: ParallelResultsBatch = self.client.get_json(&url).await?;
+        Ok(batch)
+    }
+
+    /// Normalize a URL that may be relative or absolute.
+    fn normalize_url(&self, url: &str) -> String {
+        if url.starts_with('/') {
+            format!("{}{}", self.client.instance_url(), url)
+        } else if url.starts_with("http") {
+            url.to_string()
+        } else {
+            format!("{}/{}", self.client.instance_url(), url)
+        }
+    }
+
+    /// Get all query results using parallel download (high-level convenience).
+    ///
+    /// This method fetches all result pages concurrently using the parallel results
+    /// endpoint (GA since API v62.0+), which can dramatically reduce download time
+    /// for large datasets compared to serial pagination.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bulk::{BulkApiClient, QueryBuilder};
+    ///
+    /// let client = BulkApiClient::new(instance_url, access_token)?;
+    ///
+    /// // Execute query
+    /// let result = client.execute_query(
+    ///     QueryBuilder::new("Account")?
+    ///         .select(&["Id", "Name"])
+    ///         .limit(100000)
+    /// ).await?;
+    ///
+    /// // Get all results in parallel
+    /// let csv_data = client.get_all_query_results_parallel(&result.job.id).await?;
+    /// ```
+    ///
+    /// # API Version
+    ///
+    /// This method requires API version 62.0 or higher (Winter '25+).
+    #[instrument(skip(self))]
+    pub async fn get_all_query_results_parallel(&self, job_id: &str) -> Result<String> {
+        use futures::future::join_all;
+
+        let mut all_results = String::new();
+        let mut first_batch = true;
+
+        // Fetch all batches of result URLs
+        let mut next_batch_url: Option<String> = None;
+        loop {
+            // Get batch of result URLs
+            let batch = if let Some(url) = next_batch_url.take() {
+                let normalized_url = self.normalize_url(&url);
+                self.client.get_json(&normalized_url).await?
+            } else {
+                self.get_parallel_query_results(job_id, None).await?
+            };
+
+            // Download all URLs in this batch concurrently
+            let download_tasks: Vec<_> = batch
+                .result_url
+                .into_iter()
+                .map(|url| {
+                    let client = &self.client;
+                    let full_url = self.normalize_url(&url);
+                    async move {
+                        let request = client.get(&full_url).header("Accept", "text/csv");
+                        let response = client.execute(request).await?;
+
+                        if !response.is_success() {
+                            return Err(Error::new(ErrorKind::Api(format!(
+                                "Failed to get parallel result: status {}",
+                                response.status()
+                            ))));
+                        }
+
+                        response.text().await.map_err(Into::into)
+                    }
+                })
+                .collect();
+
+            let results: Vec<Result<String>> = join_all(download_tasks).await;
+
+            // Combine results
+            for (i, result) in results.into_iter().enumerate() {
+                let csv_data = result?;
+
+                if first_batch && i == 0 {
+                    // First chunk includes header
+                    all_results = csv_data;
+                    first_batch = false;
+                } else if let Some(newline_pos) = csv_data.find('\n') {
+                    // Skip header row for subsequent chunks (more efficient than lines().skip(1))
+                    if !all_results.is_empty() {
+                        all_results.push('\n');
+                    }
+                    all_results.push_str(&csv_data[newline_pos + 1..]);
+                }
+            }
+
+            // Check if there are more batches
+            if let Some(next_url) = batch.next_records_url {
+                next_batch_url = Some(next_url);
+            } else {
+                break;
+            }
+        }
+
+        Ok(all_results)
+    }
+
     /// Delete a query job.
     #[instrument(skip(self))]
     pub async fn delete_query_job(&self, job_id: &str) -> Result<()> {
@@ -622,5 +778,154 @@ mod tests {
             .with_max_wait(Duration::from_secs(120));
 
         assert_eq!(client.max_wait, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn test_normalize_url_relative() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url("/services/data/v62.0/jobs/query/750xx/results/1"),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_absolute() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url(
+                "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+            ),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_bare_path() {
+        let client = BulkApiClient::new("https://na1.salesforce.com", "token").unwrap();
+        assert_eq!(
+            client.normalize_url("services/data/v62.0/jobs/query/750xx/results/1"),
+            "https://na1.salesforce.com/services/data/v62.0/jobs/query/750xx/results/1"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_parallel_query_results_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx000000001/results/1",
+                "/services/data/v62.0/jobs/query/750xx000000001/results/2"
+            ],
+            "nextRecordsUrl": null
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000001/parallelResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let batch = client
+            .get_parallel_query_results("750xx000000001", None)
+            .await
+            .expect("get_parallel_query_results should succeed");
+
+        assert_eq!(batch.result_url.len(), 2);
+        assert!(batch.result_url[0].contains("results/1"));
+        assert!(batch.result_url[1].contains("results/2"));
+        assert!(batch.next_records_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_parallel_query_results_with_max_records() {
+        use wiremock::matchers::{method, path_regex, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                "/services/data/v62.0/jobs/query/750xx000000002/results/1"
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000002/parallelResults"))
+            .and(query_param("maxRecords", "3"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let batch = client
+            .get_parallel_query_results("750xx000000002", Some(3))
+            .await
+            .expect("get_parallel_query_results with maxRecords should succeed");
+
+        assert_eq!(batch.result_url.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_query_results_parallel_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock parallel results endpoint
+        let response_body = serde_json::json!({
+            "resultUrl": [
+                format!("{}/services/data/v62.0/jobs/query/750xx000000003/results/1", mock_server.uri()),
+                format!("{}/services/data/v62.0/jobs/query/750xx000000003/results/2", mock_server.uri())
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/jobs/query/750xx000000003/parallelResults"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&mock_server)
+            .await;
+
+        // Mock result URL 1
+        Mock::given(method("GET"))
+            .and(path_regex(".*/results/1$"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("Id,Name\n001xx1,Account One\n001xx2,Account Two"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Mock result URL 2
+        Mock::given(method("GET"))
+            .and(path_regex(".*/results/2$"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("Id,Name\n001xx3,Account Three\n001xx4,Account Four"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = BulkApiClient::new(mock_server.uri(), "test-token").unwrap();
+
+        let csv = client
+            .get_all_query_results_parallel("750xx000000003")
+            .await
+            .expect("get_all_query_results_parallel should succeed");
+
+        // First chunk has header, subsequent chunks have header stripped
+        assert!(csv.contains("Id,Name"));
+        assert!(csv.contains("Account One"));
+        assert!(csv.contains("Account Two"));
+        assert!(csv.contains("Account Three"));
+        assert!(csv.contains("Account Four"));
     }
 }

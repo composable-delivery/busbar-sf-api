@@ -9,8 +9,8 @@ coverage:
         threshold: 1%
     patch:
       default:
-        # New code in PRs should have at least 50% coverage
-        target: 50%
+        # New code in PRs should have at least 80% coverage
+        target: 80%
 
 flags:
   unit-tests:
@@ -27,3 +27,4 @@ flags:
 ignore:
   - "tests/"
   - "examples/"
+  - "src/bin/"

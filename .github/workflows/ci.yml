@@ -20,7 +20,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -31,7 +31,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -43,26 +43,26 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
 
-      - name: Run unit tests with coverage
-        run: cargo llvm-cov --workspace --all-features --lib --no-report
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
 
-      - name: Generate LCOV report
-        if: always()
-        run: cargo llvm-cov report --lcov --output-path lcov-unit.info
+      - name: Run unit tests with coverage
+        run: cargo llvm-cov --workspace --all-features --lib --lcov --output-path lcov-unit.info
 
       - name: Run doc tests
+        if: always()
         run: cargo test --workspace --doc
 
       - name: Generate summary
         if: always()
         run: |
           echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
@@ -70,6 +70,7 @@ jobs:
         with:
           files: lcov-unit.info
           flags: unit-tests
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -79,7 +80,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --workspace --no-deps --all-features
@@ -91,7 +92,7 @@ jobs:
     name: MSRV
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.88"
@@ -104,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: scratch
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
@@ -118,16 +119,18 @@ jobs:
             exit 1
           fi
 
+      - name: Setup scratch org test data
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo run --bin setup-scratch-org
+
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
       - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov --workspace --all-features --test integration --no-report -- --nocapture
-
-      - name: Generate LCOV report
-        if: always()
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov report --lcov --output-path lcov-integration.info
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
       - name: Generate summary
         if: always()
@@ -135,7 +138,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
@@ -143,6 +146,7 @@ jobs:
         with:
           files: lcov-integration.info
           flags: integration-tests
+          disable_search: true
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

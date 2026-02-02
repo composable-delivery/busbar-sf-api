@@ -140,6 +140,46 @@ pub struct CompositeTreeError {
     pub fields: Vec<String>,
 }
 
+/// A composite graph request for executing multiple dependent operations.
+///
+/// Allows multiple independent graphs that each contain composite subrequests.
+/// Available since API v50.0.
+#[derive(Debug, Clone, Serialize)]
+pub struct CompositeGraphRequest {
+    pub graphs: Vec<GraphRequest>,
+}
+
+/// A single graph within a composite graph request.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphRequest {
+    pub graph_id: String,
+    pub composite_request: Vec<CompositeSubrequest>,
+}
+
+/// Response from a composite graph request.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompositeGraphResponse {
+    pub graphs: Vec<GraphResponse>,
+}
+
+/// Response from a single graph.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphResponse {
+    pub graph_id: String,
+    pub graph_response: GraphResponseBody,
+    pub is_successful: bool,
+}
+
+/// Body of a graph response containing the composite responses.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphResponseBody {
+    #[serde(rename = "compositeResponse")]
+    pub responses: Vec<CompositeSubresponse>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,5 +353,56 @@ mod tests {
             Some("001xx000003Dgb2AAC".to_string())
         );
         assert!(response.results[0].errors.is_empty());
+    }
+
+    #[test]
+    fn test_composite_graph_request_serialization() {
+        let request = CompositeGraphRequest {
+            graphs: vec![GraphRequest {
+                graph_id: "graph1".to_string(),
+                composite_request: vec![CompositeSubrequest {
+                    method: "POST".to_string(),
+                    url: "/services/data/v62.0/sobjects/Account".to_string(),
+                    reference_id: "Account1".to_string(),
+                    body: Some(json!({"Name": "Test"})),
+                }],
+            }],
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["graphs"][0]["graphId"], "graph1");
+        assert_eq!(json["graphs"][0]["compositeRequest"][0]["method"], "POST");
+    }
+
+    #[test]
+    fn test_composite_graph_response_deserialization() {
+        let json = json!({
+            "graphs": [
+                {
+                    "graphId": "graph1",
+                    "graphResponse": {
+                        "compositeResponse": [
+                            {
+                                "body": {"id": "001xx1", "success": true, "errors": []},
+                                "httpHeaders": {},
+                                "httpStatusCode": 201,
+                                "referenceId": "Account1"
+                            }
+                        ]
+                    },
+                    "isSuccessful": true
+                }
+            ]
+        });
+
+        let response: CompositeGraphResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(response.graphs.len(), 1);
+        assert!(response.graphs[0].is_successful);
+        assert_eq!(response.graphs[0].graph_id, "graph1");
+        assert_eq!(response.graphs[0].graph_response.responses.len(), 1);
+        assert_eq!(
+            response.graphs[0].graph_response.responses[0].http_status_code,
+            201
+        );
     }
 }

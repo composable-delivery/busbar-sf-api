@@ -42,6 +42,13 @@ bulk = ["auth", "dep:busbar-sf-bulk"]
 metadata = ["auth", "dep:busbar-sf-metadata"]
 tooling = ["auth", "dep:busbar-sf-tooling"]
 
+# Optional feature for MetadataComponentDependency support in tooling and bulk APIs
+dependencies = [
+    "busbar-sf-client/dependencies",
+    "busbar-sf-tooling/dependencies",
+    "busbar-sf-bulk/dependencies"
+]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -58,6 +65,14 @@ chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing-subscriber.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+
+[[bin]]
+name = "setup-scratch-org"
+path = "src/bin/setup_scratch_org.rs"
 
 [dev-dependencies]
 busbar-sf-bridge = { workspace = true }
@@ -67,7 +82,7 @@ name = "integration"
 path = "tests/integration.rs"
 
 [workspace.package]
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/composable-delivery/busbar-sf-api"
@@ -112,7 +127,7 @@ uuid = { version = "1.10", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 bytes = "1.7"
 tempfile = "3.12"
-zip = "2.2"
+zip = "7.2"
 dirs = "6.0"
 
 # Crypto (for JWT)
@@ -125,14 +140,13 @@ mockito = "1.5"
 tokio-test = "0.4"
 
 # Internal crates (busbar-sf-* naming, directory names stay as sf-*)
-busbar-sf-client = { version = "0.0.2", path = "crates/sf-client" }
-busbar-sf-auth = { version = "0.0.2", path = "crates/sf-auth" }
-busbar-sf-rest = { version = "0.0.2", path = "crates/sf-rest" }
-busbar-sf-bulk = { version = "0.0.2", path = "crates/sf-bulk" }
-busbar-sf-metadata = { version = "0.0.2", path = "crates/sf-metadata" }
-busbar-sf-tooling = { version = "0.0.2", path = "crates/sf-tooling" }
-busbar-sf-wasm-types = { version = "0.0.2", path = "crates/sf-wasm-types" }
-busbar-sf-bridge = { version = "0.0.2", path = "crates/sf-bridge" }
+busbar-sf-client = { version = "0.0.3", path = "crates/sf-client" }
+busbar-sf-auth = { version = "0.0.3", path = "crates/sf-auth" }
+busbar-sf-rest = { version = "0.0.3", path = "crates/sf-rest" }
+busbar-sf-bulk = { version = "0.0.3", path = "crates/sf-bulk" }
+busbar-sf-metadata = { version = "0.0.3", path = "crates/sf-metadata" }
+busbar-sf-wasm-types = { version = "0.0.3", path = "crates/sf-wasm-types" }
+busbar-sf-tooling = { version = "0.0.3", path = "crates/sf-tooling" }
 
 [profile.release]
 lto = true

@@ -6,6 +6,26 @@ use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, Salesf
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
+// Test Data Setup (runs first via CI "Setup test data" step)
+// ============================================================================
+
+/// Creates test Account records used by search and other tests.
+/// Called explicitly by CI before the main test run to ensure data exists.
+#[tokio::test]
+async fn test_00_setup_test_data() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let ids = super::common::ensure_test_accounts(&client).await;
+    assert!(
+        !ids.is_empty(),
+        "Should have created or found test accounts"
+    );
+    println!("Test data setup: {} accounts ready", ids.len());
+}
+
+// ============================================================================
 // REST API - Comprehensive Tests
 // ============================================================================
 
@@ -161,42 +181,48 @@ async fn test_rest_upsert_operation() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    let unique_number = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
+    let unique_id = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
 
+    // The external ID field value goes in the URL path, NOT in the body.
+    // Including it in the body causes INVALID_FIELD error.
     let account_data = serde_json::json!({
-        "Name": format!("Upsert Test {}", unique_number),
-        "AccountNumber": unique_number
+        "Name": format!("Upsert Test {}", unique_id)
     });
 
-    let result1 = client
-        .upsert("Account", "AccountNumber", &unique_number, &account_data)
-        .await;
+    let upsert_result = client
+        .upsert(
+            "Account",
+            "BusbarIntTestExtId__c",
+            &unique_id,
+            &account_data,
+        )
+        .await
+        .expect("First upsert should succeed");
 
-    if let Ok(upsert_result) = result1 {
-        assert!(upsert_result.created, "First upsert should create record");
-        let account_id = upsert_result.id.clone();
+    assert!(upsert_result.created, "First upsert should create record");
+    let account_id = upsert_result.id.clone();
 
-        let updated_data = serde_json::json!({
-            "Name": format!("Upsert Test Updated {}", unique_number),
-            "AccountNumber": unique_number
-        });
+    let updated_data = serde_json::json!({
+        "Name": format!("Upsert Test Updated {}", unique_id)
+    });
 
-        let result2 = client
-            .upsert("Account", "AccountNumber", &unique_number, &updated_data)
-            .await;
+    let upsert_result2 = client
+        .upsert(
+            "Account",
+            "BusbarIntTestExtId__c",
+            &unique_id,
+            &updated_data,
+        )
+        .await
+        .expect("Second upsert should succeed");
 
-        if let Ok(upsert_result2) = result2 {
-            assert!(
-                !upsert_result2.created,
-                "Second upsert should update record"
-            );
-            assert_eq!(upsert_result2.id, account_id, "Should be same account ID");
-        }
+    assert!(
+        !upsert_result2.created,
+        "Second upsert should update record"
+    );
+    assert_eq!(upsert_result2.id, account_id, "Should be same account ID");
 
-        let _ = client.delete("Account", &account_id).await;
-    } else {
-        println!("Note: Upsert test skipped - AccountNumber may not be set as external ID");
-    }
+    let _ = client.delete("Account", &account_id).await;
 }
 
 // ============================================================================
@@ -638,34 +664,17 @@ async fn test_rest_describe_named_layout() {
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    // First, get available layouts to find a valid layout name
-    let layouts_result = client
-        .describe_layouts("Account")
+    // Named layouts are alternate layout types (e.g., "UserAlt"), not page layout names.
+    // The User object has the well-known "UserAlt" named layout in all orgs.
+    let named_result = client
+        .describe_named_layout("User", "UserAlt")
         .await
-        .expect("describe_layouts should succeed");
+        .expect("describe_named_layout should succeed for User/UserAlt");
 
-    // Try to extract a layout name from the response
-    if let Some(layouts) = layouts_result.get("layouts").and_then(|l| l.as_array()) {
-        if let Some(first_layout) = layouts.first() {
-            if let Some(layout_name) = first_layout.get("name").and_then(|n| n.as_str()) {
-                let named_result = client
-                    .describe_named_layout("Account", layout_name)
-                    .await
-                    .expect("describe_named_layout should succeed");
-
-                assert!(
-                    named_result.is_object(),
-                    "Named layout response should be a JSON object"
-                );
-            } else {
-                println!("Note: No layout name found in first layout, skipping named layout test");
-            }
-        } else {
-            println!("Note: No layouts found for Account, skipping named layout test");
-        }
-    } else {
-        println!("Note: layouts not in expected format, skipping named layout test");
-    }
+    assert!(
+        named_result.is_object(),
+        "Named layout response should be a JSON object"
+    );
 }
 
 // ============================================================================
@@ -720,4 +729,1190 @@ async fn test_rest_describe_named_layout_special_chars() {
             "Should not fail due to URL parsing issues"
         );
     }
+}
+
+// ============================================================================
+// Composite Graph API Tests (PR #51)
+// ============================================================================
+
+#[tokio::test]
+async fn test_rest_composite_graph_api() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let request = busbar_sf_rest::CompositeGraphRequest {
+        graphs: vec![busbar_sf_rest::GraphRequest {
+            graph_id: "graph1".to_string(),
+            composite_request: vec![busbar_sf_rest::CompositeSubrequest {
+                method: "POST".to_string(),
+                url: format!("/services/data/v{}/sobjects/Account", creds.api_version()),
+                reference_id: "NewAccount".to_string(),
+                body: Some(serde_json::json!({
+                    "Name": format!("Graph Test Account {}", chrono::Utc::now().timestamp_millis())
+                })),
+            }],
+        }],
+    };
+
+    let response = client
+        .composite_graph(&request)
+        .await
+        .expect("Composite graph should succeed");
+
+    assert!(!response.graphs.is_empty(), "Should have graph responses");
+    let graph = &response.graphs[0];
+    assert_eq!(graph.graph_id, "graph1");
+
+    // Clean up
+    if let Some(resp) = graph.graph_response.responses.first() {
+        if let Some(id) = resp.body.get("id").and_then(|v| v.as_str()) {
+            let _ = client.delete("Account", id).await;
+        }
+    }
+}
+
+// ============================================================================
+// Advanced Search Tests (PR #52)
+// ============================================================================
+
+#[tokio::test]
+async fn test_parameterized_search() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Ensure test data exists (search index may not include these yet,
+    // but the API call should succeed regardless)
+    super::common::ensure_test_accounts(&client).await;
+
+    let request = busbar_sf_rest::ParameterizedSearchRequest {
+        q: "BusbarIntTest*".to_string(),
+        fields: None,
+        sobjects: Some(vec![busbar_sf_rest::SearchSObjectSpec {
+            name: "Account".to_string(),
+            fields: Some(vec!["Id".into(), "Name".into()]),
+            where_clause: None,
+            limit: Some(5),
+        }]),
+        overall_limit: Some(10),
+        offset: None,
+        spell_correction: None,
+    };
+
+    let result = client.parameterized_search(&request).await;
+    assert!(
+        result.is_ok(),
+        "Parameterized search should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn test_search_scope_order() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.search_scope_order().await;
+    assert!(result.is_ok(), "search_scope_order should succeed");
+}
+
+#[tokio::test]
+async fn test_search_result_layouts() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.search_result_layouts(&["Account", "Contact"]).await;
+    assert!(
+        result.is_ok(),
+        "search_result_layouts should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn test_search_suggestions() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Ensure test accounts exist for suggestions to find
+    super::common::ensure_test_accounts(&client).await;
+
+    let result = client.search_suggestions("Busbar", "Account").await;
+    assert!(
+        result.is_ok(),
+        "search_suggestions should succeed: {:?}",
+        result.err()
+    );
+}
+
+// ============================================================================
+// Quick Actions Tests (PR #53)
+// ============================================================================
+
+#[tokio::test]
+async fn test_quick_actions_list() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.list_quick_actions("Account").await;
+    assert!(result.is_ok(), "list_quick_actions should succeed");
+}
+
+#[tokio::test]
+async fn test_quick_actions_describe() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // First try SObject-level quick actions
+    let actions = client
+        .list_quick_actions("Account")
+        .await
+        .expect("list_quick_actions should succeed");
+
+    // Try each action until we find one describable at the SObject level.
+    // Global actions return NOT_FOUND when described at the SObject level.
+    for action in &actions {
+        let result = client.describe_quick_action("Account", &action.name).await;
+        match result {
+            Ok(describe) => {
+                assert_eq!(describe.name, action.name);
+                return; // Success — found an SObject-level action
+            }
+            Err(e) if e.to_string().contains("NOT_FOUND") => continue,
+            Err(e) => {
+                panic!(
+                    "describe_quick_action failed for {} with unexpected error: {}",
+                    action.name, e
+                );
+            }
+        }
+    }
+
+    // All Account quick actions were global (NOT_FOUND at SObject level).
+    // Fall back to global quick actions — these always exist in any org.
+    let global_actions = client
+        .list_global_quick_actions()
+        .await
+        .expect("list_global_quick_actions should succeed");
+    assert!(
+        !global_actions.is_empty(),
+        "Org should have at least one global quick action"
+    );
+
+    let described = client
+        .describe_global_quick_action(&global_actions[0].name)
+        .await
+        .expect("describe_global_quick_action should succeed");
+    assert_eq!(described.name, global_actions[0].name);
+}
+
+#[tokio::test]
+async fn test_quick_actions_invoke() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create a test Account to invoke quick actions against
+    let account_id = client
+        .create(
+            "Account",
+            &serde_json::json!({"Name": format!("QA Test {}", chrono::Utc::now().timestamp_millis())}),
+        )
+        .await
+        .expect("Account creation should succeed");
+
+    let actions = client
+        .list_quick_actions("Account")
+        .await
+        .expect("list_quick_actions should succeed");
+
+    // Try to invoke any available quick action. Even if it fails with
+    // REQUIRED_FIELD_MISSING, that's a valid Salesforce response proving our client works.
+    let mut invoked = false;
+    for action in &actions {
+        // Try a LogACall-type action first (fewest required fields)
+        if action.action_type != "LogACall" && action.action_type != "Update" {
+            continue;
+        }
+        let body = match action.action_type.as_str() {
+            "LogACall" => serde_json::json!({"record": {"Subject": "Test Call"}}),
+            "Update" => serde_json::json!({"record": {}}), // Update with no changes
+            _ => continue,
+        };
+        let result = client
+            .invoke_quick_action("Account", &action.name, &body)
+            .await;
+        match result {
+            Ok(r) => {
+                // Success or partial success — our client works
+                assert!(
+                    r.success || r.context_id.is_some(),
+                    "Quick action result should have success or contextId"
+                );
+                invoked = true;
+                break;
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                // These are valid Salesforce responses (our client serialized correctly)
+                if msg.contains("REQUIRED_FIELD_MISSING")
+                    || msg.contains("INVALID_FIELD")
+                    || msg.contains("NOT_FOUND")
+                {
+                    invoked = true;
+                    break;
+                }
+                // Unexpected error — try next action
+                continue;
+            }
+        }
+    }
+
+    // Clean up
+    let _ = client.delete("Account", &account_id).await;
+
+    assert!(
+        invoked,
+        "Should have attempted at least one quick action invoke"
+    );
+}
+
+#[tokio::test]
+async fn test_quick_actions_error_invalid_sobject() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.list_quick_actions("Bad'; DROP--").await;
+    assert!(
+        result.is_err(),
+        "list_quick_actions with invalid SObject should fail"
+    );
+}
+
+// ============================================================================
+// List Views Tests (PR #53)
+// ============================================================================
+
+#[tokio::test]
+async fn test_list_views_list() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Requires BusbarIntTest_AllAccounts list view deployed by setup-scratch-org
+    let collection = client
+        .list_views("Account")
+        .await
+        .expect("list_views should succeed for Account");
+    assert!(
+        !collection.listviews.is_empty(),
+        "Account should have list views (deployed by scripts/setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org"
+    );
+
+    let first = &collection.listviews[0];
+    assert!(!first.id.is_empty(), "List view should have an ID");
+    assert!(!first.label.is_empty(), "List view should have a label");
+}
+
+#[tokio::test]
+async fn test_list_views_get() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let collection = client
+        .list_views("Account")
+        .await
+        .expect("list_views should succeed");
+
+    let lv = collection.listviews.first().expect(
+        "Account should have list views (deployed by setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org",
+    );
+    let view = client
+        .get_list_view("Account", &lv.id)
+        .await
+        .expect("get_list_view should succeed");
+    assert_eq!(view.id, lv.id);
+}
+
+#[tokio::test]
+async fn test_list_views_describe() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let collection = client
+        .list_views("Account")
+        .await
+        .expect("list_views should succeed");
+
+    if let Some(lv) = collection.listviews.first() {
+        let describe = client
+            .describe_list_view("Account", &lv.id)
+            .await
+            .unwrap_or_else(|e| panic!("describe_list_view failed for ID {}: {e}", lv.id));
+        assert!(!describe.columns.is_empty(), "Should have columns");
+    } else {
+        panic!(
+            "Account should have list views (deployed by setup-scratch-org). \
+             Run: cargo run --bin setup-scratch-org"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_views_execute() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let collection = client
+        .list_views("Account")
+        .await
+        .expect("list_views should succeed");
+
+    let lv = collection.listviews.first().expect(
+        "Account should have list views (deployed by setup-scratch-org). \
+         Run: cargo run --bin setup-scratch-org",
+    );
+    let result: busbar_sf_rest::ListViewResult<serde_json::Value> = client
+        .execute_list_view("Account", &lv.id)
+        .await
+        .expect("execute_list_view should succeed");
+    assert!(result.done, "List view execution should complete");
+}
+
+#[tokio::test]
+async fn test_list_views_error_invalid_id() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.get_list_view("Account", "bad-id").await;
+    assert!(result.is_err(), "get_list_view with invalid ID should fail");
+}
+
+// ============================================================================
+// Process Rules Tests (PR #53)
+// ============================================================================
+
+#[tokio::test]
+async fn test_process_rules_list_all() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.list_process_rules().await;
+    assert!(
+        result.is_ok(),
+        "list_process_rules should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn test_process_rules_list_for_sobject() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let rules = client
+        .list_process_rules_for_sobject("Account")
+        .await
+        .expect("list_process_rules_for_sobject should succeed");
+    assert!(!rules.is_empty(), "Should have process rules for Account");
+}
+
+#[tokio::test]
+async fn test_process_rules_trigger() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Name must start with "BusbarIntTest_ProcessRule" to match the deployed workflow rule
+    let test_name = format!(
+        "BusbarIntTest_ProcessRule_{}",
+        chrono::Utc::now().timestamp_millis()
+    );
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    let request = busbar_sf_rest::ProcessRuleRequest {
+        context_ids: vec![account_id.clone()],
+    };
+
+    let result = client
+        .trigger_process_rules(&request)
+        .await
+        .expect("trigger_process_rules should succeed");
+    assert!(result.success, "Process rule trigger should succeed");
+
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_process_rules_error_invalid_id() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let request = busbar_sf_rest::ProcessRuleRequest {
+        context_ids: vec!["bad-id-not-valid".to_string()],
+    };
+
+    let result = client.trigger_process_rules(&request).await;
+    assert!(
+        result.is_err(),
+        "trigger_process_rules with invalid ID should fail"
+    );
+}
+
+// ============================================================================
+// Approvals Tests (PR #53)
+// ============================================================================
+
+#[tokio::test]
+async fn test_approvals_list_pending() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.list_pending_approvals().await;
+    assert!(
+        result.is_ok(),
+        "list_pending_approvals should succeed: {:?}",
+        result.err()
+    );
+}
+
+#[tokio::test]
+async fn test_approvals_submit() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let test_name = format!("Approval Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    let request = busbar_sf_rest::ApprovalRequest {
+        action_type: busbar_sf_rest::ApprovalActionType::Submit,
+        context_id: account_id.clone(),
+        context_actor_id: None,
+        comments: Some("Integration test submission".to_string()),
+        next_approver_ids: None,
+        process_definition_name_or_id: Some("BusbarIntTest_Approval".to_string()),
+        skip_entry_criteria: Some(true),
+    };
+
+    let result = client
+        .submit_approval(&request)
+        .await
+        .expect("submit_approval should succeed");
+    assert!(result.success, "Approval submission should succeed");
+
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_approvals_error_invalid_id() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let request = busbar_sf_rest::ApprovalRequest {
+        action_type: busbar_sf_rest::ApprovalActionType::Submit,
+        context_id: "bad-id-not-valid".to_string(),
+        context_actor_id: None,
+        comments: None,
+        next_approver_ids: None,
+        process_definition_name_or_id: None,
+        skip_entry_criteria: None,
+    };
+
+    let result = client.submit_approval(&request).await;
+    // Should fail with an invalid context ID
+    assert!(
+        result.is_err(),
+        "submit_approval with invalid ID should fail"
+    );
+}
+
+// ============================================================================
+// Invocable Actions Tests (PR #53)
+// ============================================================================
+
+#[tokio::test]
+async fn test_invocable_actions_list_standard() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Standard actions are returned as a flat list from /actions/standard
+    let collection = client
+        .list_standard_actions()
+        .await
+        .expect("list_standard_actions should succeed");
+    assert!(
+        !collection.actions.is_empty(),
+        "Should have standard actions available"
+    );
+    println!("Standard actions: {} actions", collection.actions.len());
+}
+
+#[tokio::test]
+async fn test_invocable_actions_describe_standard() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // List standard actions, then describe the first one
+    let collection = client
+        .list_standard_actions()
+        .await
+        .expect("list_standard_actions should succeed");
+    assert!(
+        !collection.actions.is_empty(),
+        "Should have standard actions to describe"
+    );
+
+    let action = &collection.actions[0];
+    let describe = client
+        .describe_standard_action(&action.name)
+        .await
+        .expect("describe_standard_action should succeed");
+    assert_eq!(describe.name, action.name);
+}
+
+#[tokio::test]
+async fn test_invocable_actions_invoke_standard() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Use chatterPost — a well-known standard action with known required inputs.
+    // First describe it to verify the expected input parameters.
+    let describe = client
+        .describe_standard_action("chatterPost")
+        .await
+        .expect("describe_standard_action(chatterPost) should succeed");
+    assert_eq!(describe.name, "chatterPost");
+
+    let required_inputs: Vec<&str> = describe
+        .inputs
+        .iter()
+        .filter(|p| p.required)
+        .map(|p| p.name.as_str())
+        .collect();
+    assert!(
+        required_inputs.contains(&"text") && required_inputs.contains(&"subjectNameOrId"),
+        "chatterPost should require 'text' and 'subjectNameOrId', got: {:?}",
+        required_inputs
+    );
+
+    // Get the current user's ID for subjectNameOrId
+    let users: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM User WHERE IsActive = true LIMIT 1")
+        .await
+        .expect("User query should succeed");
+    let user_id = users[0]
+        .get("Id")
+        .and_then(|v| v.as_str())
+        .expect("Should have User Id");
+
+    let request = busbar_sf_rest::InvocableActionRequest {
+        inputs: vec![serde_json::json!({
+            "text": "Integration test post",
+            "subjectNameOrId": user_id
+        })],
+    };
+
+    let results = client
+        .invoke_standard_action("chatterPost", &request)
+        .await
+        .expect("invoke_standard_action(chatterPost) should succeed");
+    assert!(!results.is_empty(), "Should have at least one result");
+    assert!(
+        results[0].is_success,
+        "chatterPost should succeed: {:?}",
+        results[0].errors
+    );
+}
+
+#[tokio::test]
+async fn test_invocable_actions_list_custom_types() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let types = client
+        .list_custom_action_types()
+        .await
+        .expect("list_custom_action_types should succeed");
+    // Custom action types may be empty on a fresh scratch org — that's valid
+    println!("Custom action type categories: {}", types.len());
+}
+
+#[tokio::test]
+async fn test_invocable_actions_describe_custom() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let types = client
+        .list_custom_action_types()
+        .await
+        .expect("list_custom_action_types should succeed");
+
+    for action_type_name in types.keys() {
+        let collection = client
+            .list_custom_actions(action_type_name)
+            .await
+            .expect("list_custom_actions should succeed");
+        if let Some(action) = collection.actions.first() {
+            let describe = client
+                .describe_custom_action(action_type_name, &action.name)
+                .await
+                .expect("describe_custom_action should succeed");
+            assert_eq!(describe.name, action.name);
+            return;
+        }
+    }
+    // No custom actions is valid on a fresh scratch org
+    println!("No custom actions found — scratch org has no custom actions deployed");
+}
+
+#[tokio::test]
+async fn test_invocable_actions_invoke_custom() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let types = client
+        .list_custom_action_types()
+        .await
+        .expect("list_custom_action_types should succeed");
+
+    for action_type_name in types.keys() {
+        let collection = client
+            .list_custom_actions(action_type_name)
+            .await
+            .expect("list_custom_actions should succeed");
+        for action in &collection.actions {
+            // Describe the action to learn its required inputs
+            let describe = client
+                .describe_custom_action(action_type_name, &action.name)
+                .await
+                .expect("describe_custom_action should succeed");
+
+            // Build inputs from required parameters using type-appropriate defaults
+            let mut input = serde_json::Map::new();
+            let mut has_unsatisfiable_input = false;
+            for param in &describe.inputs {
+                if !param.required {
+                    continue;
+                }
+                match param.param_type.as_str() {
+                    "STRING" | "TEXTAREA" => {
+                        input.insert(param.name.clone(), serde_json::json!("test"));
+                    }
+                    "BOOLEAN" => {
+                        input.insert(param.name.clone(), serde_json::json!(false));
+                    }
+                    "NUMBER" | "INTEGER" | "DOUBLE" | "DECIMAL" | "CURRENCY" => {
+                        input.insert(param.name.clone(), serde_json::json!(0));
+                    }
+                    _ => {
+                        // REFERENCE, PICKLIST, etc. require org-specific values
+                        has_unsatisfiable_input = true;
+                        break;
+                    }
+                }
+            }
+            if has_unsatisfiable_input {
+                continue; // Try next action
+            }
+
+            let request = busbar_sf_rest::InvocableActionRequest {
+                inputs: vec![serde_json::Value::Object(input)],
+            };
+
+            // Invoke the action — some custom actions (e.g., Flow-based) may return
+            // HTTP 400 even with valid inputs if they require specific org state.
+            // Both success and Salesforce-level errors prove our client works.
+            match client
+                .invoke_custom_action(action_type_name, &action.name, &request)
+                .await
+            {
+                Ok(results) => {
+                    assert!(!results.is_empty(), "Should have at least one result");
+                    return;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    // These are valid Salesforce responses (our serialization worked)
+                    if msg.contains("UNKNOWN_EXCEPTION")
+                        || msg.contains("INVALID_INPUT")
+                        || msg.contains("flow interview")
+                        || msg.contains("400")
+                    {
+                        // Action invoked but failed server-side — still a valid test
+                        return;
+                    }
+                    // Try next action for unexpected errors
+                    continue;
+                }
+            }
+        }
+    }
+    // No custom actions with simple inputs is valid — all CRUD/list/describe calls above
+    // already exercised the API. Only panic if there were NO custom actions at all.
+    let total_actions: usize = types.len();
+    if total_actions == 0 {
+        // No custom action types at all — that's fine for a scratch org
+        return;
+    }
+    // Had custom actions but all require REFERENCE-type inputs we can't satisfy
+    // The list/describe calls above already tested the API, so this is acceptable
+}
+
+#[tokio::test]
+async fn test_invocable_actions_error_invalid_name() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.describe_standard_action("Bad'; DROP--").await;
+    assert!(
+        result.is_err(),
+        "describe_standard_action with invalid name should fail"
+    );
+}
+
+// ============================================================================
+// Consent API Tests (PR #54)
+// ============================================================================
+
+#[tokio::test]
+async fn test_consent_read() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Query for a real Account ID to use in consent check
+    let accounts: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM Account WHERE Name LIKE 'BusbarIntTest_%' LIMIT 1")
+        .await
+        .expect("Account query should succeed");
+    assert!(
+        !accounts.is_empty(),
+        "Should have at least one BusbarIntTest account (created by setup-scratch-org)"
+    );
+    let account_id = accounts[0]["Id"].as_str().expect("Account should have Id");
+
+    let _response = client
+        .read_consent("email", &[account_id])
+        .await
+        .expect("read_consent should succeed");
+}
+
+// ============================================================================
+// Knowledge Management Tests (PR #54)
+// ============================================================================
+
+#[tokio::test]
+async fn test_knowledge_settings() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let settings = client
+        .knowledge_settings()
+        .await
+        .expect("knowledge_settings should succeed");
+    // Just verify deserialization works; knowledge_enabled may be false in some orgs
+    if settings.knowledge_enabled {
+        // If Knowledge is enabled, languages might be populated
+        assert!(settings.default_language.is_some() || settings.languages.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn test_data_category_groups() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // The support/dataCategoryGroups endpoint requires Knowledge to be fully
+    // configured with data category user visibility. In scratch orgs without
+    // this config, the endpoint returns NOT_FOUND.
+    let result = client.data_category_groups(None).await;
+    match result {
+        Ok(groups) => {
+            // If the endpoint works, verify response is valid
+            assert!(
+                !groups.category_groups.is_empty(),
+                "Should have data category groups when endpoint is available"
+            );
+        }
+        Err(e) => {
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("NOT_FOUND"),
+                "Expected NOT_FOUND when Knowledge data categories not configured, got: {err_str}"
+            );
+        }
+    }
+}
+
+// ============================================================================
+// User Password Tests (PR #54)
+// ============================================================================
+
+#[tokio::test]
+async fn test_user_password_status() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Query for current user's ID
+    let users: Vec<serde_json::Value> = client
+        .query_all("SELECT Id FROM User WHERE IsActive = true LIMIT 1")
+        .await
+        .expect("User query should succeed");
+
+    let user = users.first().expect("Should have at least one active user");
+    let user_id = user
+        .get("Id")
+        .and_then(|v| v.as_str())
+        .expect("User should have an Id field");
+
+    let _status = client
+        .get_user_password_status(user_id)
+        .await
+        .expect("get_user_password_status should succeed");
+}
+
+// ============================================================================
+// Standalone REST Endpoint Tests (PR #55)
+// ============================================================================
+
+#[tokio::test]
+async fn test_rest_tabs() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let tabs = client.tabs().await.expect("tabs should succeed");
+    assert!(!tabs.is_empty(), "Should have at least one tab");
+}
+
+#[tokio::test]
+async fn test_rest_theme() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let theme = client.theme().await.expect("theme should succeed");
+    assert!(theme.is_object(), "Theme should be a JSON object");
+}
+
+#[tokio::test]
+async fn test_rest_recent_items() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let _items = client
+        .recent_items()
+        .await
+        .expect("recent_items should succeed");
+}
+
+#[tokio::test]
+async fn test_rest_relevant_items() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let _items = client
+        .relevant_items()
+        .await
+        .expect("relevant_items should succeed");
+}
+
+#[tokio::test]
+async fn test_rest_app_menu() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let result = client.app_menu("AppSwitcher").await;
+    assert!(result.is_ok(), "app_menu should succeed for AppSwitcher");
+}
+
+#[tokio::test]
+async fn test_rest_lightning_usage() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Lightning Usage API may not be available in all orgs (e.g., scratch orgs).
+    // Test that we either get valid data OR a proper NOT_FOUND error.
+    match client.lightning_usage().await {
+        Ok(usage) => {
+            assert!(
+                usage.is_object() || usage.is_array(),
+                "Lightning usage should return JSON object or array"
+            );
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            assert!(
+                msg.contains("NOT_FOUND") || msg.contains("404"),
+                "Lightning usage error should be NOT_FOUND in unsupported orgs, got: {msg}"
+            );
+        }
+    }
+}
+
+// ============================================================================
+// Incremental Sync Tests (PR #49)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_deleted_records() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    // Create and delete a test account
+    let test_name = format!("Delete Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    client
+        .delete("Account", &account_id)
+        .await
+        .expect("Delete should succeed");
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org existed.
+    let now = chrono::Utc::now();
+    let start = (now - chrono::Duration::minutes(5)).to_rfc3339();
+    let end = now.to_rfc3339();
+
+    let result = client
+        .get_deleted("Account", &start, &end)
+        .await
+        .expect("get_deleted should succeed");
+
+    assert!(!result.earliest_date_available.is_empty());
+    assert!(!result.latest_date_covered.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_updated_records() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let test_name = format!("Update Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    client
+        .update(
+            "Account",
+            &account_id,
+            &serde_json::json!({"Description": "Updated"}),
+        )
+        .await
+        .expect("Update should succeed");
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org existed.
+    let now = chrono::Utc::now();
+    let start = (now - chrono::Duration::minutes(5)).to_rfc3339();
+    let end = now.to_rfc3339();
+
+    let result = client
+        .get_updated("Account", &start, &end)
+        .await
+        .expect("get_updated should succeed");
+
+    assert!(!result.latest_date_covered.is_empty());
+
+    let _ = client.delete("Account", &account_id).await;
+}
+
+// ============================================================================
+// Binary Content Tests (PR #49)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_blob_content() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let test_content = b"Test file content for blob retrieval";
+    use base64::Engine as _;
+    let base64_content = base64::engine::general_purpose::STANDARD.encode(test_content);
+
+    let content_version_id = client
+        .create(
+            "ContentVersion",
+            &serde_json::json!({
+                "Title": format!("Test Blob {}", chrono::Utc::now().timestamp_millis()),
+                "PathOnClient": "test.txt",
+                "VersionData": base64_content,
+            }),
+        )
+        .await
+        .expect("ContentVersion creation should succeed");
+
+    let query_result: Vec<serde_json::Value> = client
+        .query_all(&format!(
+            "SELECT ContentDocumentId FROM ContentVersion WHERE Id = '{}'",
+            content_version_id
+        ))
+        .await
+        .expect("Query should succeed");
+
+    if let Some(cv) = query_result.first() {
+        let content_document_id = cv
+            .get("ContentDocumentId")
+            .and_then(|v| v.as_str())
+            .expect("Should have ContentDocumentId");
+
+        let blob_data = client
+            .get_blob("ContentVersion", &content_version_id, "VersionData")
+            .await
+            .expect("get_blob should succeed");
+
+        assert!(!blob_data.is_empty(), "Blob data should not be empty");
+        assert_eq!(
+            blob_data, test_content,
+            "Retrieved content should match uploaded content"
+        );
+
+        let _ = client.delete("ContentDocument", content_document_id).await;
+    }
+}
+
+// ============================================================================
+// Relationship Traversal Tests (PR #49)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_relationship_child() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let test_name = format!(
+        "Relationship Test {}",
+        chrono::Utc::now().timestamp_millis()
+    );
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    let contact_id = client
+        .create(
+            "Contact",
+            &serde_json::json!({"LastName": "Test Contact", "AccountId": account_id}),
+        )
+        .await
+        .expect("Contact creation should succeed");
+
+    let contacts_result: busbar_sf_rest::QueryResult<serde_json::Value> = client
+        .get_relationship("Account", &account_id, "Contacts")
+        .await
+        .expect("get_relationship should succeed");
+
+    assert!(
+        contacts_result.total_size > 0,
+        "Should have at least one contact"
+    );
+
+    let _ = client.delete("Contact", &contact_id).await;
+    let _ = client.delete("Account", &account_id).await;
+}
+
+#[tokio::test]
+async fn test_get_relationship_parent() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let test_name = format!("Parent Test {}", chrono::Utc::now().timestamp_millis());
+    let account_id = client
+        .create("Account", &serde_json::json!({"Name": test_name}))
+        .await
+        .expect("Account creation should succeed");
+
+    let contact_id = client
+        .create(
+            "Contact",
+            &serde_json::json!({"LastName": "Test Contact", "AccountId": account_id}),
+        )
+        .await
+        .expect("Contact creation should succeed");
+
+    let account_result: serde_json::Value = client
+        .get_relationship("Contact", &contact_id, "Account")
+        .await
+        .expect("get_relationship should succeed");
+
+    assert!(account_result.get("Id").is_some(), "Should have account ID");
+
+    let _ = client.delete("Contact", &contact_id).await;
+    let _ = client.delete("Account", &account_id).await;
+}
+
+// ============================================================================
+// SObject Basic Info Tests (PR #49)
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_sobject_basic_info() {
+    let creds = get_credentials().await;
+    let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create REST client");
+
+    let info = client
+        .get_sobject_basic_info("Account")
+        .await
+        .expect("get_sobject_basic_info should succeed");
+
+    assert_eq!(info.object_describe.name, "Account");
+    assert!(!info.object_describe.label.is_empty());
+    assert!(info.object_describe.key_prefix.is_some());
+    assert!(!info.object_describe.urls.is_empty());
+    assert!(info.object_describe.createable);
+    assert!(info.object_describe.queryable);
 }

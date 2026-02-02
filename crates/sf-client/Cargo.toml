@@ -12,6 +12,10 @@ rust-version.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = []
+dependencies = []
+
 [dependencies]
 reqwest.workspace = true
 tokio.workspace = true
