@@ -1,6 +1,15 @@
 //! Knowledge Management types for the Salesforce REST API.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize `null` as the default value for the type (e.g., empty Vec).
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// Knowledge management settings.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -9,7 +18,7 @@ pub struct KnowledgeSettings {
     pub default_language: Option<String>,
     #[serde(rename = "knowledgeEnabled", default)]
     pub knowledge_enabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub languages: Vec<serde_json::Value>,
 }
 

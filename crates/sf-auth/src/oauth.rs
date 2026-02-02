@@ -215,12 +215,18 @@ impl OAuthClient {
             .await?;
 
         if !response.status().is_success() {
-            // Parse error response to provide detailed error information
-            let error: OAuthErrorResponse = response.json().await?;
-            return Err(Error::new(ErrorKind::OAuth {
-                error: error.error,
-                description: error.error_description,
-            }));
+            // Try to parse error response; Salesforce may return non-JSON (HTML, empty body)
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            if let Ok(error) = serde_json::from_str::<OAuthErrorResponse>(&body) {
+                return Err(Error::new(ErrorKind::OAuth {
+                    error: error.error,
+                    description: error.error_description,
+                }));
+            }
+            return Err(Error::new(ErrorKind::Http(format!(
+                "Token revocation failed with status {status}"
+            ))));
         }
 
         Ok(())

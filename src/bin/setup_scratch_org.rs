@@ -119,6 +119,10 @@ async fn deploy_test_metadata(creds: &SalesforceCredentials) {
         <members>Account.BusbarIntTest_Approval</members>
         <name>ApprovalProcess</name>
     </types>
+    <types>
+        <members>Admin</members>
+        <name>Profile</name>
+    </types>
     <version>62.0</version>
 </Package>"#,
         )
@@ -202,6 +206,20 @@ async fn deploy_test_metadata(creds: &SalesforceCredentials) {
     <recordEditability>AdminOnly</recordEditability>
     <showApprovalHistory>true</showApprovalHistory>
 </ApprovalProcess>"#,
+        )
+        .unwrap();
+
+        // Admin profile: grant FLS for custom external ID field
+        zip.start_file("profiles/Admin.profile", options).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Account.BusbarIntTestExtId__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+</Profile>"#,
         )
         .unwrap();
 

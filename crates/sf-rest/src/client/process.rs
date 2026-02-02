@@ -20,7 +20,7 @@ impl super::SalesforceRestClient {
 
     /// List process rules for a specific SObject type.
     ///
-    /// Returns the array of rules for that SObject (not a collection map).
+    /// Returns the array of rules for that SObject.
     #[instrument(skip(self))]
     pub async fn list_process_rules_for_sobject(
         &self,
@@ -33,7 +33,15 @@ impl super::SalesforceRestClient {
             }));
         }
         let path = format!("process/rules/{}", sobject);
-        self.client.rest_get(&path).await.map_err(Into::into)
+        // Per-SObject endpoint returns {"rules": [...]} wrapper
+        let collection: crate::process::ProcessRuleCollection = self.client.rest_get(&path).await?;
+        // Extract rules for this SObject, or return all rules flattened
+        if let Some(rules) = collection.rules.get(sobject) {
+            Ok(rules.clone())
+        } else {
+            // Flatten all rules from the response
+            Ok(collection.rules.into_values().flatten().collect())
+        }
     }
 
     /// Trigger process rules for a record.
@@ -154,10 +162,11 @@ mod tests {
         let body = serde_json::json!({
             "approvals": {
                 "Account": [{
-                    "id": "04ixx0000000001",
-                    "entityId": "001xx000003DgAAAS",
-                    "entityType": "Account",
-                    "processInstanceId": "04gxx0000000001"
+                    "id": "04axx0000000001",
+                    "name": "Account_Approval",
+                    "description": null,
+                    "object": "Account",
+                    "sortOrder": 1
                 }]
             }
         });

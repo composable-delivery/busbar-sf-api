@@ -21,7 +21,8 @@ pub struct ProcessRule {
     pub name: String,
     #[serde(rename = "sobjectType")]
     pub sobject_type: Option<String>,
-    pub url: String,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Collection of process rules grouped by SObject type.
@@ -42,21 +43,23 @@ pub struct ProcessRuleRequest {
 /// Result of triggering a process rule.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleResult {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub errors: Vec<crate::sobject::SalesforceError>,
     pub success: bool,
 }
 
-/// A pending approval work item.
+/// An approval process definition returned by GET /process/approvals.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PendingApproval {
     pub id: String,
-    #[serde(rename = "entityId")]
-    pub entity_id: String,
-    #[serde(rename = "entityType")]
-    pub entity_type: String,
-    #[serde(rename = "processInstanceId")]
-    pub process_instance_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub object: Option<String>,
+    #[serde(rename = "sortOrder", default)]
+    pub sort_order: Option<i32>,
 }
 
 /// Collection of pending approvals grouped by entity type.
@@ -134,6 +137,19 @@ mod tests {
         let rule: ProcessRule = serde_json::from_value(json).unwrap();
         assert_eq!(rule.id, "01Qxx0000000001");
         assert_eq!(rule.sobject_type, Some("Account".to_string()));
+        assert!(rule.url.is_some());
+    }
+
+    #[test]
+    fn test_process_rule_deserialize_without_url() {
+        let json = json!({
+            "id": "01Qxx0000000001",
+            "name": "My Rule",
+            "sobjectType": "Account"
+        });
+        let rule: ProcessRule = serde_json::from_value(json).unwrap();
+        assert_eq!(rule.id, "01Qxx0000000001");
+        assert!(rule.url.is_none());
     }
 
     #[test]
@@ -171,13 +187,15 @@ mod tests {
     #[test]
     fn test_pending_approval_deserialize() {
         let json = json!({
-            "id": "04ixx0000000001",
-            "entityId": "001xx000003DgAAAS",
-            "entityType": "Account",
-            "processInstanceId": "04gxx0000000001"
+            "id": "04axx0000000001",
+            "name": "Account_Approval",
+            "description": "Approval for accounts",
+            "object": "Account",
+            "sortOrder": 1
         });
         let approval: PendingApproval = serde_json::from_value(json).unwrap();
-        assert_eq!(approval.entity_type, "Account");
+        assert_eq!(approval.object, Some("Account".to_string()));
+        assert_eq!(approval.name, Some("Account_Approval".to_string()));
     }
 
     #[test]
@@ -185,10 +203,11 @@ mod tests {
         let json = json!({
             "approvals": {
                 "Account": [{
-                    "id": "04ixx0000000001",
-                    "entityId": "001xx000003DgAAAS",
-                    "entityType": "Account",
-                    "processInstanceId": "04gxx0000000001"
+                    "id": "04axx0000000001",
+                    "name": "Account_Approval",
+                    "description": null,
+                    "object": "Account",
+                    "sortOrder": 1
                 }]
             }
         });
