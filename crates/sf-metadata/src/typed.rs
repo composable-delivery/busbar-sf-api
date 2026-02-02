@@ -233,6 +233,7 @@ fn get_file_extension(metadata_type: &str) -> &str {
         "ApexPage" => "page",
         "ApexComponent" => "component",
         "CustomObject" => "object",
+        "CustomField" => "field",
         "Layout" => "layout",
         "PermissionSet" => "permissionset",
         "Profile" => "profile",
@@ -261,6 +262,7 @@ mod tests {
     fn test_get_file_extension() {
         assert_eq!(get_file_extension("ApexClass"), "cls");
         assert_eq!(get_file_extension("CustomObject"), "object");
+        assert_eq!(get_file_extension("CustomField"), "field");
         assert_eq!(get_file_extension("Flow"), "flow");
         assert_eq!(get_file_extension("Unknown"), "xml");
     }
