@@ -1039,7 +1039,7 @@ pub fn lightning_usage() -> Result<serde_json::Value, Error> {
 // =============================================================================
 
 pub fn get_user_password_status(user_id: &str) -> Result<serde_json::Value, Error> {
-    let request = GetRequest {
+    let request = IdRequest {
         id: user_id.to_string(),
     };
     call_host_fn(|input| unsafe { sf_get_user_password_status(input) }, &request)
@@ -1054,7 +1054,7 @@ pub fn set_user_password(user_id: &str, password: &str) -> Result<(), Error> {
 }
 
 pub fn reset_user_password(user_id: &str) -> Result<serde_json::Value, Error> {
-    let request = GetRequest {
+    let request = IdRequest {
         id: user_id.to_string(),
     };
     call_host_fn(|input| unsafe { sf_reset_user_password(input) }, &request)
@@ -1134,7 +1134,7 @@ pub fn get_relationship(sobject: &str, id: &str, relationship_name: &str) -> Res
 // =============================================================================
 
 pub fn get_embedded_service_config(config_id: &str) -> Result<serde_json::Value, Error> {
-    let request = GetRequest {
+    let request = IdRequest {
         id: config_id.to_string(),
     };
     call_host_fn(|input| unsafe { sf_get_embedded_service_config(input) }, &request)

@@ -216,6 +216,13 @@ pub struct DeleteRequest {
     pub id: String,
 }
 
+/// Request that identifies a resource by ID only (used for various single-ID operations).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdRequest {
+    /// Resource ID (can be user ID, config ID, etc.).
+    pub id: String,
+}
+
 /// Request to upsert a record using an external ID.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpsertRequest {
