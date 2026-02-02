@@ -1713,8 +1713,10 @@ async fn test_get_deleted_records() {
 
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org existed.
     let now = chrono::Utc::now();
-    let start = (now - chrono::Duration::days(1)).to_rfc3339();
+    let start = (now - chrono::Duration::minutes(5)).to_rfc3339();
     let end = now.to_rfc3339();
 
     let result = client
@@ -1749,8 +1751,10 @@ async fn test_get_updated_records() {
 
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org existed.
     let now = chrono::Utc::now();
-    let start = (now - chrono::Duration::days(1)).to_rfc3339();
+    let start = (now - chrono::Duration::minutes(5)).to_rfc3339();
     let end = now.to_rfc3339();
 
     let result = client
