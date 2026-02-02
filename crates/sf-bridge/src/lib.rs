@@ -353,6 +353,130 @@ fn create_plugin(wasm_bytes: &[u8], state: BridgeState) -> Result<Plugin> {
             host_fn_versions,
         )
         // =====================================================================
+        // REST API: Process & Approvals host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::LIST_PROCESS_RULES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_process_rules,
+        )
+        .with_function(
+            host_fn_names::LIST_PROCESS_RULES_FOR_SOBJECT,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_process_rules_for_sobject,
+        )
+        .with_function(
+            host_fn_names::TRIGGER_PROCESS_RULES,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_trigger_process_rules,
+        )
+        .with_function(
+            host_fn_names::LIST_PENDING_APPROVALS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_pending_approvals,
+        )
+        .with_function(
+            host_fn_names::SUBMIT_APPROVAL,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_submit_approval,
+        )
+        // =====================================================================
+        // REST API: List Views host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::LIST_VIEWS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_views,
+        )
+        .with_function(
+            host_fn_names::GET_LIST_VIEW,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_list_view,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_LIST_VIEW,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_list_view,
+        )
+        .with_function(
+            host_fn_names::EXECUTE_LIST_VIEW,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_execute_list_view,
+        )
+        // =====================================================================
+        // REST API: Quick Actions host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::LIST_GLOBAL_QUICK_ACTIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_global_quick_actions,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_GLOBAL_QUICK_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_global_quick_action,
+        )
+        .with_function(
+            host_fn_names::LIST_QUICK_ACTIONS,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_list_quick_actions,
+        )
+        .with_function(
+            host_fn_names::DESCRIBE_QUICK_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_describe_quick_action,
+        )
+        .with_function(
+            host_fn_names::INVOKE_QUICK_ACTION,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_invoke_quick_action,
+        )
+        // =====================================================================
+        // REST API: Sync (Get Deleted/Updated) host functions
+        // =====================================================================
+        .with_function(
+            host_fn_names::GET_DELETED,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_deleted,
+        )
+        .with_function(
+            host_fn_names::GET_UPDATED,
+            [ValType::I64],
+            [ValType::I64],
+            user_data.clone(),
+            host_fn_get_updated,
+        )
+        // =====================================================================
         // Bulk API host functions
         // =====================================================================
         .with_function(
@@ -808,6 +932,233 @@ fn host_fn_versions(
     bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
         s.handle
             .block_on(host_functions::handle_versions(&s.rest_client))
+    })
+}
+
+// =============================================================================
+// REST API: Process & Approvals host function callbacks
+// =============================================================================
+
+fn host_fn_list_process_rules(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_list_process_rules(&s.rest_client))
+    })
+}
+
+fn host_fn_list_process_rules_for_sobject(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_list_process_rules_for_sobject(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_trigger_process_rules(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_trigger_process_rules(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_list_pending_approvals(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_list_pending_approvals(
+                &s.rest_client,
+            ))
+    })
+}
+
+fn host_fn_submit_approval(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_submit_approval(&s.rest_client, r))
+    })
+}
+
+// =============================================================================
+// REST API: List Views host function callbacks
+// =============================================================================
+
+fn host_fn_list_views(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_list_views(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_list_view(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_list_view(&s.rest_client, r))
+    })
+}
+
+fn host_fn_describe_list_view(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_list_view(&s.rest_client, r))
+    })
+}
+
+fn host_fn_execute_list_view(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_execute_list_view(&s.rest_client, r))
+    })
+}
+
+// =============================================================================
+// REST API: Quick Actions host function callbacks
+// =============================================================================
+
+fn host_fn_list_global_quick_actions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn_no_input(plugin, inputs, outputs, user_data, |s| {
+        s.handle
+            .block_on(host_functions::handle_list_global_quick_actions(
+                &s.rest_client,
+            ))
+    })
+}
+
+fn host_fn_describe_global_quick_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_global_quick_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_list_quick_actions(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_list_quick_actions(&s.rest_client, r))
+    })
+}
+
+fn host_fn_describe_quick_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_describe_quick_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+fn host_fn_invoke_quick_action(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_invoke_quick_action(
+                &s.rest_client,
+                r,
+            ))
+    })
+}
+
+// =============================================================================
+// REST API: Sync (Get Deleted/Updated) host function callbacks
+// =============================================================================
+
+fn host_fn_get_deleted(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_deleted(&s.rest_client, r))
+    })
+}
+
+fn host_fn_get_updated(
+    plugin: &mut extism::CurrentPlugin,
+    inputs: &[extism::Val],
+    outputs: &mut [extism::Val],
+    user_data: UserData<BridgeState>,
+) -> std::result::Result<(), extism::Error> {
+    bridge_host_fn(plugin, inputs, outputs, user_data, |s, r| {
+        s.handle
+            .block_on(host_functions::handle_get_updated(&s.rest_client, r))
     })
 }
 

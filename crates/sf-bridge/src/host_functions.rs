@@ -16,7 +16,10 @@
 use base64::{engine::general_purpose, Engine as _};
 use busbar_sf_bulk::BulkApiClient;
 use busbar_sf_metadata::MetadataClient;
-use busbar_sf_rest::SalesforceRestClient;
+use busbar_sf_rest::{
+    ApprovalActionType, ApprovalRequest as RestApprovalRequest,
+    ProcessRuleRequest as RestProcessRuleRequest, SalesforceRestClient,
+};
 use busbar_sf_tooling::ToolingClient;
 use busbar_sf_wasm_types::*;
 
@@ -538,6 +541,473 @@ pub(crate) async fn handle_versions(
                 })
                 .collect(),
         ),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+// =============================================================================
+// REST API: Process & Approvals Handlers
+// =============================================================================
+
+/// List all process rules.
+pub(crate) async fn handle_list_process_rules(
+    client: &SalesforceRestClient,
+) -> BridgeResult<ProcessRuleCollection> {
+    match client.list_process_rules().await {
+        Ok(result) => BridgeResult::ok(ProcessRuleCollection {
+            rules: result
+                .rules
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        v.into_iter()
+                            .map(|r| ProcessRule {
+                                id: r.id,
+                                name: r.name,
+                                sobject_type: r.sobject_type,
+                                url: r.url,
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// List process rules for a specific SObject.
+pub(crate) async fn handle_list_process_rules_for_sobject(
+    client: &SalesforceRestClient,
+    request: ListProcessRulesForSObjectRequest,
+) -> BridgeResult<Vec<ProcessRule>> {
+    match client
+        .list_process_rules_for_sobject(&request.sobject)
+        .await
+    {
+        Ok(rules) => BridgeResult::ok(
+            rules
+                .into_iter()
+                .map(|r| ProcessRule {
+                    id: r.id,
+                    name: r.name,
+                    sobject_type: r.sobject_type,
+                    url: r.url,
+                })
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Trigger process rules.
+pub(crate) async fn handle_trigger_process_rules(
+    client: &SalesforceRestClient,
+    request: ProcessRuleRequest,
+) -> BridgeResult<ProcessRuleResult> {
+    let rest_request = RestProcessRuleRequest {
+        context_ids: request.context_ids,
+    };
+    match client.trigger_process_rules(&rest_request).await {
+        Ok(result) => BridgeResult::ok(ProcessRuleResult {
+            errors: result
+                .errors
+                .into_iter()
+                .map(|e| SalesforceApiError {
+                    status_code: e.status_code,
+                    message: e.message,
+                    fields: e.fields,
+                })
+                .collect(),
+            success: result.success,
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// List pending approvals.
+pub(crate) async fn handle_list_pending_approvals(
+    client: &SalesforceRestClient,
+) -> BridgeResult<PendingApprovalCollection> {
+    match client.list_pending_approvals().await {
+        Ok(result) => BridgeResult::ok(PendingApprovalCollection {
+            approvals: result
+                .approvals
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        v.into_iter()
+                            .map(|a| PendingApproval {
+                                id: a.id,
+                                name: a.name,
+                                description: a.description,
+                                object: a.object,
+                                sort_order: a.sort_order,
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Submit an approval.
+pub(crate) async fn handle_submit_approval(
+    client: &SalesforceRestClient,
+    request: ApprovalRequest,
+) -> BridgeResult<ApprovalResult> {
+    let action_type = match request.action_type.as_str() {
+        "Submit" => ApprovalActionType::Submit,
+        "Approve" => ApprovalActionType::Approve,
+        "Reject" => ApprovalActionType::Reject,
+        _ => return BridgeResult::err("INVALID_ACTION_TYPE", "Invalid approval action type"),
+    };
+
+    let rest_request = RestApprovalRequest {
+        action_type,
+        context_id: request.context_id,
+        context_actor_id: request.context_actor_id,
+        comments: request.comments,
+        next_approver_ids: request.next_approver_ids,
+        process_definition_name_or_id: request.process_definition_name_or_id,
+        skip_entry_criteria: request.skip_entry_criteria,
+    };
+
+    match client.submit_approval(&rest_request).await {
+        Ok(result) => BridgeResult::ok(ApprovalResult {
+            actor_ids: result.actor_ids,
+            entity_id: result.entity_id,
+            errors: result
+                .errors
+                .into_iter()
+                .map(|e| SalesforceApiError {
+                    status_code: e.status_code,
+                    message: e.message,
+                    fields: e.fields,
+                })
+                .collect(),
+            instance_id: result.instance_id,
+            instance_status: result.instance_status,
+            new_workitem_ids: result.new_workitem_ids,
+            success: result.success,
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+// =============================================================================
+// REST API: List Views Handlers
+// =============================================================================
+
+/// List views for an SObject.
+pub(crate) async fn handle_list_views(
+    client: &SalesforceRestClient,
+    request: ListViewsRequest,
+) -> BridgeResult<ListViewsResult> {
+    match client.list_views(&request.sobject).await {
+        Ok(result) => BridgeResult::ok(ListViewsResult {
+            done: result.done,
+            next_records_url: result.next_records_url,
+            listviews: result
+                .listviews
+                .into_iter()
+                .map(|lv| ListView {
+                    id: lv.id,
+                    developer_name: lv.developer_name,
+                    label: lv.label,
+                    describe_url: lv.describe_url,
+                    results_url: lv.results_url,
+                    sobject_type: lv.sobject_type,
+                })
+                .collect(),
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Get a list view by ID.
+pub(crate) async fn handle_get_list_view(
+    client: &SalesforceRestClient,
+    request: ListViewRequest,
+) -> BridgeResult<ListView> {
+    match client
+        .get_list_view(&request.sobject, &request.list_view_id)
+        .await
+    {
+        Ok(lv) => BridgeResult::ok(ListView {
+            id: lv.id,
+            developer_name: lv.developer_name,
+            label: lv.label,
+            describe_url: lv.describe_url,
+            results_url: lv.results_url,
+            sobject_type: lv.sobject_type,
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Describe a list view.
+pub(crate) async fn handle_describe_list_view(
+    client: &SalesforceRestClient,
+    request: ListViewRequest,
+) -> BridgeResult<ListViewDescribe> {
+    match client
+        .describe_list_view(&request.sobject, &request.list_view_id)
+        .await
+    {
+        Ok(desc) => BridgeResult::ok(ListViewDescribe {
+            id: desc.id,
+            developer_name: desc.developer_name,
+            label: desc.label,
+            sobject_type: desc.sobject_type,
+            query: desc.query,
+            columns: desc
+                .columns
+                .into_iter()
+                .map(|c| ListViewColumn {
+                    field_name_or_path: c.field_name_or_path,
+                    label: c.label,
+                    sortable: c.sortable,
+                    field_type: c.field_type,
+                })
+                .collect(),
+            order_by: desc
+                .order_by
+                .into_iter()
+                .map(|ob| serde_json::to_value(&ob).unwrap_or(serde_json::Value::Null))
+                .collect(),
+            where_condition: desc.where_condition,
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Execute a list view.
+pub(crate) async fn handle_execute_list_view(
+    client: &SalesforceRestClient,
+    request: ListViewRequest,
+) -> BridgeResult<serde_json::Value> {
+    match client
+        .execute_list_view::<serde_json::Value>(&request.sobject, &request.list_view_id)
+        .await
+    {
+        Ok(result) => {
+            let value = serde_json::to_value(&result)
+                .unwrap_or_else(|_| serde_json::json!({"error": "serialization failed"}));
+            BridgeResult::ok(value)
+        }
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+// =============================================================================
+// REST API: Quick Actions Handlers
+// =============================================================================
+
+/// List global quick actions.
+pub(crate) async fn handle_list_global_quick_actions(
+    client: &SalesforceRestClient,
+) -> BridgeResult<Vec<QuickActionMetadata>> {
+    match client.list_global_quick_actions().await {
+        Ok(actions) => BridgeResult::ok(
+            actions
+                .into_iter()
+                .map(|a| QuickActionMetadata {
+                    name: a.name,
+                    label: a.label,
+                    action_type: a.action_type,
+                })
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Describe a global quick action.
+pub(crate) async fn handle_describe_global_quick_action(
+    client: &SalesforceRestClient,
+    request: DescribeGlobalQuickActionRequest,
+) -> BridgeResult<QuickActionDescribe> {
+    match client.describe_global_quick_action(&request.action).await {
+        Ok(desc) => BridgeResult::ok(QuickActionDescribe {
+            name: desc.name,
+            label: desc.label,
+            action_type: desc.action_type,
+            target_sobject_type: desc.target_sobject_type,
+            target_record_type_id: desc.target_record_type_id,
+            target_parent_field: desc.target_parent_field,
+            layout: desc.layout,
+            default_values: desc.default_values,
+            icons: desc
+                .icons
+                .into_iter()
+                .map(|i| serde_json::to_value(&i).unwrap_or(serde_json::Value::Null))
+                .collect(),
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// List quick actions for an SObject.
+pub(crate) async fn handle_list_quick_actions(
+    client: &SalesforceRestClient,
+    request: ListQuickActionsRequest,
+) -> BridgeResult<Vec<QuickActionMetadata>> {
+    match client.list_quick_actions(&request.sobject).await {
+        Ok(actions) => BridgeResult::ok(
+            actions
+                .into_iter()
+                .map(|a| QuickActionMetadata {
+                    name: a.name,
+                    label: a.label,
+                    action_type: a.action_type,
+                })
+                .collect(),
+        ),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Describe a quick action.
+pub(crate) async fn handle_describe_quick_action(
+    client: &SalesforceRestClient,
+    request: DescribeQuickActionRequest,
+) -> BridgeResult<QuickActionDescribe> {
+    match client
+        .describe_quick_action(&request.sobject, &request.action)
+        .await
+    {
+        Ok(desc) => BridgeResult::ok(QuickActionDescribe {
+            name: desc.name,
+            label: desc.label,
+            action_type: desc.action_type,
+            target_sobject_type: desc.target_sobject_type,
+            target_record_type_id: desc.target_record_type_id,
+            target_parent_field: desc.target_parent_field,
+            layout: desc.layout,
+            default_values: desc.default_values,
+            icons: desc
+                .icons
+                .into_iter()
+                .map(|i| serde_json::to_value(&i).unwrap_or(serde_json::Value::Null))
+                .collect(),
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Invoke a quick action.
+pub(crate) async fn handle_invoke_quick_action(
+    client: &SalesforceRestClient,
+    request: InvokeQuickActionRequest,
+) -> BridgeResult<serde_json::Value> {
+    match client
+        .invoke_quick_action(&request.sobject, &request.action, &request.body)
+        .await
+    {
+        Ok(result) => {
+            let value = serde_json::to_value(&result)
+                .unwrap_or_else(|_| serde_json::json!({"error": "serialization failed"}));
+            BridgeResult::ok(value)
+        }
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+// =============================================================================
+// REST API: Sync (Get Deleted/Updated) Handlers
+// =============================================================================
+
+/// Get deleted records.
+pub(crate) async fn handle_get_deleted(
+    client: &SalesforceRestClient,
+    request: GetDeletedRequest,
+) -> BridgeResult<GetDeletedResult> {
+    match client
+        .get_deleted(&request.sobject, &request.start, &request.end)
+        .await
+    {
+        Ok(result) => BridgeResult::ok(GetDeletedResult {
+            deleted_records: result
+                .deleted_records
+                .into_iter()
+                .map(|r| DeletedRecord {
+                    id: r.id,
+                    deleted_date: r.deleted_date,
+                })
+                .collect(),
+            earliest_date_available: result.earliest_date_available,
+            latest_date_covered: result.latest_date_covered,
+        }),
+        Err(e) => {
+            let (code, message) = sanitize_rest_error(&e);
+            BridgeResult::err(code, message)
+        }
+    }
+}
+
+/// Get updated records.
+pub(crate) async fn handle_get_updated(
+    client: &SalesforceRestClient,
+    request: GetUpdatedRequest,
+) -> BridgeResult<GetUpdatedResult> {
+    match client
+        .get_updated(&request.sobject, &request.start, &request.end)
+        .await
+    {
+        Ok(result) => BridgeResult::ok(GetUpdatedResult {
+            ids: result.ids,
+            latest_date_covered: result.latest_date_covered,
+        }),
         Err(e) => {
             let (code, message) = sanitize_rest_error(&e);
             BridgeResult::err(code, message)

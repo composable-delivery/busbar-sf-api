@@ -81,6 +81,30 @@ extern "ExtismHost" {
     fn sf_limits(input: Vec<u8>) -> Vec<u8>;
     fn sf_versions(input: Vec<u8>) -> Vec<u8>;
 
+    // REST API: Process & Approvals
+    fn sf_list_process_rules(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_process_rules_for_sobject(input: Vec<u8>) -> Vec<u8>;
+    fn sf_trigger_process_rules(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_pending_approvals(input: Vec<u8>) -> Vec<u8>;
+    fn sf_submit_approval(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: List Views
+    fn sf_list_views(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_list_view(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_list_view(input: Vec<u8>) -> Vec<u8>;
+    fn sf_execute_list_view(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: Quick Actions
+    fn sf_list_global_quick_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_global_quick_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_quick_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_quick_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_invoke_quick_action(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: Sync
+    fn sf_get_deleted(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_updated(input: Vec<u8>) -> Vec<u8>;
+
     // Bulk API
     fn sf_bulk_create_ingest_job(input: Vec<u8>) -> Vec<u8>;
     fn sf_bulk_upload_job_data(input: Vec<u8>) -> Vec<u8>;
@@ -343,6 +367,173 @@ pub fn limits() -> Result<serde_json::Value, Error> {
 /// Get available API versions.
 pub fn versions() -> Result<Vec<ApiVersion>, Error> {
     call_host_fn_no_input(|input| unsafe { sf_versions(input) })
+}
+
+// =============================================================================
+// REST API: Process & Approvals wrappers
+// =============================================================================
+
+/// List all process rules.
+pub fn list_process_rules() -> Result<ProcessRuleCollection, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_process_rules(input) })
+}
+
+/// List process rules for a specific SObject.
+pub fn list_process_rules_for_sobject(sobject: &str) -> Result<Vec<ProcessRule>, Error> {
+    let request = ListProcessRulesForSObjectRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_list_process_rules_for_sobject(input) },
+        &request,
+    )
+}
+
+/// Trigger process rules for records.
+pub fn trigger_process_rules(context_ids: Vec<String>) -> Result<ProcessRuleResult, Error> {
+    let request = ProcessRuleRequest { context_ids };
+    call_host_fn(
+        |input| unsafe { sf_trigger_process_rules(input) },
+        &request,
+    )
+}
+
+/// List pending approvals.
+pub fn list_pending_approvals() -> Result<PendingApprovalCollection, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_pending_approvals(input) })
+}
+
+/// Submit, approve, or reject an approval.
+pub fn submit_approval(request: &ApprovalRequest) -> Result<ApprovalResult, Error> {
+    call_host_fn(|input| unsafe { sf_submit_approval(input) }, request)
+}
+
+// =============================================================================
+// REST API: List Views wrappers
+// =============================================================================
+
+/// List all list views for an SObject.
+pub fn list_views(sobject: &str) -> Result<ListViewsResult, Error> {
+    let request = ListViewsRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_list_views(input) }, &request)
+}
+
+/// Get a specific list view by ID.
+pub fn get_list_view(sobject: &str, list_view_id: &str) -> Result<ListView, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_list_view(input) }, &request)
+}
+
+/// Describe a list view (get columns, filters, etc.).
+pub fn describe_list_view(sobject: &str, list_view_id: &str) -> Result<ListViewDescribe, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_list_view(input) }, &request)
+}
+
+/// Execute a list view and return its results.
+pub fn execute_list_view(sobject: &str, list_view_id: &str) -> Result<serde_json::Value, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_execute_list_view(input) }, &request)
+}
+
+// =============================================================================
+// REST API: Quick Actions wrappers
+// =============================================================================
+
+/// List all global quick actions.
+pub fn list_global_quick_actions() -> Result<Vec<QuickActionMetadata>, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_global_quick_actions(input) })
+}
+
+/// Describe a global quick action.
+pub fn describe_global_quick_action(action: &str) -> Result<QuickActionDescribe, Error> {
+    let request = DescribeGlobalQuickActionRequest {
+        action: action.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_describe_global_quick_action(input) },
+        &request,
+    )
+}
+
+/// List quick actions available for an SObject.
+pub fn list_quick_actions(sobject: &str) -> Result<Vec<QuickActionMetadata>, Error> {
+    let request = ListQuickActionsRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_list_quick_actions(input) }, &request)
+}
+
+/// Describe a specific quick action on an SObject.
+pub fn describe_quick_action(
+    sobject: &str,
+    action: &str,
+) -> Result<QuickActionDescribe, Error> {
+    let request = DescribeQuickActionRequest {
+        sobject: sobject.to_string(),
+        action: action.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_describe_quick_action(input) },
+        &request,
+    )
+}
+
+/// Invoke a quick action on an SObject.
+pub fn invoke_quick_action(
+    sobject: &str,
+    action: &str,
+    record_id: Option<&str>,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, Error> {
+    let request = InvokeQuickActionRequest {
+        sobject: sobject.to_string(),
+        action: action.to_string(),
+        record_id: record_id.map(|s| s.to_string()),
+        body: body.clone(),
+    };
+    call_host_fn(|input| unsafe { sf_invoke_quick_action(input) }, &request)
+}
+
+// =============================================================================
+// REST API: Sync (Get Deleted/Updated) wrappers
+// =============================================================================
+
+/// Get deleted records for an SObject within a date range.
+///
+/// The start and end parameters should be ISO 8601 date-time strings
+/// (e.g., "2024-01-01T00:00:00Z").
+pub fn get_deleted(sobject: &str, start: &str, end: &str) -> Result<GetDeletedResult, Error> {
+    let request = GetDeletedRequest {
+        sobject: sobject.to_string(),
+        start: start.to_string(),
+        end: end.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_deleted(input) }, &request)
+}
+
+/// Get updated record IDs for an SObject within a date range.
+///
+/// The start and end parameters should be ISO 8601 date-time strings
+/// (e.g., "2024-01-01T00:00:00Z").
+pub fn get_updated(sobject: &str, start: &str, end: &str) -> Result<GetUpdatedResult, Error> {
+    let request = GetUpdatedRequest {
+        sobject: sobject.to_string(),
+        start: start.to_string(),
+        end: end.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_updated(input) }, &request)
 }
 
 // =============================================================================
