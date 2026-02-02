@@ -249,4 +249,60 @@ mod tests {
         assert_eq!(result.instance_status, "Approved");
         assert_eq!(result.actor_ids.len(), 1);
     }
+
+    #[test]
+    fn test_process_rule_result_null_errors() {
+        let json = json!({"errors": null, "success": true});
+        let result: ProcessRuleResult = serde_json::from_value(json).unwrap();
+        assert!(result.success);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_approval_result_null_arrays() {
+        let json = json!({
+            "actorIds": null,
+            "entityId": "001xx000003DgAAAS",
+            "errors": null,
+            "instanceId": "04gxx0000000001",
+            "instanceStatus": "Pending",
+            "newWorkitemIds": null,
+            "success": true
+        });
+        let result: ApprovalResult = serde_json::from_value(json).unwrap();
+        assert!(result.success);
+        assert!(result.actor_ids.is_empty());
+        assert!(result.errors.is_empty());
+        assert!(result.new_workitem_ids.is_empty());
+    }
+
+    #[test]
+    fn test_pending_approval_minimal() {
+        let json = json!({"id": "04axx0000000001"});
+        let approval: PendingApproval = serde_json::from_value(json).unwrap();
+        assert_eq!(approval.id, "04axx0000000001");
+        assert!(approval.name.is_none());
+        assert!(approval.description.is_none());
+        assert!(approval.object.is_none());
+        assert!(approval.sort_order.is_none());
+    }
+
+    #[test]
+    fn test_pending_approval_collection_null_approvals() {
+        let json = json!({"approvals": null});
+        let collection: PendingApprovalCollection = serde_json::from_value(json).unwrap();
+        assert!(collection.approvals.is_empty());
+    }
+
+    #[test]
+    fn test_process_rule_null_url() {
+        let json = json!({
+            "id": "01Qxx0000000001",
+            "name": "My Rule",
+            "sobjectType": "Account",
+            "url": null
+        });
+        let rule: ProcessRule = serde_json::from_value(json).unwrap();
+        assert!(rule.url.is_none());
+    }
 }

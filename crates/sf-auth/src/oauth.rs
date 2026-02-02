@@ -612,4 +612,36 @@ mod tests {
             "Should return OAuth error"
         );
     }
+
+    #[tokio::test]
+    async fn test_revoke_token_non_json_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Mock revoke endpoint returning non-JSON error body (HTML or empty)
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/revoke"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("<html>Bad Request</html>"))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        let result = client.revoke_token("some_token", &mock_server.uri()).await;
+
+        assert!(result.is_err(), "Should fail with non-JSON error body");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::Http(_)),
+            "Should return Http error, got: {:?}",
+            err.kind
+        );
+        assert!(
+            err.to_string().contains("revocation failed"),
+            "Error should mention revocation failed"
+        );
+    }
 }

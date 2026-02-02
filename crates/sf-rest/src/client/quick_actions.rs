@@ -166,6 +166,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_describe_global_quick_action_invalid_name() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client.describe_global_quick_action("Bad'; DROP--").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ACTION"));
+    }
+
+    #[tokio::test]
+    async fn test_invoke_quick_action_invalid_action() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .invoke_quick_action("Account", "Bad'; DROP--", &serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_ACTION"));
+    }
+
+    #[tokio::test]
     async fn test_invoke_quick_action_invalid_sobject() {
         let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
         let result = client

@@ -100,6 +100,18 @@ mod tests {
     }
 
     #[test]
+    fn test_knowledge_settings_null_languages() {
+        let json = json!({
+            "defaultLanguage": "en_US",
+            "knowledgeEnabled": false,
+            "languages": null
+        });
+        let settings: KnowledgeSettings = serde_json::from_value(json).unwrap();
+        assert!(!settings.knowledge_enabled);
+        assert!(settings.languages.is_empty());
+    }
+
+    #[test]
     fn test_knowledge_articles_response_deserialize() {
         let json = json!({
             "articles": [{
