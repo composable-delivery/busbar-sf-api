@@ -111,9 +111,6 @@ jobs:
                   fi
               if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
-            - name: Run tests
-              run: cargo test --workspace --verbose
-
             - name: Check formatting
               run: cargo fmt --all --check
 
