@@ -69,13 +69,11 @@ zip.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+busbar-sf-bridge = { workspace = true }
 
 [[bin]]
 name = "setup-scratch-org"
 path = "src/bin/setup_scratch_org.rs"
-
-[dev-dependencies]
-busbar-sf-bridge = { workspace = true }
 
 [[test]]
 name = "integration"
@@ -147,6 +145,7 @@ busbar-sf-bulk = { version = "0.0.3", path = "crates/sf-bulk" }
 busbar-sf-metadata = { version = "0.0.3", path = "crates/sf-metadata" }
 busbar-sf-wasm-types = { version = "0.0.3", path = "crates/sf-wasm-types" }
 busbar-sf-tooling = { version = "0.0.3", path = "crates/sf-tooling" }
+busbar-sf-bridge = { version = "0.0.3", path = "crates/sf-bridge" }
 
 [profile.release]
 lto = true
