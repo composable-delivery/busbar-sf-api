@@ -16,6 +16,8 @@ Use `busbar-sf-metadata` if you only need metadata deploy/retrieve without pulli
 
 ### `typed` - Typed Metadata Operations
 
+⚠️ **Proof-of-Concept**: The current implementation uses simplified XML serialization that may not work with all metadata types in production. For production use, proper XML serialization should be implemented.
+
 Enable the `typed` feature to use fully-typed metadata structures from `busbar-sf-types`:
 
 ```toml

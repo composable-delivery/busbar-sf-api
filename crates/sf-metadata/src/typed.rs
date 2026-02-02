@@ -4,6 +4,16 @@
 //! It provides a trait extension for `MetadataClient` that allows deploy and retrieve
 //! operations with fully-typed Salesforce metadata structures from `busbar-sf-types`.
 //!
+//! # ⚠️ Current Limitations
+//!
+//! This is a **proof-of-concept implementation**. The current XML serialization is simplified
+//! and wraps JSON in XML tags rather than producing proper Salesforce Metadata API XML.
+//! This may not work correctly with all metadata types in production.
+//!
+//! For production use, proper XML serialization should be implemented using `quick-xml` or
+//! similar, converting typed structures to valid Salesforce Metadata API XML format per:
+//! <https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/>
+//!
 //! # Example
 //!
 //! ```rust,ignore
