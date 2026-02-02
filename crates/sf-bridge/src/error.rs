@@ -12,28 +12,29 @@ pub enum Error {
     Serialization(#[from] serde_json::Error),
 
     /// Error from the Salesforce REST client.
+    #[cfg(feature = "rest")]
     #[error("salesforce REST error: {0}")]
     SalesforceRest(#[from] busbar_sf_rest::Error),
 
     /// Error from the Salesforce Bulk API client.
+    #[cfg(feature = "bulk")]
     #[error("salesforce bulk error: {0}")]
     SalesforceBulk(#[from] busbar_sf_bulk::Error),
 
     /// Error from the Salesforce Tooling API client.
+    #[cfg(feature = "tooling")]
     #[error("salesforce tooling error: {0}")]
     SalesforceTooling(#[from] busbar_sf_tooling::Error),
 
     /// Error from the Salesforce Metadata API client.
+    #[cfg(feature = "metadata")]
     #[error("salesforce metadata error: {0}")]
     SalesforceMetadata(#[from] busbar_sf_metadata::Error),
 
     /// Error from the Salesforce client.
+    #[cfg(feature = "rest")]
     #[error("salesforce client error: {0}")]
     SalesforceClient(#[from] busbar_sf_client::Error),
-
-    /// Error from the Salesforce auth client.
-    #[error("salesforce auth error: {0}")]
-    SalesforceAuth(#[from] busbar_sf_auth::Error),
 
     /// Error from a tokio join handle.
     #[error("task join error: {0}")]
