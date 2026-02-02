@@ -72,6 +72,5 @@ if [ -f "$WASM_FILE" ]; then
     echo "  Size: $WASM_SIZE"
 else
     echo "✗ WASM plugin build failed - file not found at $WASM_FILE"
-    mv "$GUEST_SDK_BACKUP" "$GUEST_SDK_TOML" 2>/dev/null || true
     exit 1
 fi
