@@ -1,6 +1,6 @@
 //! Auth integration tests using SF_AUTH_URL.
 
-use super::common::get_credentials;
+use super::common::{get_credentials, get_revocable_credentials};
 use busbar_sf_auth::{Credentials, OAuthClient, OAuthConfig, PRODUCTION_LOGIN_URL};
 
 // ============================================================================
@@ -21,15 +21,15 @@ fn login_url_for(creds: &busbar_sf_auth::SalesforceCredentials) -> &'static str 
 
 #[tokio::test]
 async fn test_revoke_access_token() {
-    let creds = get_credentials().await;
+    // Use a fabricated token so revoking it doesn't invalidate the shared session.
+    // This exercises the revocation code path — Salesforce returns 200 (RFC 7009)
+    // or an error for invalid/unknown tokens, both of which we accept.
+    let creds = get_revocable_credentials().await;
     let login_url = login_url_for(&creds);
 
-    // Each get_credentials() call exchanges the refresh token for a NEW access token,
-    // so revoking this access token does not affect other tests.
-    // However, parallel tests may race and the token could already be revoked.
     let result = creds.revoke_session(false, login_url).await;
     match &result {
-        Ok(()) => {}
+        Ok(()) => {} // RFC 7009: revoke endpoint returns 200 even for unknown tokens
         Err(e) => {
             let err_str = e.to_string();
             assert!(
@@ -74,7 +74,8 @@ async fn test_revoke_refresh_token() {
 
 #[tokio::test]
 async fn test_revoke_token_with_oauth_client() {
-    let creds = get_credentials().await;
+    // Use a fabricated token so revoking it doesn't invalidate the shared session.
+    let creds = get_revocable_credentials().await;
     let login_url = login_url_for(&creds);
 
     let config = OAuthConfig::new("test_revoke_client");
@@ -84,19 +85,25 @@ async fn test_revoke_token_with_oauth_client() {
         .revoke_token(creds.access_token(), login_url)
         .await;
 
-    assert!(
-        result.is_ok(),
-        "Failed to revoke token with OAuthClient: {:?}",
-        result.err()
-    );
+    match &result {
+        Ok(()) => {}
+        Err(e) => {
+            let err_str = e.to_string();
+            assert!(
+                err_str.contains("revocation failed") || err_str.contains("invalid_token"),
+                "Unexpected error revoking token with OAuthClient: {err_str}"
+            );
+        }
+    }
 }
 
 #[tokio::test]
 async fn test_revoke_token_idempotency() {
-    let creds = get_credentials().await;
+    // Use a fabricated token so revoking it doesn't invalidate the shared session.
+    let creds = get_revocable_credentials().await;
     let login_url = login_url_for(&creds);
 
-    // First revocation — may fail if a parallel test already revoked this token.
+    // First revocation.
     let result1 = creds.revoke_session(false, login_url).await;
     match &result1 {
         Ok(()) => {}

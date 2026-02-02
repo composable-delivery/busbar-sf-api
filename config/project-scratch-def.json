@@ -1,21 +1,9 @@
 {
   "orgName": "busbar-sf-api Integration Tests",
   "edition": "Developer",
-  "description": "Scratch org definition for busbar-sf-api integration tests. Create with: sf org create scratch -f config/project-scratch-def.json -a busbar-test -d 7",
+  "description": "Scratch org for busbar-sf-api integration tests. Create with: sf org create scratch -f config/project-scratch-def.json -a busbar-test --duration-days 7",
   "features": [
     "Knowledge",
-    "ServiceCloud",
-    "ConsentManagement"
-  ],
-  "settings": {
-    "knowledgeSettings": {
-      "enabled": true
-    },
-    "activitiesSettings": {
-      "allowUsersToRelateMultipleContactsToTasksAndEvents": true
-    },
-    "searchSettings": {
-      "documentContentSearchEnabled": true
-    }
-  }
+    "ServiceCloud"
+  ]
 }
