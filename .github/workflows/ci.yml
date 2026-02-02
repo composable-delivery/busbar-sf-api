@@ -62,7 +62,7 @@ jobs:
         if: always()
         run: |
           echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
@@ -138,7 +138,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
