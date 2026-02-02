@@ -2,7 +2,17 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize `null` as the default value for the type (e.g., empty Vec).
+/// Salesforce APIs often return `null` instead of `[]` for empty arrays.
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// A process rule definition.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -11,45 +21,51 @@ pub struct ProcessRule {
     pub name: String,
     #[serde(rename = "sobjectType")]
     pub sobject_type: Option<String>,
-    pub url: String,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// Collection of process rules grouped by SObject type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleCollection {
+    #[serde(default)]
     pub rules: HashMap<String, Vec<ProcessRule>>,
 }
 
-/// Request to trigger a process rule.
+/// Request to trigger process rules for one or more records.
+/// All IDs must be for records on the same SObject type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleRequest {
-    #[serde(rename = "contextId")]
-    pub context_id: String,
+    #[serde(rename = "contextIds")]
+    pub context_ids: Vec<String>,
 }
 
 /// Result of triggering a process rule.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ProcessRuleResult {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub errors: Vec<crate::sobject::SalesforceError>,
     pub success: bool,
 }
 
-/// A pending approval work item.
+/// An approval process definition returned by GET /process/approvals.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PendingApproval {
     pub id: String,
-    #[serde(rename = "entityId")]
-    pub entity_id: String,
-    #[serde(rename = "entityType")]
-    pub entity_type: String,
-    #[serde(rename = "processInstanceId")]
-    pub process_instance_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub object: Option<String>,
+    #[serde(rename = "sortOrder", default)]
+    pub sort_order: Option<i32>,
 }
 
 /// Collection of pending approvals grouped by entity type.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PendingApprovalCollection {
+    #[serde(default, deserialize_with = "null_as_default")]
     pub approvals: HashMap<String, Vec<PendingApproval>>,
 }
 
@@ -86,17 +102,21 @@ pub enum ApprovalActionType {
 /// Result of an approval action.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ApprovalResult {
-    #[serde(rename = "actorIds", default)]
+    #[serde(rename = "actorIds", default, deserialize_with = "null_as_default")]
     pub actor_ids: Vec<String>,
     #[serde(rename = "entityId")]
     pub entity_id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub errors: Vec<crate::sobject::SalesforceError>,
     #[serde(rename = "instanceId")]
     pub instance_id: String,
     #[serde(rename = "instanceStatus")]
     pub instance_status: String,
-    #[serde(rename = "newWorkitemIds", default)]
+    #[serde(
+        rename = "newWorkitemIds",
+        default,
+        deserialize_with = "null_as_default"
+    )]
     pub new_workitem_ids: Vec<String>,
     pub success: bool,
 }
@@ -117,6 +137,19 @@ mod tests {
         let rule: ProcessRule = serde_json::from_value(json).unwrap();
         assert_eq!(rule.id, "01Qxx0000000001");
         assert_eq!(rule.sobject_type, Some("Account".to_string()));
+        assert!(rule.url.is_some());
+    }
+
+    #[test]
+    fn test_process_rule_deserialize_without_url() {
+        let json = json!({
+            "id": "01Qxx0000000001",
+            "name": "My Rule",
+            "sobjectType": "Account"
+        });
+        let rule: ProcessRule = serde_json::from_value(json).unwrap();
+        assert_eq!(rule.id, "01Qxx0000000001");
+        assert!(rule.url.is_none());
     }
 
     #[test]
@@ -138,10 +171,10 @@ mod tests {
     #[test]
     fn test_process_rule_request_serialize() {
         let request = ProcessRuleRequest {
-            context_id: "001xx000003DgAAAS".to_string(),
+            context_ids: vec!["001xx000003DgAAAS".to_string()],
         };
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["contextId"], "001xx000003DgAAAS");
+        assert_eq!(json["contextIds"][0], "001xx000003DgAAAS");
     }
 
     #[test]
@@ -154,13 +187,15 @@ mod tests {
     #[test]
     fn test_pending_approval_deserialize() {
         let json = json!({
-            "id": "04ixx0000000001",
-            "entityId": "001xx000003DgAAAS",
-            "entityType": "Account",
-            "processInstanceId": "04gxx0000000001"
+            "id": "04axx0000000001",
+            "name": "Account_Approval",
+            "description": "Approval for accounts",
+            "object": "Account",
+            "sortOrder": 1
         });
         let approval: PendingApproval = serde_json::from_value(json).unwrap();
-        assert_eq!(approval.entity_type, "Account");
+        assert_eq!(approval.object, Some("Account".to_string()));
+        assert_eq!(approval.name, Some("Account_Approval".to_string()));
     }
 
     #[test]
@@ -168,10 +203,11 @@ mod tests {
         let json = json!({
             "approvals": {
                 "Account": [{
-                    "id": "04ixx0000000001",
-                    "entityId": "001xx000003DgAAAS",
-                    "entityType": "Account",
-                    "processInstanceId": "04gxx0000000001"
+                    "id": "04axx0000000001",
+                    "name": "Account_Approval",
+                    "description": null,
+                    "object": "Account",
+                    "sortOrder": 1
                 }]
             }
         });
@@ -212,5 +248,61 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.instance_status, "Approved");
         assert_eq!(result.actor_ids.len(), 1);
+    }
+
+    #[test]
+    fn test_process_rule_result_null_errors() {
+        let json = json!({"errors": null, "success": true});
+        let result: ProcessRuleResult = serde_json::from_value(json).unwrap();
+        assert!(result.success);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_approval_result_null_arrays() {
+        let json = json!({
+            "actorIds": null,
+            "entityId": "001xx000003DgAAAS",
+            "errors": null,
+            "instanceId": "04gxx0000000001",
+            "instanceStatus": "Pending",
+            "newWorkitemIds": null,
+            "success": true
+        });
+        let result: ApprovalResult = serde_json::from_value(json).unwrap();
+        assert!(result.success);
+        assert!(result.actor_ids.is_empty());
+        assert!(result.errors.is_empty());
+        assert!(result.new_workitem_ids.is_empty());
+    }
+
+    #[test]
+    fn test_pending_approval_minimal() {
+        let json = json!({"id": "04axx0000000001"});
+        let approval: PendingApproval = serde_json::from_value(json).unwrap();
+        assert_eq!(approval.id, "04axx0000000001");
+        assert!(approval.name.is_none());
+        assert!(approval.description.is_none());
+        assert!(approval.object.is_none());
+        assert!(approval.sort_order.is_none());
+    }
+
+    #[test]
+    fn test_pending_approval_collection_null_approvals() {
+        let json = json!({"approvals": null});
+        let collection: PendingApprovalCollection = serde_json::from_value(json).unwrap();
+        assert!(collection.approvals.is_empty());
+    }
+
+    #[test]
+    fn test_process_rule_null_url() {
+        let json = json!({
+            "id": "01Qxx0000000001",
+            "name": "My Rule",
+            "sobjectType": "Account",
+            "url": null
+        });
+        let rule: ProcessRule = serde_json::from_value(json).unwrap();
+        assert!(rule.url.is_none());
     }
 }

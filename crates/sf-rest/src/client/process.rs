@@ -1,12 +1,21 @@
+use serde::Deserialize;
 use tracing::instrument;
 
 use busbar_sf_client::security::soql;
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::process::{
-    ApprovalRequest, ApprovalResult, PendingApprovalCollection, ProcessRuleCollection,
+    ApprovalRequest, ApprovalResult, PendingApprovalCollection, ProcessRule, ProcessRuleCollection,
     ProcessRuleRequest, ProcessRuleResult,
 };
+
+/// Per-SObject process rules response: `{"rules": [rule1, rule2, ...]}`
+/// Different from the top-level response which uses a map keyed by SObject type.
+#[derive(Deserialize)]
+struct PerSObjectProcessRules {
+    #[serde(default)]
+    rules: Vec<ProcessRule>,
+}
 
 impl super::SalesforceRestClient {
     /// List all process rules.
@@ -19,11 +28,13 @@ impl super::SalesforceRestClient {
     }
 
     /// List process rules for a specific SObject type.
+    ///
+    /// Returns the array of rules for that SObject.
     #[instrument(skip(self))]
     pub async fn list_process_rules_for_sobject(
         &self,
         sobject: &str,
-    ) -> Result<ProcessRuleCollection> {
+    ) -> Result<Vec<crate::process::ProcessRule>> {
         if !soql::is_safe_sobject_name(sobject) {
             return Err(Error::new(ErrorKind::Salesforce {
                 error_code: "INVALID_SOBJECT".to_string(),
@@ -31,7 +42,10 @@ impl super::SalesforceRestClient {
             }));
         }
         let path = format!("process/rules/{}", sobject);
-        self.client.rest_get(&path).await.map_err(Into::into)
+        // Per-SObject endpoint returns {"rules": [rule1, rule2, ...]} (array),
+        // unlike the top-level endpoint which uses a map keyed by SObject type.
+        let response: PerSObjectProcessRules = self.client.rest_get(&path).await?;
+        Ok(response.rules)
     }
 
     /// Trigger process rules for a record.
@@ -117,6 +131,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_list_process_rules_for_sobject_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Per-SObject endpoint returns {"rules": [...]} (array, not map)
+        let body = serde_json::json!({
+            "rules": [{
+                "id": "01Qxx0000000001",
+                "name": "My Rule",
+                "sobjectType": "Account"
+            }]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/process/rules/Account$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let rules = client
+            .list_process_rules_for_sobject("Account")
+            .await
+            .expect("list_process_rules_for_sobject should succeed");
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].name, "My Rule");
+    }
+
+    #[tokio::test]
     async fn test_trigger_process_rules_wiremock() {
         use wiremock::matchers::{method, path_regex};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -133,7 +178,7 @@ mod tests {
 
         let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
         let request = crate::process::ProcessRuleRequest {
-            context_id: "001xx000003DgAAAS".to_string(),
+            context_ids: vec!["001xx000003DgAAAS".to_string()],
         };
         let result = client
             .trigger_process_rules(&request)
@@ -152,10 +197,11 @@ mod tests {
         let body = serde_json::json!({
             "approvals": {
                 "Account": [{
-                    "id": "04ixx0000000001",
-                    "entityId": "001xx000003DgAAAS",
-                    "entityType": "Account",
-                    "processInstanceId": "04gxx0000000001"
+                    "id": "04axx0000000001",
+                    "name": "Account_Approval",
+                    "description": null,
+                    "object": "Account",
+                    "sortOrder": 1
                 }]
             }
         });

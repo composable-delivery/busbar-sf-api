@@ -149,10 +149,10 @@ impl super::SalesforceRestClient {
         let request = self.client.patch(&url).json(record)?;
         let response = self.client.execute(request).await?;
 
-        // Upsert returns 201 Created or 204 No Content
+        // Upsert returns 201 Created, 200 OK (updated), or 204 No Content (updated, older APIs)
         let status = response.status();
-        if status == 201 {
-            // Created - response has the ID
+        if status == 201 || status == 200 {
+            // 201 Created or 200 Updated - response body has the result
             let result: UpsertResult = response.json().await?;
             Ok(result)
         } else if status == 204 {
@@ -169,5 +169,124 @@ impl super::SalesforceRestClient {
                 message: format!("Unexpected status: {}", status),
             }))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::SalesforceRestClient;
+
+    #[tokio::test]
+    async fn test_upsert_created_201_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "id": "001xx000003DgAAAS",
+            "success": true,
+            "created": true,
+            "errors": []
+        });
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(".*/sobjects/Account/ExtId__c/.*"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .upsert(
+                "Account",
+                "ExtId__c",
+                "ext-123",
+                &serde_json::json!({"Name": "Test"}),
+            )
+            .await
+            .expect("Upsert 201 should succeed");
+        assert!(result.created);
+        assert_eq!(result.id, "001xx000003DgAAAS");
+    }
+
+    #[tokio::test]
+    async fn test_upsert_updated_200_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        let body = serde_json::json!({
+            "id": "001xx000003DgAAAS",
+            "success": true,
+            "created": false,
+            "errors": []
+        });
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(".*/sobjects/Account/ExtId__c/.*"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .upsert(
+                "Account",
+                "ExtId__c",
+                "ext-123",
+                &serde_json::json!({"Name": "Updated"}),
+            )
+            .await
+            .expect("Upsert 200 should succeed");
+        assert!(!result.created);
+        assert_eq!(result.id, "001xx000003DgAAAS");
+    }
+
+    #[tokio::test]
+    async fn test_upsert_updated_204_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("PATCH"))
+            .and(path_regex(".*/sobjects/Account/ExtId__c/.*"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let result = client
+            .upsert(
+                "Account",
+                "ExtId__c",
+                "ext-123",
+                &serde_json::json!({"Name": "Updated"}),
+            )
+            .await
+            .expect("Upsert 204 should succeed");
+        assert!(!result.created);
+    }
+
+    #[tokio::test]
+    async fn test_upsert_invalid_sobject() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .upsert("Bad'; DROP--", "ExtId__c", "123", &serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_SOBJECT"));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_invalid_field() {
+        let client = SalesforceRestClient::new("https://test.salesforce.com", "token").unwrap();
+        let result = client
+            .upsert("Account", "Bad'; DROP--", "123", &serde_json::json!({}))
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("INVALID_FIELD"));
     }
 }

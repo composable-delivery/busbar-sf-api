@@ -49,9 +49,14 @@ async fn main() {
     let count = ensure_test_accounts(&creds).await;
     println!("{count} accounts ready");
 
-    // 2. Deploy test list view
-    print!("  Deploying test list view... ");
-    deploy_test_list_view(&creds).await;
+    // 2. Deploy test metadata (list view, external ID, workflow rule, approval process)
+    print!("  Deploying test metadata... ");
+    deploy_test_metadata(&creds).await;
+    println!("done");
+
+    // 3. Deploy data category group (separate deploy — different metadata type)
+    print!("  Deploying data category group... ");
+    deploy_data_category_group(&creds).await;
     println!("done");
 
     println!("\nScratch org setup complete.");
@@ -88,7 +93,8 @@ async fn ensure_test_accounts(creds: &SalesforceCredentials) -> usize {
     total
 }
 
-async fn deploy_test_list_view(creds: &SalesforceCredentials) {
+/// Deploy test metadata: list view, AccountNumber external ID, workflow rule, approval process.
+async fn deploy_test_metadata(creds: &SalesforceCredentials) {
     let client = MetadataClient::new(creds).expect("Failed to create Metadata client");
 
     let mut buf = Vec::new();
@@ -105,22 +111,115 @@ async fn deploy_test_list_view(creds: &SalesforceCredentials) {
         <members>Account</members>
         <name>CustomObject</name>
     </types>
+    <types>
+        <members>Account</members>
+        <name>Workflow</name>
+    </types>
+    <types>
+        <members>Account.BusbarIntTest_Approval</members>
+        <name>ApprovalProcess</name>
+    </types>
+    <types>
+        <members>Admin</members>
+        <name>Profile</name>
+    </types>
     <version>62.0</version>
 </Package>"#,
         )
         .unwrap();
 
-        // mdapi format: ListView is nested inside the .object file
+        // Account object: list view + AccountNumber as external ID
         zip.start_file("objects/Account.object", options).unwrap();
         zip.write_all(
             br#"<?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fields>
+        <fullName>BusbarIntTestExtId__c</fullName>
+        <externalId>true</externalId>
+        <label>BusbarIntTest External ID</label>
+        <type>Text</type>
+        <length>255</length>
+        <unique>true</unique>
+    </fields>
     <listViews>
         <fullName>BusbarIntTest_AllAccounts</fullName>
         <filterScope>Everything</filterScope>
         <label>BusbarIntTest All Accounts</label>
     </listViews>
 </CustomObject>"#,
+        )
+        .unwrap();
+
+        // Workflow rule on Account (for process rules tests)
+        zip.start_file("workflows/Account.workflow", options)
+            .unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Workflow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <rules>
+        <fullName>BusbarIntTest_AccountRule</fullName>
+        <active>true</active>
+        <criteriaItems>
+            <field>Account.Name</field>
+            <operation>startsWith</operation>
+            <value>BusbarIntTest_ProcessRule</value>
+        </criteriaItems>
+        <description>Integration test workflow rule for process rules API tests</description>
+        <triggerType>onCreateOrTriggeringUpdate</triggerType>
+    </rules>
+</Workflow>"#,
+        )
+        .unwrap();
+
+        // Approval process on Account (for approval submit test)
+        zip.start_file(
+            "approvalProcesses/Account.BusbarIntTest_Approval.approvalProcess",
+            options,
+        )
+        .unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+    <active>true</active>
+    <allowRecall>true</allowRecall>
+    <allowedSubmitters>
+        <type>allInternalUsers</type>
+    </allowedSubmitters>
+    <approvalPageFields>
+        <field>Name</field>
+        <field>Owner</field>
+    </approvalPageFields>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>Owner</name>
+                <type>relatedUserField</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <label>Step 1</label>
+        <name>Step_1</name>
+    </approvalStep>
+    <description>Integration test approval process</description>
+    <label>BusbarIntTest Approval</label>
+    <recordEditability>AdminOnly</recordEditability>
+    <showApprovalHistory>true</showApprovalHistory>
+</ApprovalProcess>"#,
+        )
+        .unwrap();
+
+        // Admin profile: grant FLS for custom external ID field
+        zip.start_file("profiles/Admin.profile", options).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Account.BusbarIntTestExtId__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+</Profile>"#,
         )
         .unwrap();
 
@@ -136,11 +235,76 @@ async fn deploy_test_list_view(creds: &SalesforceCredentials) {
     let result = client
         .deploy_and_wait(&buf, opts, Duration::from_secs(120), Duration::from_secs(3))
         .await
-        .expect("ListView deploy failed");
+        .expect("Test metadata deploy failed");
 
     if !result.success {
         eprintln!(
-            "ListView deploy failed. Status: {:?}, Errors: {:?}",
+            "\nTest metadata deploy failed. Status: {:?}, Errors: {:?}",
+            result.status, result.component_failures
+        );
+        std::process::exit(1);
+    }
+}
+
+/// Deploy a data category group (for Knowledge/data category API tests).
+async fn deploy_data_category_group(creds: &SalesforceCredentials) {
+    let client = MetadataClient::new(creds).expect("Failed to create Metadata client");
+
+    let mut buf = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("package.xml", options).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>BusbarIntTest_Categories</members>
+        <name>DataCategoryGroup</name>
+    </types>
+    <version>62.0</version>
+</Package>"#,
+        )
+        .unwrap();
+
+        zip.start_file(
+            "datacategorygroups/BusbarIntTest_Categories.datacategorygroup",
+            options,
+        )
+        .unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+<DataCategoryGroup xmlns="http://soap.sforce.com/2006/04/metadata">
+    <active>true</active>
+    <dataCategory>
+        <name>TestCategory</name>
+        <label>Test Category</label>
+    </dataCategory>
+    <description>Integration test data categories</description>
+    <label>BusbarIntTest Categories</label>
+</DataCategoryGroup>"#,
+        )
+        .unwrap();
+
+        zip.finish().unwrap();
+    }
+
+    let opts = DeployOptions {
+        single_package: true,
+        rollback_on_error: true,
+        ..Default::default()
+    };
+
+    let result = client
+        .deploy_and_wait(&buf, opts, Duration::from_secs(120), Duration::from_secs(3))
+        .await
+        .expect("DataCategoryGroup deploy failed");
+
+    if !result.success {
+        eprintln!(
+            "\nDataCategoryGroup deploy failed. Status: {:?}, Errors: {:?}",
             result.status, result.component_failures
         );
         std::process::exit(1);

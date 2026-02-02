@@ -138,12 +138,20 @@ async fn test_metadata_cancel_deploy() {
         .await
         .expect("Deploy should succeed");
 
+    // Cancel may race with deploy finalization — both outcomes are valid.
     let cancel_result = client.cancel_deploy(&async_id).await;
-    assert!(
-        cancel_result.is_ok(),
-        "cancel_deploy should not error (got {:?})",
-        cancel_result
-    );
+    match &cancel_result {
+        Ok(_) => {} // Successfully cancelled
+        Err(e) => {
+            let msg = e.to_string();
+            // Deploy may have already reached finalizing/succeeded state
+            assert!(
+                msg.contains("INVALID_ID_FIELD") || msg.contains("finalizing"),
+                "cancel_deploy error should be about finalizing race, got: {msg}"
+            );
+            return; // Deploy already completed, can't cancel — valid outcome
+        }
+    }
 
     // Poll to let SF finish cancelling
     tokio::time::sleep(Duration::from_secs(2)).await;

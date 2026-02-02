@@ -1,15 +1,24 @@
 //! Knowledge Management types for the Salesforce REST API.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize `null` as the default value for the type (e.g., empty Vec).
+fn null_as_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// Knowledge management settings.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KnowledgeSettings {
     #[serde(rename = "defaultLanguage", default)]
-    pub default_language: String,
+    pub default_language: Option<String>,
     #[serde(rename = "knowledgeEnabled", default)]
     pub knowledge_enabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub languages: Vec<serde_json::Value>,
 }
 
@@ -87,7 +96,19 @@ mod tests {
         });
         let settings: KnowledgeSettings = serde_json::from_value(json).unwrap();
         assert!(settings.knowledge_enabled);
-        assert_eq!(settings.default_language, "en_US");
+        assert_eq!(settings.default_language, Some("en_US".to_string()));
+    }
+
+    #[test]
+    fn test_knowledge_settings_null_languages() {
+        let json = json!({
+            "defaultLanguage": "en_US",
+            "knowledgeEnabled": false,
+            "languages": null
+        });
+        let settings: KnowledgeSettings = serde_json::from_value(json).unwrap();
+        assert!(!settings.knowledge_enabled);
+        assert!(settings.languages.is_empty());
     }
 
     #[test]

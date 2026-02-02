@@ -14,6 +14,29 @@ use busbar_sf_tooling::{
 // Global mutex to serialize Apex class creation across tests
 static APEX_CLASS_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Create an ApexClass via the Tooling API, retrying on "admin operation already in progress".
+/// Salesforce can take a few seconds to finish compiling a previously created/deleted class.
+async fn create_apex_class_with_retry(client: &ToolingClient, name: &str, body: &str) -> String {
+    let payload = serde_json::json!({
+        "Name": name,
+        "Body": body
+    });
+    for attempt in 0..6 {
+        match client.create("ApexClass", &payload).await {
+            Ok(id) => return id,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("admin operation already in progress") && attempt < 5 {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+                panic!("ApexClass creation failed after retries: {e}");
+            }
+        }
+    }
+    unreachable!()
+}
+
 // ============================================================================
 // Tooling API Tests
 // ============================================================================
@@ -197,20 +220,17 @@ async fn test_tooling_collections_get_multiple() {
         .await
         .expect("Query should succeed");
 
-    if query_result.is_empty() {
-        eprintln!("Skipping test: No ApexClass records found in org");
-        return;
-    }
+    assert!(
+        !query_result.is_empty(),
+        "Org should have at least one ApexClass"
+    );
 
     let ids: Vec<String> = query_result
         .iter()
         .filter_map(|r| r.get("Id").and_then(|v| v.as_str()).map(String::from))
         .collect();
 
-    if ids.is_empty() {
-        eprintln!("Skipping test: No ApexClass IDs found");
-        return;
-    }
+    assert!(!ids.is_empty(), "ApexClass records should have Id fields");
 
     let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
 
@@ -241,101 +261,79 @@ async fn test_tooling_collections_get_multiple() {
 }
 
 #[tokio::test]
-async fn test_tooling_collections_create_update_delete() {
+async fn test_tooling_delete_record() {
     let creds = get_credentials().await;
     let client = ToolingClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create Tooling client");
 
-    // Note: We can't easily create ApexClass records via Tooling API without
-    // using MetadataContainer, which is complex. Instead, we'll test with
-    // TraceFlag or DebugLevel which are easier to create.
+    // Create a DebugLevel, then delete it via single-record delete
+    let debug_level = serde_json::json!({
+        "DeveloperName": format!("IntTest_{}", chrono::Utc::now().timestamp_millis()),
+        "MasterLabel": "Integration Test Delete",
+        "Database": "NONE",
+        "System": "NONE",
+        "Callout": "NONE",
+        "ApexCode": "DEBUG",
+        "ApexProfiling": "NONE",
+        "Validation": "NONE",
+        "Visualforce": "NONE",
+        "Workflow": "NONE",
+        "Nba": "NONE",
+        "Wave": "NONE"
+    });
 
-    // First, get a debug level ID to use for TraceFlags
+    let created_id = client
+        .create("DebugLevel", &debug_level)
+        .await
+        .expect("create DebugLevel should succeed");
+    assert!(!created_id.is_empty(), "Created ID should not be empty");
+
+    // Now delete via single-record endpoint
+    client
+        .delete("DebugLevel", &created_id)
+        .await
+        .expect("delete DebugLevel should succeed");
+
+    // Verify it's gone
+    let get_result = client
+        .get::<serde_json::Value>("DebugLevel", &created_id)
+        .await;
+    assert!(
+        get_result.is_err(),
+        "GET after delete should fail (record should be gone)"
+    );
+}
+
+#[tokio::test]
+async fn test_tooling_create_trace_flag() {
+    let creds = get_credentials().await;
+    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
+        .expect("Failed to create Tooling client");
+
     let debug_levels: Vec<serde_json::Value> = client
         .query_all("SELECT Id FROM DebugLevel LIMIT 1")
         .await
         .expect("Query DebugLevel should succeed");
-
-    if debug_levels.is_empty() {
-        eprintln!("Skipping test: No DebugLevel found in org");
-        return;
-    }
-
-    let _debug_level_id = debug_levels[0]
-        .get("Id")
-        .and_then(|v| v.as_str())
-        .expect("Should have DebugLevel Id");
-
-    // Get current user ID
-    let _user_info: serde_json::Value = client
-        .inner()
-        .rest_get("sobjects/User")
-        .await
-        .expect("Should get user info");
-
-    // Note: Creating TraceFlags might fail if they already exist or permissions are insufficient
-    // This is more of a smoke test to ensure the API endpoint works
-    eprintln!("Note: TraceFlag creation test may be skipped if already exists or permissions insufficient");
-}
-
-#[tokio::test]
-async fn test_tooling_collections_delete_multiple() {
-    let creds = get_credentials().await;
-    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create Tooling client");
-
-    // Test delete_multiple with invalid IDs to verify the endpoint works
-    // (we don't want to actually delete real data in integration tests)
-    let fake_ids = vec!["000000000000000AAA", "000000000000000AAB"];
-
-    let result = client.delete_multiple(&fake_ids, false).await;
-
-    // Should get results back, but they should indicate failure for these fake IDs
-    if let Ok(results) = result {
-        assert_eq!(results.len(), 2, "Should have 2 delete results");
-        // Fake IDs should fail
-        for res in results {
-            assert!(
-                !res.success || !res.errors.is_empty(),
-                "Fake ID deletion should fail or have errors"
-            );
-        }
-    }
-}
-
-#[tokio::test]
-async fn test_tooling_create_multiple_trace_flags() {
-    let creds = get_credentials().await;
-    let client = ToolingClient::new(creds.instance_url(), creds.access_token())
-        .expect("Failed to create Tooling client");
-
-    // Get a debug level to use
-    let debug_levels: Vec<serde_json::Value> = client
-        .query_all("SELECT Id FROM DebugLevel LIMIT 1")
-        .await
-        .expect("Query DebugLevel should succeed");
-
-    if debug_levels.is_empty() {
-        eprintln!("Skipping test: No DebugLevel found in org");
-        return;
-    }
+    assert!(
+        !debug_levels.is_empty(),
+        "Org should have at least one DebugLevel"
+    );
 
     let debug_level_id = debug_levels[0]
         .get("Id")
         .and_then(|v| v.as_str())
         .expect("Should have DebugLevel Id");
 
-    // Get the current user ID via query (more reliable than REST endpoint)
+    // Get an active user ID
     let user_query: Vec<serde_json::Value> = client
         .inner()
-        .query_all("SELECT Id FROM User WHERE Username = UserInfo.getUserName() LIMIT 1")
+        .query_all("SELECT Id FROM User WHERE IsActive = true LIMIT 1")
         .await
-        .unwrap_or_default();
-
-    if user_query.is_empty() {
-        eprintln!("Skipping test: Could not get current user ID");
-        return;
-    }
+        .expect("User query should succeed");
+    assert!(
+        !user_query.is_empty(),
+        "Org should have at least one active user"
+    );
 
     let user_id = user_query[0]
         .get("Id")
@@ -345,33 +343,26 @@ async fn test_tooling_create_multiple_trace_flags() {
     let now = chrono::Utc::now();
     let expiration = now + chrono::Duration::hours(1);
 
-    let trace_flags = vec![serde_json::json!({
+    let trace_flag = serde_json::json!({
         "TracedEntityId": user_id,
         "DebugLevelId": debug_level_id,
         "StartDate": now.to_rfc3339(),
         "ExpirationDate": expiration.to_rfc3339(),
         "LogType": "USER_DEBUG"
-    })];
+    });
 
-    // Attempt to create - this may fail if trace flag already exists
-    let result = client
-        .create_multiple("TraceFlag", &trace_flags, false)
-        .await;
+    // Use single create (not create_multiple — Tooling API composite/sobjects is unreliable)
+    let created_id = client
+        .create("TraceFlag", &trace_flag)
+        .await
+        .expect("create TraceFlag should succeed");
+    assert!(
+        !created_id.is_empty(),
+        "Created TraceFlag ID should not be empty"
+    );
 
-    match result {
-        Ok(results) => {
-            assert_eq!(results.len(), 1, "Should have 1 result");
-
-            // Clean up if successful
-            if let Some(id) = results[0].id.as_ref() {
-                let _ = client.delete("TraceFlag", id).await;
-            }
-        }
-        Err(e) => {
-            // It's okay if this fails due to existing trace flags or permissions
-            eprintln!("TraceFlag creation failed (expected in some orgs): {:?}", e);
-        }
-    }
+    // Clean up
+    let _ = client.delete("TraceFlag", &created_id).await;
 }
 
 // ============================================================================
@@ -445,10 +436,10 @@ async fn test_tooling_update() {
         .await
         .expect("Query DebugLevel should succeed");
 
-    if debug_levels.is_empty() {
-        eprintln!("Skipping test: No DebugLevel found in org");
-        return;
-    }
+    assert!(
+        !debug_levels.is_empty(),
+        "Org should have at least one DebugLevel"
+    );
 
     let debug_level_id = debug_levels[0]
         .get("Id")
@@ -583,43 +574,22 @@ async fn test_tooling_run_tests_async() {
         test_class_name
     );
 
-    let class_id = match client
-        .create(
-            "ApexClass",
-            &serde_json::json!({
-                "Name": test_class_name,
-                "Body": test_body
-            }),
-        )
-        .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("Skipping test: could not create test class: {e}");
-            return;
-        }
-    };
+    let class_id = create_apex_class_with_retry(&client, &test_class_name, &test_body).await;
 
     // Run tests async
     let request = RunTestsAsyncRequest {
-        class_names: Some(vec![test_class_name.clone()]),
+        class_names: Some(test_class_name.clone()),
         test_level: Some("RunSpecifiedTests".to_string()),
         ..Default::default()
     };
 
     let result = client.run_tests_async(&request).await;
 
-    // Clean up the test class
+    // Clean up the test class regardless of result
     let _ = client.delete("ApexClass", &class_id).await;
 
-    match result {
-        Ok(job_id) => {
-            assert!(!job_id.is_empty(), "Job ID should not be empty");
-        }
-        Err(e) => {
-            eprintln!("run_tests_async failed (may be expected in some orgs): {e}");
-        }
-    }
+    let job_id = result.expect("run_tests_async should succeed");
+    assert!(!job_id.is_empty(), "Job ID should not be empty");
 }
 
 #[tokio::test]
@@ -637,45 +607,28 @@ async fn test_tooling_run_tests_sync() {
         test_class_name
     );
 
-    let class_id = match client
-        .create(
-            "ApexClass",
-            &serde_json::json!({
-                "Name": test_class_name,
-                "Body": test_body
-            }),
-        )
-        .await
-    {
-        Ok(id) => id,
-        Err(e) => {
-            eprintln!("Skipping test: could not create test class: {e}");
-            return;
-        }
-    };
+    let class_id = create_apex_class_with_retry(&client, &test_class_name, &test_body).await;
 
     // Run tests synchronously
     let request = busbar_sf_tooling::RunTestsSyncRequest {
-        tests: Some(vec![test_class_name.clone()]),
+        tests: Some(vec![busbar_sf_tooling::SyncTestItem {
+            class_name: test_class_name.clone(),
+            test_methods: None,
+            namespace: None,
+        }]),
         ..Default::default()
     };
 
     let result = client.run_tests_sync(&request).await;
 
-    // Clean up the test class
+    // Clean up the test class regardless of result
     let _ = client.delete("ApexClass", &class_id).await;
 
-    match result {
-        Ok(sync_result) => {
-            assert!(
-                sync_result.num_tests_run > 0,
-                "Should have run at least one test"
-            );
-        }
-        Err(e) => {
-            eprintln!("run_tests_sync failed (may be expected in some orgs): {e}");
-        }
-    }
+    let sync_result = result.expect("run_tests_sync should succeed");
+    assert!(
+        sync_result.num_tests_run > 0,
+        "Should have run at least one test"
+    );
 }
 
 // ============================================================================
