@@ -183,9 +183,10 @@ async fn test_rest_upsert_operation() {
 
     let unique_id = format!("TEST-{}", chrono::Utc::now().timestamp_millis());
 
+    // The external ID field value goes in the URL path, NOT in the body.
+    // Including it in the body causes INVALID_FIELD error.
     let account_data = serde_json::json!({
-        "Name": format!("Upsert Test {}", unique_id),
-        "BusbarIntTestExtId__c": unique_id
+        "Name": format!("Upsert Test {}", unique_id)
     });
 
     let upsert_result = client
@@ -202,8 +203,7 @@ async fn test_rest_upsert_operation() {
     let account_id = upsert_result.id.clone();
 
     let updated_data = serde_json::json!({
-        "Name": format!("Upsert Test Updated {}", unique_id),
-        "BusbarIntTestExtId__c": unique_id
+        "Name": format!("Upsert Test Updated {}", unique_id)
     });
 
     let upsert_result2 = client

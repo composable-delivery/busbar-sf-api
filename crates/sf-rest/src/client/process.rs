@@ -1,12 +1,21 @@
+use serde::Deserialize;
 use tracing::instrument;
 
 use busbar_sf_client::security::soql;
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::process::{
-    ApprovalRequest, ApprovalResult, PendingApprovalCollection, ProcessRuleCollection,
+    ApprovalRequest, ApprovalResult, PendingApprovalCollection, ProcessRule, ProcessRuleCollection,
     ProcessRuleRequest, ProcessRuleResult,
 };
+
+/// Per-SObject process rules response: `{"rules": [rule1, rule2, ...]}`
+/// Different from the top-level response which uses a map keyed by SObject type.
+#[derive(Deserialize)]
+struct PerSObjectProcessRules {
+    #[serde(default)]
+    rules: Vec<ProcessRule>,
+}
 
 impl super::SalesforceRestClient {
     /// List all process rules.
@@ -33,15 +42,10 @@ impl super::SalesforceRestClient {
             }));
         }
         let path = format!("process/rules/{}", sobject);
-        // Per-SObject endpoint returns {"rules": [...]} wrapper
-        let collection: crate::process::ProcessRuleCollection = self.client.rest_get(&path).await?;
-        // Extract rules for this SObject, or return all rules flattened
-        if let Some(rules) = collection.rules.get(sobject) {
-            Ok(rules.clone())
-        } else {
-            // Flatten all rules from the response
-            Ok(collection.rules.into_values().flatten().collect())
-        }
+        // Per-SObject endpoint returns {"rules": [rule1, rule2, ...]} (array),
+        // unlike the top-level endpoint which uses a map keyed by SObject type.
+        let response: PerSObjectProcessRules = self.client.rest_get(&path).await?;
+        Ok(response.rules)
     }
 
     /// Trigger process rules for a record.
@@ -124,6 +128,37 @@ mod tests {
             .await
             .expect("list_process_rules should succeed");
         assert_eq!(result.rules.get("Account").unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_process_rules_for_sobject_wiremock() {
+        use wiremock::matchers::{method, path_regex};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Per-SObject endpoint returns {"rules": [...]} (array, not map)
+        let body = serde_json::json!({
+            "rules": [{
+                "id": "01Qxx0000000001",
+                "name": "My Rule",
+                "sobjectType": "Account"
+            }]
+        });
+
+        Mock::given(method("GET"))
+            .and(path_regex(".*/process/rules/Account$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock_server)
+            .await;
+
+        let client = SalesforceRestClient::new(mock_server.uri(), "test-token").unwrap();
+        let rules = client
+            .list_process_rules_for_sobject("Account")
+            .await
+            .expect("list_process_rules_for_sobject should succeed");
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].name, "My Rule");
     }
 
     #[tokio::test]
