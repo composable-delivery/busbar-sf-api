@@ -4,7 +4,7 @@
 //! for a specific API category.
 
 // Re-export helpers from parent module for use in submodules
-pub(self) use super::{bridge_host_fn, bridge_host_fn_no_input, BridgeState};
+use super::{bridge_host_fn, bridge_host_fn_no_input, BridgeState};
 
 use extism::{PluginBuilder, UserData};
 

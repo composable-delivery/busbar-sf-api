@@ -2,7 +2,6 @@
 use super::error::*;
 use base64::{engine::general_purpose, Engine as _};
 use busbar_sf_metadata::MetadataClient;
-use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_wasm_types::*;
 
 /// Deploy a metadata package.

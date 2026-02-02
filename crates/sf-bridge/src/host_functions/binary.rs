@@ -1,7 +1,6 @@
 //! Binary/Blob data retrieval host function handlers.
 use super::error::*;
 use base64::{engine::general_purpose, Engine as _};
-use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_wasm_types::*;
 
 pub async fn handle_get_blob(

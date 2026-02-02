@@ -48,7 +48,6 @@ mod tooling;
 mod metadata;
 
 // Re-export error sanitization functions
-pub(crate) use error::*;
 
 // Re-export handler functions based on features
 #[cfg(feature = "rest")]

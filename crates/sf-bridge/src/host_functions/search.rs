@@ -1,6 +1,5 @@
 //! Search API host function handlers (parameterized, suggestions, etc.).
 use super::error::*;
-use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_wasm_types::*;
 
 pub async fn handle_parameterized_search(

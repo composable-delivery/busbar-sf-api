@@ -1,5 +1,5 @@
 //! User password API host function wrappers and registration.
-use super::{bridge_host_fn, bridge_host_fn_no_input, BridgeState};
+use super::{bridge_host_fn, BridgeState};
 use crate::host_functions;
 use busbar_sf_wasm_types::host_fn_names;
 use extism::{UserData, ValType};

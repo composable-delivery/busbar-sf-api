@@ -1,6 +1,5 @@
 //! Appointment Scheduler API host function handlers.
 use super::error::*;
-use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_wasm_types::*;
 
 pub async fn handle_appointment_candidates(

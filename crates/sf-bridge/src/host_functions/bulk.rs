@@ -1,8 +1,6 @@
 //! Bulk API 2.0 host function handlers.
 use super::error::*;
-use base64::{engine::general_purpose, Engine as _};
 use busbar_sf_bulk::BulkApiClient;
-use busbar_sf_rest::SalesforceRestClient;
 use busbar_sf_wasm_types::*;
 
 /// Create a bulk ingest job.

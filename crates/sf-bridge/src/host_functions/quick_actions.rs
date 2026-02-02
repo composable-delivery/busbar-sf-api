@@ -1,10 +1,6 @@
 //! Quick Actions (Invocable Actions) API host function handlers.
 use super::error::*;
 use busbar_sf_rest::SalesforceRestClient;
-use busbar_sf_rest::{
-    ApprovalActionType, ApprovalRequest as RestApprovalRequest,
-    ProcessRuleRequest as RestProcessRuleRequest,
-};
 use busbar_sf_wasm_types::*;
 
 /// List global quick actions.
