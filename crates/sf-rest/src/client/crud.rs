@@ -149,10 +149,10 @@ impl super::SalesforceRestClient {
         let request = self.client.patch(&url).json(record)?;
         let response = self.client.execute(request).await?;
 
-        // Upsert returns 201 Created or 204 No Content
+        // Upsert returns 201 Created, 200 OK (updated), or 204 No Content (updated, older APIs)
         let status = response.status();
-        if status == 201 {
-            // Created - response has the ID
+        if status == 201 || status == 200 {
+            // 201 Created or 200 Updated - response body has the result
             let result: UpsertResult = response.json().await?;
             Ok(result)
         } else if status == 204 {
