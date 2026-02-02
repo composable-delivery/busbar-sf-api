@@ -12,6 +12,10 @@ rust-version.workspace = true
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = []
+typed = ["dep:busbar-sf-types", "dep:zip"]
+
 [dependencies]
 busbar-sf-client.workspace = true
 busbar-sf-auth.workspace = true
@@ -22,6 +26,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 base64.workspace = true
+busbar-sf-types = { version = "0.0.1", optional = true }
+zip = { workspace = true, optional = true }
 
 [dev-dependencies]
 wiremock.workspace = true
