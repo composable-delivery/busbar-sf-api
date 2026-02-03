@@ -130,7 +130,8 @@ jobs:
       - name: Run integration tests with coverage (excluding bridge)
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
+        run: |
+          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
 
       - name: Generate summary
         if: always()
