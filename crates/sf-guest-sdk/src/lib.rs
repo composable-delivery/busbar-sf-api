@@ -81,6 +81,30 @@ extern "ExtismHost" {
     fn sf_limits(input: Vec<u8>) -> Vec<u8>;
     fn sf_versions(input: Vec<u8>) -> Vec<u8>;
 
+    // REST API: Process & Approvals
+    fn sf_list_process_rules(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_process_rules_for_sobject(input: Vec<u8>) -> Vec<u8>;
+    fn sf_trigger_process_rules(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_pending_approvals(input: Vec<u8>) -> Vec<u8>;
+    fn sf_submit_approval(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: List Views
+    fn sf_list_views(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_list_view(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_list_view(input: Vec<u8>) -> Vec<u8>;
+    fn sf_execute_list_view(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: Quick Actions
+    fn sf_list_global_quick_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_global_quick_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_quick_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_quick_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_invoke_quick_action(input: Vec<u8>) -> Vec<u8>;
+
+    // REST API: Sync
+    fn sf_get_deleted(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_updated(input: Vec<u8>) -> Vec<u8>;
+
     // Bulk API
     fn sf_bulk_create_ingest_job(input: Vec<u8>) -> Vec<u8>;
     fn sf_bulk_upload_job_data(input: Vec<u8>) -> Vec<u8>;
@@ -107,6 +131,70 @@ extern "ExtismHost" {
     fn sf_metadata_check_retrieve_status(input: Vec<u8>) -> Vec<u8>;
     fn sf_metadata_list(input: Vec<u8>) -> Vec<u8>;
     fn sf_metadata_describe(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Invocable Actions
+    fn sf_list_standard_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_custom_action_types(input: Vec<u8>) -> Vec<u8>;
+    fn sf_list_custom_actions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_standard_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_custom_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_invoke_standard_action(input: Vec<u8>) -> Vec<u8>;
+    fn sf_invoke_custom_action(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Layouts
+    fn sf_describe_layouts(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_named_layout(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_approval_layouts(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_compact_layouts(input: Vec<u8>) -> Vec<u8>;
+    fn sf_describe_global_publisher_layouts(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Knowledge
+    fn sf_knowledge_settings(input: Vec<u8>) -> Vec<u8>;
+    fn sf_knowledge_articles(input: Vec<u8>) -> Vec<u8>;
+    fn sf_data_category_groups(input: Vec<u8>) -> Vec<u8>;
+    fn sf_data_categories(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Standalone
+    fn sf_tabs(input: Vec<u8>) -> Vec<u8>;
+    fn sf_theme(input: Vec<u8>) -> Vec<u8>;
+    fn sf_app_menu(input: Vec<u8>) -> Vec<u8>;
+    fn sf_recent_items(input: Vec<u8>) -> Vec<u8>;
+    fn sf_relevant_items(input: Vec<u8>) -> Vec<u8>;
+    fn sf_compact_layouts_multi(input: Vec<u8>) -> Vec<u8>;
+    fn sf_platform_event_schema(input: Vec<u8>) -> Vec<u8>;
+    fn sf_lightning_toggle_metrics(input: Vec<u8>) -> Vec<u8>;
+    fn sf_lightning_usage(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: User Password
+    fn sf_get_user_password_status(input: Vec<u8>) -> Vec<u8>;
+    fn sf_set_user_password(input: Vec<u8>) -> Vec<u8>;
+    fn sf_reset_user_password(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Scheduler
+    fn sf_appointment_candidates(input: Vec<u8>) -> Vec<u8>;
+    fn sf_appointment_slots(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Consent
+    fn sf_read_consent(input: Vec<u8>) -> Vec<u8>;
+    fn sf_write_consent(input: Vec<u8>) -> Vec<u8>;
+    fn sf_read_multi_consent(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Binary
+    fn sf_get_blob(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_rich_text_image(input: Vec<u8>) -> Vec<u8>;
+    fn sf_get_relationship(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Embedded Service
+    fn sf_get_embedded_service_config(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Search Enhancements
+    fn sf_parameterized_search(input: Vec<u8>) -> Vec<u8>;
+    fn sf_search_suggestions(input: Vec<u8>) -> Vec<u8>;
+    fn sf_search_scope_order(input: Vec<u8>) -> Vec<u8>;
+    fn sf_search_result_layouts(input: Vec<u8>) -> Vec<u8>;
+
+    // Priority 2: Composite Enhancement
+    fn sf_composite_graph(input: Vec<u8>) -> Vec<u8>;
 }
 
 // =============================================================================
@@ -343,6 +431,173 @@ pub fn limits() -> Result<serde_json::Value, Error> {
 /// Get available API versions.
 pub fn versions() -> Result<Vec<ApiVersion>, Error> {
     call_host_fn_no_input(|input| unsafe { sf_versions(input) })
+}
+
+// =============================================================================
+// REST API: Process & Approvals wrappers
+// =============================================================================
+
+/// List all process rules.
+pub fn list_process_rules() -> Result<ProcessRuleCollection, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_process_rules(input) })
+}
+
+/// List process rules for a specific SObject.
+pub fn list_process_rules_for_sobject(sobject: &str) -> Result<Vec<ProcessRule>, Error> {
+    let request = ListProcessRulesForSObjectRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_list_process_rules_for_sobject(input) },
+        &request,
+    )
+}
+
+/// Trigger process rules for records.
+pub fn trigger_process_rules(context_ids: Vec<String>) -> Result<ProcessRuleResult, Error> {
+    let request = ProcessRuleRequest { context_ids };
+    call_host_fn(
+        |input| unsafe { sf_trigger_process_rules(input) },
+        &request,
+    )
+}
+
+/// List pending approvals.
+pub fn list_pending_approvals() -> Result<PendingApprovalCollection, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_pending_approvals(input) })
+}
+
+/// Submit, approve, or reject an approval.
+pub fn submit_approval(request: &ApprovalRequest) -> Result<ApprovalResult, Error> {
+    call_host_fn(|input| unsafe { sf_submit_approval(input) }, request)
+}
+
+// =============================================================================
+// REST API: List Views wrappers
+// =============================================================================
+
+/// List all list views for an SObject.
+pub fn list_views(sobject: &str) -> Result<ListViewsResult, Error> {
+    let request = ListViewsRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_list_views(input) }, &request)
+}
+
+/// Get a specific list view by ID.
+pub fn get_list_view(sobject: &str, list_view_id: &str) -> Result<ListView, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_list_view(input) }, &request)
+}
+
+/// Describe a list view (get columns, filters, etc.).
+pub fn describe_list_view(sobject: &str, list_view_id: &str) -> Result<ListViewDescribe, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_list_view(input) }, &request)
+}
+
+/// Execute a list view and return its results.
+pub fn execute_list_view(sobject: &str, list_view_id: &str) -> Result<serde_json::Value, Error> {
+    let request = ListViewRequest {
+        sobject: sobject.to_string(),
+        list_view_id: list_view_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_execute_list_view(input) }, &request)
+}
+
+// =============================================================================
+// REST API: Quick Actions wrappers
+// =============================================================================
+
+/// List all global quick actions.
+pub fn list_global_quick_actions() -> Result<Vec<QuickActionMetadata>, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_global_quick_actions(input) })
+}
+
+/// Describe a global quick action.
+pub fn describe_global_quick_action(action: &str) -> Result<QuickActionDescribe, Error> {
+    let request = DescribeGlobalQuickActionRequest {
+        action: action.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_describe_global_quick_action(input) },
+        &request,
+    )
+}
+
+/// List quick actions available for an SObject.
+pub fn list_quick_actions(sobject: &str) -> Result<Vec<QuickActionMetadata>, Error> {
+    let request = ListQuickActionsRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_list_quick_actions(input) }, &request)
+}
+
+/// Describe a specific quick action on an SObject.
+pub fn describe_quick_action(
+    sobject: &str,
+    action: &str,
+) -> Result<QuickActionDescribe, Error> {
+    let request = DescribeQuickActionRequest {
+        sobject: sobject.to_string(),
+        action: action.to_string(),
+    };
+    call_host_fn(
+        |input| unsafe { sf_describe_quick_action(input) },
+        &request,
+    )
+}
+
+/// Invoke a quick action on an SObject.
+pub fn invoke_quick_action(
+    sobject: &str,
+    action: &str,
+    record_id: Option<&str>,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, Error> {
+    let request = InvokeQuickActionRequest {
+        sobject: sobject.to_string(),
+        action: action.to_string(),
+        record_id: record_id.map(|s| s.to_string()),
+        body: body.clone(),
+    };
+    call_host_fn(|input| unsafe { sf_invoke_quick_action(input) }, &request)
+}
+
+// =============================================================================
+// REST API: Sync (Get Deleted/Updated) wrappers
+// =============================================================================
+
+/// Get deleted records for an SObject within a date range.
+///
+/// The start and end parameters should be ISO 8601 date-time strings
+/// (e.g., "2024-01-01T00:00:00Z").
+pub fn get_deleted(sobject: &str, start: &str, end: &str) -> Result<GetDeletedResult, Error> {
+    let request = GetDeletedRequest {
+        sobject: sobject.to_string(),
+        start: start.to_string(),
+        end: end.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_deleted(input) }, &request)
+}
+
+/// Get updated record IDs for an SObject within a date range.
+///
+/// The start and end parameters should be ISO 8601 date-time strings
+/// (e.g., "2024-01-01T00:00:00Z").
+pub fn get_updated(sobject: &str, start: &str, end: &str) -> Result<GetUpdatedResult, Error> {
+    let request = GetUpdatedRequest {
+        sobject: sobject.to_string(),
+        start: start.to_string(),
+        end: end.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_updated(input) }, &request)
 }
 
 // =============================================================================
@@ -614,6 +869,308 @@ pub fn metadata_list(
 /// Describe available metadata types.
 pub fn metadata_describe() -> Result<MetadataDescribeResult, Error> {
     call_host_fn_no_input(|input| unsafe { sf_metadata_describe(input) })
+}
+
+// =============================================================================
+// Priority 2: Invocable Actions wrappers
+// =============================================================================
+
+pub fn list_standard_actions() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_standard_actions(input) })
+}
+
+pub fn list_custom_action_types() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_list_custom_action_types(input) })
+}
+
+pub fn list_custom_actions(action_type: &str) -> Result<serde_json::Value, Error> {
+    let request = ListCustomActionsRequest {
+        action_type: action_type.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_list_custom_actions(input) }, &request)
+}
+
+pub fn describe_standard_action(action_name: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeSObjectRequest {
+        sobject: action_name.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_standard_action(input) }, &request)
+}
+
+pub fn describe_custom_action(action_type: &str, action_name: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeCustomActionRequest {
+        action_type: action_type.to_string(),
+        action_name: action_name.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_custom_action(input) }, &request)
+}
+
+pub fn invoke_standard_action(action_name: &str, inputs: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, Error> {
+    let request = InvokeActionRequest {
+        action_name: action_name.to_string(),
+        inputs,
+    };
+    call_host_fn(|input| unsafe { sf_invoke_standard_action(input) }, &request)
+}
+
+pub fn invoke_custom_action(action_type: &str, action_name: &str, inputs: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, Error> {
+    let request = InvokeCustomActionRequest {
+        action_type: action_type.to_string(),
+        action_name: action_name.to_string(),
+        inputs,
+    };
+    call_host_fn(|input| unsafe { sf_invoke_custom_action(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Layouts wrappers
+// =============================================================================
+
+pub fn describe_layouts(sobject: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeSObjectRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_layouts(input) }, &request)
+}
+
+pub fn describe_named_layout(sobject: &str, layout_name: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeNamedLayoutRequest {
+        sobject: sobject.to_string(),
+        layout_name: layout_name.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_named_layout(input) }, &request)
+}
+
+pub fn describe_approval_layouts(sobject: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeSObjectRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_approval_layouts(input) }, &request)
+}
+
+pub fn describe_compact_layouts(sobject: &str) -> Result<serde_json::Value, Error> {
+    let request = DescribeSObjectRequest {
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_describe_compact_layouts(input) }, &request)
+}
+
+pub fn describe_global_publisher_layouts() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_describe_global_publisher_layouts(input) })
+}
+
+// =============================================================================
+// Priority 2: Knowledge wrappers
+// =============================================================================
+
+pub fn knowledge_settings() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_knowledge_settings(input) })
+}
+
+pub fn knowledge_articles(query: Option<String>, channel: Option<String>) -> Result<serde_json::Value, Error> {
+    let request = KnowledgeArticlesRequest { query, channel };
+    call_host_fn(|input| unsafe { sf_knowledge_articles(input) }, &request)
+}
+
+pub fn data_category_groups(sobject: Option<String>) -> Result<serde_json::Value, Error> {
+    let request = DataCategoryGroupsRequest { sobject };
+    call_host_fn(|input| unsafe { sf_data_category_groups(input) }, &request)
+}
+
+pub fn data_categories(group: &str, sobject: Option<String>) -> Result<serde_json::Value, Error> {
+    let request = DataCategoriesRequest {
+        group: group.to_string(),
+        sobject,
+    };
+    call_host_fn(|input| unsafe { sf_data_categories(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Standalone wrappers
+// =============================================================================
+
+pub fn tabs() -> Result<Vec<serde_json::Value>, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_tabs(input) })
+}
+
+pub fn theme() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_theme(input) })
+}
+
+pub fn app_menu(app_menu_type: &str) -> Result<serde_json::Value, Error> {
+    let request = AppMenuRequest {
+        app_menu_type: app_menu_type.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_app_menu(input) }, &request)
+}
+
+pub fn recent_items() -> Result<Vec<serde_json::Value>, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_recent_items(input) })
+}
+
+pub fn relevant_items() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_relevant_items(input) })
+}
+
+pub fn compact_layouts_multi(sobject_list: &str) -> Result<serde_json::Value, Error> {
+    let request = CompactLayoutsMultiRequest {
+        sobject_list: sobject_list.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_compact_layouts_multi(input) }, &request)
+}
+
+pub fn platform_event_schema(event_name: &str) -> Result<serde_json::Value, Error> {
+    let request = PlatformEventSchemaRequest {
+        event_name: event_name.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_platform_event_schema(input) }, &request)
+}
+
+pub fn lightning_toggle_metrics() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_lightning_toggle_metrics(input) })
+}
+
+pub fn lightning_usage() -> Result<serde_json::Value, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_lightning_usage(input) })
+}
+
+// =============================================================================
+// Priority 2: User Password wrappers
+// =============================================================================
+
+pub fn get_user_password_status(user_id: &str) -> Result<serde_json::Value, Error> {
+    let request = IdRequest {
+        id: user_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_user_password_status(input) }, &request)
+}
+
+pub fn set_user_password(user_id: &str, password: &str) -> Result<(), Error> {
+    let request = SetUserPasswordRequest {
+        user_id: user_id.to_string(),
+        password: password.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_set_user_password(input) }, &request)
+}
+
+pub fn reset_user_password(user_id: &str) -> Result<serde_json::Value, Error> {
+    let request = IdRequest {
+        id: user_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_reset_user_password(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Scheduler wrappers
+// =============================================================================
+
+pub fn appointment_candidates(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    call_host_fn(|input| unsafe { sf_appointment_candidates(input) }, &request)
+}
+
+pub fn appointment_slots(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    call_host_fn(|input| unsafe { sf_appointment_slots(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Consent wrappers
+// =============================================================================
+
+pub fn read_consent(action: &str, ids: Vec<String>) -> Result<serde_json::Value, Error> {
+    let request = ReadConsentRequest {
+        action: action.to_string(),
+        ids,
+    };
+    call_host_fn(|input| unsafe { sf_read_consent(input) }, &request)
+}
+
+pub fn write_consent(action: &str, records: Vec<ConsentWriteRecord>) -> Result<(), Error> {
+    let request = WriteConsentRequest {
+        action: action.to_string(),
+        records,
+    };
+    call_host_fn(|input| unsafe { sf_write_consent(input) }, &request)
+}
+
+pub fn read_multi_consent(actions: Vec<String>, ids: Vec<String>) -> Result<serde_json::Value, Error> {
+    let request = ReadMultiConsentRequest { actions, ids };
+    call_host_fn(|input| unsafe { sf_read_multi_consent(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Binary wrappers
+// =============================================================================
+
+pub fn get_blob(sobject: &str, id: &str, field: &str) -> Result<GetBlobResponse, Error> {
+    let request = GetBlobRequest {
+        sobject: sobject.to_string(),
+        id: id.to_string(),
+        field: field.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_blob(input) }, &request)
+}
+
+pub fn get_rich_text_image(sobject: &str, id: &str, field: &str, content_reference_id: &str) -> Result<GetRichTextImageResponse, Error> {
+    let request = GetRichTextImageRequest {
+        sobject: sobject.to_string(),
+        id: id.to_string(),
+        field: field.to_string(),
+        content_reference_id: content_reference_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_rich_text_image(input) }, &request)
+}
+
+pub fn get_relationship(sobject: &str, id: &str, relationship_name: &str) -> Result<serde_json::Value, Error> {
+    let request = GetRelationshipRequest {
+        sobject: sobject.to_string(),
+        id: id.to_string(),
+        relationship_name: relationship_name.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_relationship(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Embedded Service wrappers
+// =============================================================================
+
+pub fn get_embedded_service_config(config_id: &str) -> Result<serde_json::Value, Error> {
+    let request = IdRequest {
+        id: config_id.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_get_embedded_service_config(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Search Enhancements wrappers
+// =============================================================================
+
+pub fn parameterized_search(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    call_host_fn(|input| unsafe { sf_parameterized_search(input) }, &request)
+}
+
+pub fn search_suggestions(query: &str, sobject: &str) -> Result<serde_json::Value, Error> {
+    let request = SearchSuggestionsRequest {
+        query: query.to_string(),
+        sobject: sobject.to_string(),
+    };
+    call_host_fn(|input| unsafe { sf_search_suggestions(input) }, &request)
+}
+
+pub fn search_scope_order() -> Result<Vec<serde_json::Value>, Error> {
+    call_host_fn_no_input(|input| unsafe { sf_search_scope_order(input) })
+}
+
+pub fn search_result_layouts(sobjects: Vec<String>) -> Result<Vec<serde_json::Value>, Error> {
+    let request = SearchResultLayoutsRequest { sobjects };
+    call_host_fn(|input| unsafe { sf_search_result_layouts(input) }, &request)
+}
+
+// =============================================================================
+// Priority 2: Composite Enhancement wrappers
+// =============================================================================
+
+pub fn composite_graph(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    call_host_fn(|input| unsafe { sf_composite_graph(input) }, &request)
 }
 
 // =============================================================================

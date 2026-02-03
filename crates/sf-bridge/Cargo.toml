@@ -7,15 +7,22 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Extism host bridge for sandboxed WASM access to Salesforce APIs"
 
+[features]
+default = ["full"]
+full = ["rest", "bulk", "tooling", "metadata"]
+rest = ["dep:busbar-sf-rest", "dep:busbar-sf-client"]
+bulk = ["rest", "dep:busbar-sf-bulk"]
+tooling = ["rest", "dep:busbar-sf-tooling"]
+metadata = ["rest", "dep:busbar-sf-metadata"]
+
 [dependencies]
 # Internal crates
 busbar-sf-wasm-types = { workspace = true }
-busbar-sf-rest = { workspace = true }
-busbar-sf-auth = { workspace = true }
-busbar-sf-client = { workspace = true }
-busbar-sf-bulk = { workspace = true }
-busbar-sf-tooling = { workspace = true }
-busbar-sf-metadata = { workspace = true }
+busbar-sf-rest = { workspace = true, optional = true }
+busbar-sf-client = { workspace = true, optional = true }
+busbar-sf-bulk = { workspace = true, optional = true }
+busbar-sf-tooling = { workspace = true, optional = true }
+busbar-sf-metadata = { workspace = true, optional = true }
 
 # Extism host SDK
 extism = "1"
