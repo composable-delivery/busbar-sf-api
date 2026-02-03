@@ -58,6 +58,11 @@ impl MetadataClient {
         self
     }
 
+    /// Get the current API version.
+    pub fn api_version(&self) -> &str {
+        &self.api_version
+    }
+
     /// Get the Metadata API SOAP endpoint URL.
     pub(crate) fn metadata_url(&self) -> String {
         format!("{}/services/Soap/m/{}", self.instance_url, self.api_version)

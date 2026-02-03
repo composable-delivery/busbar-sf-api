@@ -49,6 +49,9 @@ dependencies = [
     "busbar-sf-bulk/dependencies"
 ]
 
+# Optional feature for typed metadata operations with busbar-sf-types
+typed-metadata = ["metadata", "busbar-sf-metadata/typed"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
