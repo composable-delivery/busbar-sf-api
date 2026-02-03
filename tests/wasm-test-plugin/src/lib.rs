@@ -12,6 +12,9 @@ use busbar_sf_guest_sdk::*;
 use extism_pdk::*;
 use serde_json::json;
 
+/// Default Salesforce API version for composite endpoints.
+const API_VERSION: &str = "v65.0";
+
 // =============================================================================
 // Priority 1: Core Query & CRUD Tests
 // =============================================================================
@@ -187,13 +190,13 @@ pub fn test_composite(input: String) -> FnResult<Json<serde_json::Value>> {
         subrequests: vec![
             CompositeSubrequest {
                 method: "POST".to_string(),
-                url: "/services/data/v65.0/sobjects/Account".to_string(),
+                url: format!("/services/data/{}/sobjects/Account", API_VERSION),
                 reference_id: "newAccount".to_string(),
                 body: Some(json!({"Name": account_name})),
             },
             CompositeSubrequest {
                 method: "DELETE".to_string(),
-                url: "/services/data/v65.0/sobjects/Account/@{newAccount.id}".to_string(),
+                url: format!("/services/data/{}/sobjects/Account/@{{newAccount.id}}", API_VERSION),
                 reference_id: "deleteAccount".to_string(),
                 body: None,
             },
@@ -231,7 +234,7 @@ pub fn test_composite_batch(input: String) -> FnResult<Json<serde_json::Value>> 
     for name in account_names.iter() {
         subrequests.push(CompositeBatchSubrequest {
             method: "POST".to_string(),
-            url: "/services/data/v65.0/sobjects/Account".to_string(),
+            url: format!("/services/data/{}/sobjects/Account", API_VERSION),
             rich_input: Some(json!({"Name": name})),
         });
     }
@@ -781,17 +784,10 @@ pub fn test_bulk_ingest(input: String) -> FnResult<Json<serde_json::Value>> {
 /// Test bulk query job.
 /// Input: {"soql": "SELECT Id, Name FROM Account LIMIT 5"}
 #[plugin_fn]
-pub fn test_bulk_query(input: String) -> FnResult<Json<serde_json::Value>> {
-    let req: serde_json::Value = serde_json::from_str(&input)?;
-    let _soql = req["soql"].as_str().unwrap_or("");
-
-    // Note: The guest SDK doesn't currently expose bulk_create_query_job.
-    // For this test, we'll just create and immediately abort a query job
-    // by using the bulk API pattern. However, since execute_query is not exposed,
-    // we'll return a mock job ID for testing purposes.
-
+pub fn test_bulk_query(_input: String) -> FnResult<Json<serde_json::Value>> {
+    // TODO: The guest SDK doesn't currently expose bulk_create_query_job.
+    // For this test, we return a placeholder job ID to demonstrate the test structure.
     // In a real implementation, we'd need to add bulk_create_query_job to the guest SDK.
-    // For now, return success with a placeholder to show the test structure works.
     Ok(Json(json!({
         "success": true,
         "data": {
