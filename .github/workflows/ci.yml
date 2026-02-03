@@ -190,7 +190,8 @@ jobs:
       - name: Run WASM bridge integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+        run: |
+          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
 
       - name: Generate summary
         if: always()
