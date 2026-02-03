@@ -3,6 +3,24 @@
 //! These tests verify that the sf-bridge can load and execute WASM plugins,
 //! and that host functions correctly bridge to Salesforce APIs.
 //!
+//! ## How These Tests Work
+//!
+//! 1. **Host authenticates** with Salesforce using `get_credentials()` (from `common.rs`)
+//!    which reads `SF_AUTH_URL` environment variable to get real org credentials
+//!
+//! 2. **Host creates** `SalesforceRestClient` with those credentials
+//!
+//! 3. **Host loads** the test WASM plugin and creates `SfBridge` with the authenticated client
+//!
+//! 4. **WASM guest** (test plugin) calls host functions like `sf_query`, `sf_create`, etc.
+//!
+//! 5. **Bridge executes** real Salesforce API calls using the host's credentials
+//!
+//! 6. **Test verifies** the responses flow back correctly
+//!
+//! **YES, these tests run against a REAL Salesforce org!** The WASM guest never sees
+//! the credentials - all authentication happens on the host side, just like in production.
+//!
 //! ## Building the Test WASM Plugin
 //!
 //! Before running these tests, build the test WASM plugin:
@@ -15,6 +33,16 @@
 //!
 //! The compiled plugin will be at:
 //! `target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm`
+//!
+//! ## Running the Tests
+//!
+//! ```sh
+//! # Run all bridge integration tests
+//! SF_AUTH_URL="force://..." cargo test --test integration bridge::
+//!
+//! # Run a specific test
+//! SF_AUTH_URL="force://..." cargo test --test integration test_bridge_query_operation
+//! ```
 
 use super::common::get_credentials;
 use busbar_sf_auth::Credentials;
