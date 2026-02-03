@@ -23,6 +23,11 @@ flags:
       - crates/
       - src/
     carryforward: true
+  wasm-integration-tests:
+    paths:
+      - crates/
+      - src/
+    carryforward: true
 
 ignore:
   - "tests/"

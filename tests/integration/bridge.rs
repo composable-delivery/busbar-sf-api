@@ -49,39 +49,39 @@ use busbar_sf_auth::Credentials;
 use busbar_sf_bridge::SfBridge;
 use busbar_sf_rest::SalesforceRestClient;
 
-/// Macro to conditionally include the test WASM plugin.
-/// If the plugin isn't built yet, the tests will be skipped.
-macro_rules! test_wasm_bytes {
-    () => {{
-        const WASM_PATH: &str = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm"
+/// Load the test WASM plugin from disk at runtime.
+/// If the plugin isn't built yet, returns None and prints a warning.
+fn load_test_wasm_bytes() -> Option<Vec<u8>> {
+    let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm");
+
+    if !wasm_path.exists() {
+        eprintln!(
+            "⚠️  Test WASM plugin not found at: {}\n\
+             Build it with: cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml \
+             --target wasm32-unknown-unknown --release",
+            wasm_path.display()
         );
-        if std::path::Path::new(WASM_PATH).exists() {
-            Some(include_bytes!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm"
-            )))
-        } else {
-            eprintln!(
-                "⚠️  Test WASM plugin not found at: {}\n\
-                 Build it with: cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml \
-                 --target wasm32-unknown-unknown --release",
-                WASM_PATH
-            );
+        return None;
+    }
+
+    match std::fs::read(&wasm_path) {
+        Ok(bytes) => Some(bytes),
+        Err(e) => {
+            eprintln!("⚠️  Failed to read test WASM plugin: {}", e);
             None
         }
-    }};
+    }
 }
 
 /// Helper to create a bridge with the test WASM plugin.
 async fn create_test_bridge() -> Option<SfBridge> {
-    let wasm_bytes = test_wasm_bytes!()?;
+    let wasm_bytes = load_test_wasm_bytes()?;
     let creds = get_credentials().await;
     let client = SalesforceRestClient::new(creds.instance_url(), creds.access_token())
         .expect("Failed to create REST client");
 
-    Some(SfBridge::new(wasm_bytes.to_vec(), client).expect("Failed to create bridge"))
+    Some(SfBridge::new(wasm_bytes, client).expect("Failed to create bridge"))
 }
 
 /// Helper to call a test function and parse the JSON result.
@@ -92,9 +92,9 @@ async fn call_test_function(
 ) -> serde_json::Value {
     let input_bytes = serde_json::to_vec(input).expect("Failed to serialize input");
     let output_bytes = bridge
-        .call(function, input_bytes.as_slice())
+        .call(function, input_bytes) // Pass Vec<u8> directly, not a slice
         .await
-        .expect(&format!("Failed to call {}", function));
+        .unwrap_or_else(|_| panic!("Failed to call {}", function));
     serde_json::from_slice(&output_bytes).expect("Failed to parse output")
 }
 
@@ -165,7 +165,7 @@ async fn test_bridge_query_operation() {
         "Query should succeed"
     );
     assert!(
-        result["data"]["total_size"].as_u64().unwrap_or(0) >= 0,
+        result["data"]["total_size"].as_u64().is_some(),
         "Should have total_size"
     );
     assert!(
