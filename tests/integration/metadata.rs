@@ -507,14 +507,13 @@ async fn test_metadata_create_with_xml_escaping() {
 }
 
 // ============================================================================
-// Typed Metadata Feature Tests (require 'typed' feature)
+// Typed Metadata Feature Tests (require 'typed-metadata' feature)
 // ============================================================================
 
-#[cfg(feature = "typed")]
+#[cfg(feature = "typed-metadata")]
 mod typed_tests {
     use super::*;
-    use busbar_sf_metadata::TypedMetadataExt;
-    use busbar_sf_types::traits::MetadataType;
+    use busbar_sf_metadata::{TypedMetadata as MetadataType, TypedMetadataExt};
     use serde::{Deserialize, Serialize};
 
     // Mock metadata type for testing

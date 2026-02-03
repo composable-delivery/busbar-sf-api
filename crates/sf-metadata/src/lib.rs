@@ -108,3 +108,6 @@ pub use types::{
 
 #[cfg(feature = "typed")]
 pub use typed::TypedMetadataExt;
+
+#[cfg(feature = "typed")]
+pub use busbar_sf_types::traits::MetadataType as TypedMetadata;
