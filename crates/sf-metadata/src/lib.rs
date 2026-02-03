@@ -9,6 +9,34 @@
 //! - **List Metadata** - List metadata components by type
 //! - **Describe Metadata** - Get available metadata types
 //! - **Status Polling** - Automatic polling for async operations
+//! - **Typed Operations** (optional) - Type-safe deploy/retrieve with `busbar-sf-types`
+//!
+//! ## Optional Features
+//!
+//! ### `typed` - Typed Metadata Operations
+//!
+//! Enable the `typed` feature to use fully-typed metadata structures from `busbar-sf-types`:
+//!
+//! ```toml
+//! [dependencies]
+//! busbar-sf-metadata = { version = "0.0.3", features = ["typed"] }
+//! busbar-sf-types = "0.0.1"  # Also add the types crate
+//! ```
+//!
+//! This enables the `TypedMetadataExt` trait for type-safe operations:
+//!
+//! ```rust,ignore
+//! use busbar_sf_metadata::{MetadataClient, TypedMetadataExt, DeployOptions};
+//! use busbar_sf_types::metadata::objects::CustomObject;
+//!
+//! let obj = CustomObject {
+//!     full_name: Some("MyObject__c".to_string()),
+//!     label: Some("My Object".to_string()),
+//!     ..Default::default()
+//! };
+//!
+//! let async_id = client.deploy_typed(&obj, DeployOptions::default()).await?;
+//! ```
 //!
 //! ## Example
 //!
@@ -59,6 +87,9 @@ mod list;
 mod retrieve;
 mod types;
 
+#[cfg(feature = "typed")]
+mod typed;
+
 pub use client::MetadataClient;
 pub use deploy::{CancelDeployResult, ComponentFailure, DeployOptions, DeployResult, DeployStatus};
 pub use describe::{
@@ -74,3 +105,9 @@ pub use types::{
     ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
     SoapFault, TestFailure, TestLevel, UpsertResult, DEFAULT_API_VERSION,
 };
+
+#[cfg(feature = "typed")]
+pub use typed::TypedMetadataExt;
+
+#[cfg(feature = "typed")]
+pub use busbar_sf_types::traits::MetadataType as TypedMetadata;
