@@ -441,14 +441,7 @@ mod tests {
 
     #[test]
     fn test_zip_package_structure() {
-        use std::io::Read;
         use zip::ZipArchive;
-
-        // Create mock metadata
-        let metadata = MockMetadata {
-            full_name: Some("TestClass".to_string()),
-            label: Some("Test Label".to_string()),
-        };
 
         // Create a ZIP package in memory
         let mut zip_buffer = Cursor::new(Vec::new());
@@ -508,7 +501,6 @@ mod tests {
 
     #[test]
     fn test_multiple_metadata_items_zip_structure() {
-        use std::io::Read;
         use zip::ZipArchive;
 
         let items = vec![
