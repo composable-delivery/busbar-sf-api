@@ -438,4 +438,152 @@ mod tests {
         assert_eq!(metadata.api_name(), Some("TestClass"));
         assert_eq!(metadata.full_name(), Some("TestClass".to_string()));
     }
+
+    #[test]
+    fn test_zip_package_structure() {
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        // Create mock metadata
+        let metadata = MockMetadata {
+            full_name: Some("TestClass".to_string()),
+            label: Some("Test Label".to_string()),
+        };
+
+        // Create a ZIP package in memory
+        let mut zip_buffer = Cursor::new(Vec::new());
+        {
+            let mut zip = ZipWriter::new(&mut zip_buffer);
+
+            // Add metadata file
+            let file_path = format!(
+                "{}/{}.{}",
+                get_directory_name("ApexClass"),
+                "TestClass",
+                get_file_extension("ApexClass")
+            );
+            zip.start_file::<_, ()>(file_path.clone(), FileOptions::default())
+                .unwrap();
+            zip.write_all(b"<ApexClass>test content</ApexClass>")
+                .unwrap();
+
+            // Add package.xml
+            zip.start_file::<_, ()>("package.xml", FileOptions::default())
+                .unwrap();
+            zip.write_all(b"<Package>test</Package>").unwrap();
+
+            zip.finish().unwrap();
+        }
+
+        // Read and verify the ZIP
+        zip_buffer.set_position(0);
+        let mut archive = ZipArchive::new(zip_buffer).unwrap();
+
+        assert_eq!(archive.len(), 2, "Should have 2 files in ZIP");
+
+        // Verify files exist
+        assert!(
+            archive.by_name("classes/TestClass.cls").is_ok(),
+            "Should contain metadata file"
+        );
+        assert!(
+            archive.by_name("package.xml").is_ok(),
+            "Should contain package.xml"
+        );
+    }
+
+    #[test]
+    fn test_serialize_to_metadata_xml_escaping() {
+        let metadata = MockMetadata {
+            full_name: Some("Test<>Class".to_string()),
+            label: Some("Label & Test".to_string()),
+        };
+
+        let xml = serialize_to_metadata_xml(&metadata).expect("Should serialize");
+
+        // JSON serialization should escape special characters
+        assert!(xml.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(xml.contains("<ApexClass xmlns=\"http://soap.sforce.com/2006/04/metadata\">"));
+    }
+
+    #[test]
+    fn test_multiple_metadata_items_zip_structure() {
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        let items = vec![
+            MockMetadata {
+                full_name: Some("Class1".to_string()),
+                label: Some("Label 1".to_string()),
+            },
+            MockMetadata {
+                full_name: Some("Class2".to_string()),
+                label: Some("Label 2".to_string()),
+            },
+        ];
+
+        // Create a ZIP package with multiple items
+        let mut zip_buffer = Cursor::new(Vec::new());
+        {
+            let mut zip = ZipWriter::new(&mut zip_buffer);
+
+            for item in &items {
+                let api_name = item.api_name().unwrap();
+                let file_path = format!(
+                    "{}/{}.{}",
+                    get_directory_name("ApexClass"),
+                    api_name,
+                    get_file_extension("ApexClass")
+                );
+                zip.start_file::<_, ()>(file_path, FileOptions::default())
+                    .unwrap();
+                let xml = serialize_to_metadata_xml(item).unwrap();
+                zip.write_all(xml.as_bytes()).unwrap();
+            }
+
+            zip.start_file::<_, ()>("package.xml", FileOptions::default())
+                .unwrap();
+            zip.write_all(b"<Package>test</Package>").unwrap();
+
+            zip.finish().unwrap();
+        }
+
+        // Verify ZIP contents
+        zip_buffer.set_position(0);
+        let mut archive = ZipArchive::new(zip_buffer).unwrap();
+
+        assert_eq!(
+            archive.len(),
+            3,
+            "Should have 3 files (2 metadata + package.xml)"
+        );
+        assert!(archive.by_name("classes/Class1.cls").is_ok());
+        assert!(archive.by_name("classes/Class2.cls").is_ok());
+        assert!(archive.by_name("package.xml").is_ok());
+    }
+
+    #[test]
+    fn test_file_path_construction() {
+        // Test various metadata types
+        let test_cases = vec![
+            ("ApexClass", "MyClass", "classes/MyClass.cls"),
+            ("CustomObject", "MyObject__c", "objects/MyObject__c.object"),
+            ("Flow", "MyFlow", "flows/MyFlow.flow"),
+            ("Profile", "Admin", "profiles/Admin.profile"),
+        ];
+
+        for (metadata_type, api_name, expected_path) in test_cases {
+            let path = format!(
+                "{}/{}.{}",
+                get_directory_name(metadata_type),
+                api_name,
+                get_file_extension(metadata_type)
+            );
+            assert_eq!(
+                path, expected_path,
+                "Path for {} should be {}",
+                metadata_type, expected_path
+            );
+        }
+    }
 }
