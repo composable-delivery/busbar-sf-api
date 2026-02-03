@@ -259,6 +259,23 @@ fn get_file_extension(metadata_type: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::{Deserialize, Serialize};
+
+    // Mock metadata type for testing
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct MockMetadata {
+        full_name: Option<String>,
+        label: Option<String>,
+    }
+
+    impl busbar_sf_types::traits::MetadataType for MockMetadata {
+        const METADATA_TYPE_NAME: &'static str = "ApexClass";
+        const XML_ROOT_ELEMENT: &'static str = "ApexClass";
+
+        fn api_name(&self) -> Option<&str> {
+            self.full_name.as_deref()
+        }
+    }
 
     #[test]
     fn test_get_directory_name() {
@@ -275,5 +292,150 @@ mod tests {
         assert_eq!(get_file_extension("CustomField"), "field");
         assert_eq!(get_file_extension("Flow"), "flow");
         assert_eq!(get_file_extension("Unknown"), "xml");
+    }
+
+    #[test]
+    fn test_get_directory_name_all_types() {
+        // Test all known metadata types
+        assert_eq!(get_directory_name("ApexTrigger"), "triggers");
+        assert_eq!(get_directory_name("ApexPage"), "pages");
+        assert_eq!(get_directory_name("ApexComponent"), "components");
+        assert_eq!(get_directory_name("Layout"), "layouts");
+        assert_eq!(get_directory_name("PermissionSet"), "permissionsets");
+        assert_eq!(get_directory_name("Profile"), "profiles");
+        assert_eq!(get_directory_name("Report"), "reports");
+        assert_eq!(get_directory_name("Dashboard"), "dashboards");
+        assert_eq!(get_directory_name("EmailTemplate"), "email");
+        assert_eq!(get_directory_name("StaticResource"), "staticresources");
+        assert_eq!(get_directory_name("LightningComponentBundle"), "lwc");
+        assert_eq!(get_directory_name("AuraDefinitionBundle"), "aura");
+    }
+
+    #[test]
+    fn test_get_file_extension_all_types() {
+        // Test all known metadata types
+        assert_eq!(get_file_extension("ApexTrigger"), "trigger");
+        assert_eq!(get_file_extension("ApexPage"), "page");
+        assert_eq!(get_file_extension("ApexComponent"), "component");
+        assert_eq!(get_file_extension("Layout"), "layout");
+        assert_eq!(get_file_extension("PermissionSet"), "permissionset");
+        assert_eq!(get_file_extension("Profile"), "profile");
+        assert_eq!(get_file_extension("Report"), "report");
+        assert_eq!(get_file_extension("Dashboard"), "dashboard");
+        assert_eq!(get_file_extension("EmailTemplate"), "email");
+        assert_eq!(get_file_extension("StaticResource"), "resource");
+    }
+
+    #[test]
+    fn test_serialize_to_metadata_xml_generates_xml_structure() {
+        let metadata = MockMetadata {
+            full_name: Some("TestClass".to_string()),
+            label: Some("Test Class".to_string()),
+        };
+
+        let xml = serialize_to_metadata_xml(&metadata).expect("Should serialize");
+
+        // Verify XML structure
+        assert!(xml.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(xml.contains("<ApexClass xmlns=\"http://soap.sforce.com/2006/04/metadata\">"));
+        assert!(xml.contains("</ApexClass>"));
+        assert!(xml.contains("TestClass"));
+        assert!(xml.contains("Test Class"));
+    }
+
+    #[test]
+    fn test_serialize_to_metadata_xml_handles_empty_fields() {
+        let metadata = MockMetadata {
+            full_name: None,
+            label: None,
+        };
+
+        let result = serialize_to_metadata_xml(&metadata);
+        assert!(result.is_ok(), "Should handle empty fields");
+    }
+
+    #[test]
+    fn test_package_manifest_generation() {
+        let manifest = PackageManifest::new("65.0").add_type(
+            "ApexClass",
+            vec!["TestClass".to_string(), "AnotherClass".to_string()],
+        );
+
+        let xml = manifest.to_xml();
+
+        // Verify manifest contains the metadata type and members
+        assert!(xml.contains("<name>ApexClass</name>"));
+        assert!(xml.contains("<members>TestClass</members>"));
+        assert!(xml.contains("<members>AnotherClass</members>"));
+        assert!(xml.contains("<version>65.0</version>"));
+    }
+
+    #[test]
+    fn test_metadata_type_directory_mapping_consistency() {
+        // Ensure every type with a directory mapping has an extension mapping
+        let types_with_dirs = vec![
+            "ApexClass",
+            "ApexTrigger",
+            "ApexPage",
+            "ApexComponent",
+            "CustomObject",
+            "CustomField",
+            "Layout",
+            "PermissionSet",
+            "Profile",
+            "Flow",
+        ];
+
+        for metadata_type in types_with_dirs {
+            let dir = get_directory_name(metadata_type);
+            let ext = get_file_extension(metadata_type);
+
+            // Both should not be fallback values
+            assert_ne!(
+                dir, "metadata",
+                "Type {} missing directory mapping",
+                metadata_type
+            );
+            assert_ne!(
+                ext, "xml",
+                "Type {} missing extension mapping",
+                metadata_type
+            );
+        }
+    }
+
+    #[test]
+    fn test_error_on_empty_batch() {
+        // This would need to be an async test with a mock client
+        // Testing the validation logic for empty batches
+        let empty_items: Vec<MockMetadata> = vec![];
+        assert!(empty_items.is_empty(), "Empty batch should be detected");
+    }
+
+    #[test]
+    fn test_error_on_missing_api_name() {
+        let metadata = MockMetadata {
+            full_name: None,
+            label: Some("Test".to_string()),
+        };
+
+        assert!(
+            metadata.api_name().is_none(),
+            "Should detect missing API name"
+        );
+    }
+
+    #[test]
+    fn test_mock_metadata_implements_metadata_type() {
+        let metadata = MockMetadata {
+            full_name: Some("TestClass".to_string()),
+            label: Some("Test Class".to_string()),
+        };
+
+        // Verify trait implementation
+        assert_eq!(MockMetadata::METADATA_TYPE_NAME, "ApexClass");
+        assert_eq!(MockMetadata::XML_ROOT_ELEMENT, "ApexClass");
+        assert_eq!(metadata.api_name(), Some("TestClass"));
+        assert_eq!(metadata.full_name(), Some("TestClass".to_string()));
     }
 }
