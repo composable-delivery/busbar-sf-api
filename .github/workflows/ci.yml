@@ -99,7 +99,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
-  # ── Integration tests (real Salesforce org) ───────────────────────────
+  # ── Integration tests (real Salesforce org, excluding WASM bridge) ──
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -127,10 +127,10 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
-      - name: Run integration tests with coverage
+      - name: Run integration tests with coverage (excluding bridge)
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
 
       - name: Generate summary
         if: always()
@@ -146,6 +146,65 @@ jobs:
         with:
           files: lcov-integration.info
           flags: integration-tests
+          disable_search: true
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── WASM bridge integration tests (real Salesforce org) ──────────────
+  wasm-integration:
+    name: WASM Bridge Integration Tests
+    runs-on: ubuntu-latest
+    environment: scratch
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify credentials
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          if [ -z "$SF_AUTH_URL" ]; then
+            echo "::error::SF_AUTH_URL secret is not configured"
+            exit 1
+          fi
+
+      - name: Setup scratch org test data
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo run --bin setup-scratch-org
+
+      - name: Build WASM test plugin
+        run: |
+          cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml \
+            --target wasm32-unknown-unknown --release
+
+      - name: Clean coverage artifacts
+        run: cargo llvm-cov clean --workspace
+
+      - name: Run WASM bridge integration tests with coverage
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+
+      - name: Generate summary
+        if: always()
+        env:
+          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+        run: |
+          echo "### WASM Bridge Integration Tests" >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-wasm-integration.info
+          flags: wasm-integration-tests
           disable_search: true
           fail_ci_if_error: false
         env:
