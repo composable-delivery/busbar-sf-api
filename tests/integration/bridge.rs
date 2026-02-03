@@ -53,7 +53,7 @@ use busbar_sf_rest::SalesforceRestClient;
 /// If the plugin isn't built yet, returns None and prints a warning.
 fn load_test_wasm_bytes() -> Option<Vec<u8>> {
     let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm");
+        .join("tests/wasm-test-plugin/target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm");
 
     if !wasm_path.exists() {
         eprintln!(
