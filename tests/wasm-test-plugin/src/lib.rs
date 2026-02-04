@@ -279,7 +279,6 @@ pub fn test_composite_tree(input: String) -> FnResult<Json<serde_json::Value>> {
                     "attributes": {
                         "type": "Contact"
                     },
-                    "referenceId": "contact1",
                     "LastName": contact_last_name
                 }]
             }
