@@ -51,7 +51,7 @@
 //! Each invocation creates a fresh WASM plugin instance from a pre-compiled
 //! module. The underlying clients share connection pools.
 //!
-//! ## Example
+//! ## Example (Standard Authentication)
 //!
 //! ```rust,ignore
 //! use busbar_sf_bridge::SfBridge;
@@ -68,6 +68,36 @@
 //!     let bridge = SfBridge::new(wasm_bytes, client)?;
 //!
 //!     // Call the guest's exported "run" function
+//!     let result = bridge.call("run", b"input data").await?;
+//!     println!("Guest returned: {}", String::from_utf8_lossy(&result));
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Example (Busbar Authentication)
+//!
+//! ```rust,ignore
+//! use busbar_sf_bridge::{SfBridge, BusbarAuthConfig, JwtAuthConfig};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Option 1: Use environment variables (SF_ACCESS_TOKEN, SF_INSTANCE_URL)
+//!     let config = BusbarAuthConfig::new();
+//!     
+//!     // Option 2: Use JWT Bearer authentication
+//!     let jwt_config = JwtAuthConfig::with_key_file(
+//!         "consumer_key",
+//!         "username@example.com",
+//!         "private_key.pem"
+//!     )?;
+//!     let config = BusbarAuthConfig::new()
+//!         .with_jwt_auth(jwt_config)
+//!         .with_token_ttl_secs(3600);
+//!
+//!     let wasm_bytes = std::fs::read("my_plugin.wasm")?;
+//!     let bridge = SfBridge::new_with_busbar_auth(wasm_bytes, config).await?;
+//!
 //!     let result = bridge.call("run", b"input data").await?;
 //!     println!("Guest returned: {}", String::from_utf8_lossy(&result));
 //!
