@@ -21,6 +21,13 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
 
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+
       - name: Verify credentials
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
