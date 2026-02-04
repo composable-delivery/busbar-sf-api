@@ -79,8 +79,14 @@ mod error;
 mod host_functions;
 mod registration;
 
-#[cfg(feature = "busbar")]
+#[cfg(feature = "busbar-capability")]
 mod capability;
+
+#[cfg(feature = "busbar")]
+mod busbar_auth;
+
+#[cfg(feature = "busbar")]
+pub use busbar_auth::{BusbarAuthConfig, BusbarAuthResolver, JwtAuthConfig};
 
 pub use error::{Error, Result};
 
@@ -188,6 +194,77 @@ impl SfBridge {
             access_token,
             handle,
         })
+    }
+
+    /// Create a new bridge with Busbar authentication integration.
+    ///
+    /// This constructor resolves credentials transparently from:
+    /// 1. Environment variables (SF_ACCESS_TOKEN, SF_INSTANCE_URL)
+    /// 2. JWT Bearer auth (if configured)
+    /// 3. (Future) OS keychain via busbar-keychain
+    ///
+    /// Credentials are cached with configurable TTL and auto-refresh.
+    /// WASM guests never see tokens.
+    ///
+    /// Must be called from within a tokio runtime context.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bridge::{SfBridge, BusbarAuthConfig};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     // Configure with JWT auth
+    ///     let jwt_config = JwtAuthConfig::with_key_file(
+    ///         "consumer_key",
+    ///         "username@example.com",
+    ///         "private_key.pem",
+    ///     )?;
+    ///     
+    ///     let config = BusbarAuthConfig::new()
+    ///         .with_jwt_auth(jwt_config)
+    ///         .with_token_ttl_secs(3600);
+    ///
+    ///     let wasm_bytes = std::fs::read("my_plugin.wasm")?;
+    ///     let bridge = SfBridge::new_with_busbar_auth(wasm_bytes, config).await?;
+    ///
+    ///     let result = bridge.call("run", b"input data").await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    #[cfg(all(feature = "busbar", feature = "rest"))]
+    pub async fn new_with_busbar_auth(
+        wasm_bytes: Vec<u8>,
+        config: busbar_auth::BusbarAuthConfig,
+    ) -> Result<Self> {
+        let handle = tokio::runtime::Handle::current();
+        Self::with_busbar_auth_and_handle(wasm_bytes, config, handle).await
+    }
+
+    /// Create a new bridge with Busbar authentication integration and a specific
+    /// tokio runtime handle.
+    ///
+    /// Use this when constructing the bridge outside of a tokio context.
+    #[cfg(all(feature = "busbar", feature = "rest"))]
+    pub async fn with_busbar_auth_and_handle(
+        wasm_bytes: Vec<u8>,
+        config: busbar_auth::BusbarAuthConfig,
+        handle: tokio::runtime::Handle,
+    ) -> Result<Self> {
+        use busbar_auth::BusbarAuthResolver;
+        use busbar_sf_auth::Credentials;
+
+        // Resolve credentials using the Busbar auth chain
+        let resolver = BusbarAuthResolver::new(config);
+        let credentials = resolver.resolve().await?;
+
+        // Create REST client with resolved credentials
+        let rest_client =
+            SalesforceRestClient::new(credentials.instance_url(), credentials.access_token())?;
+
+        // Use the existing with_handle constructor
+        Self::with_handle(wasm_bytes, rest_client, handle)
     }
 
     /// Call an exported function in the WASM guest.
