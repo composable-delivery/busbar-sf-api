@@ -51,7 +51,7 @@
 //! Each invocation creates a fresh WASM plugin instance from a pre-compiled
 //! module. The underlying clients share connection pools.
 //!
-//! ## Example
+//! ## Example (Standard Authentication)
 //!
 //! ```rust,ignore
 //! use busbar_sf_bridge::SfBridge;
@@ -68,6 +68,29 @@
 //!     let bridge = SfBridge::new(wasm_bytes, client)?;
 //!
 //!     // Call the guest's exported "run" function
+//!     let result = bridge.call("run", b"input data").await?;
+//!     println!("Guest returned: {}", String::from_utf8_lossy(&result));
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Example (Busbar Keychain Authentication)
+//!
+//! When the `busbar-keychain` feature is enabled:
+//!
+//! ```rust,ignore
+//! use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Resolve credentials from Busbar keychain or environment variables
+//!     let config = KeychainAuthConfig::new()
+//!         .with_keychain_prefix("sf/production");
+//!     
+//!     let wasm_bytes = std::fs::read("my_plugin.wasm")?;
+//!     let bridge = SfBridge::new_with_keychain_auth(wasm_bytes, config).await?;
+//!
 //!     let result = bridge.call("run", b"input data").await?;
 //!     println!("Guest returned: {}", String::from_utf8_lossy(&result));
 //!
