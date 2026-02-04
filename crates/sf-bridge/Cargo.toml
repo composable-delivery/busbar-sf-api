@@ -15,6 +15,8 @@ bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
 busbar = ["dep:busbar-capability"]
+# Busbar keychain integration (optional, off by default)
+busbar-keychain = ["rest", "dep:busbar-keychain", "dep:busbar-sf-auth"]
 
 [dependencies]
 # Internal crates
@@ -24,6 +26,10 @@ busbar-sf-client = { workspace = true, optional = true }
 busbar-sf-bulk = { workspace = true, optional = true }
 busbar-sf-tooling = { workspace = true, optional = true }
 busbar-sf-metadata = { workspace = true, optional = true }
+busbar-sf-auth = { workspace = true, optional = true }
+
+# Busbar keychain (optional, from composable-delivery/busbar)
+busbar-keychain = { git = "https://github.com/composable-delivery/busbar", optional = true }
 
 # Extism host SDK
 extism = "1"
