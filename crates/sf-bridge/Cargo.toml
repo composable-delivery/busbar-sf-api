@@ -14,9 +14,7 @@ rest = ["dep:busbar-sf-rest", "dep:busbar-sf-client"]
 bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
-busbar = ["dep:busbar-sf-auth"]
-# Note: busbar-capability feature is separate to allow testing busbar auth without capability dependency
-busbar-capability = ["dep:busbar-capability"]
+busbar = ["dep:busbar-capability"]
 
 [dependencies]
 # Internal crates
@@ -26,7 +24,6 @@ busbar-sf-client = { workspace = true, optional = true }
 busbar-sf-bulk = { workspace = true, optional = true }
 busbar-sf-tooling = { workspace = true, optional = true }
 busbar-sf-metadata = { workspace = true, optional = true }
-busbar-sf-auth = { workspace = true, optional = true }
 
 # Extism host SDK
 extism = "1"
@@ -48,10 +45,8 @@ thiserror = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
-# Busbar capability system (optional) - requires private repo access
-busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
-
 # Busbar capability system (optional)
+busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

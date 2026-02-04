@@ -8,9 +8,7 @@ This crate provides `SfBridge`, which loads WASM guest plugins via Extism and ex
 
 ## Authentication Model
 
-### Standard Authentication (Pre-Authenticated Client)
-
-The traditional approach requires you to handle authentication yourself:
+### How Authentication Works
 
 1. **Host-Side Authentication**: The host application (your Rust code) authenticates with Salesforce using `busbar-sf-auth` and obtains credentials (instance URL + access token).
 
@@ -24,38 +22,6 @@ The traditional approach requires you to handle authentication yourself:
    let wasm_bytes = std::fs::read("plugin.wasm")?;
    let bridge = SfBridge::new(wasm_bytes, rest_client)?;
    ```
-
-### Busbar Authentication (Transparent Credential Resolution)
-
-When using the `busbar` feature, the bridge can resolve credentials automatically:
-
-```rust
-use busbar_sf_bridge::{SfBridge, BusbarAuthConfig, JwtAuthConfig};
-
-// Option 1: Environment variables (CI/CD)
-// Set SF_ACCESS_TOKEN and SF_INSTANCE_URL in environment
-let config = BusbarAuthConfig::new();
-let wasm_bytes = std::fs::read("plugin.wasm")?;
-let bridge = SfBridge::new_with_busbar_auth(wasm_bytes, config).await?;
-
-// Option 2: JWT Bearer auth (server-to-server)
-let jwt_config = JwtAuthConfig::with_key_file(
-    "consumer_key",
-    "username@example.com",
-    "path/to/private_key.pem"
-)?;
-let config = BusbarAuthConfig::new()
-    .with_jwt_auth(jwt_config)
-    .with_token_ttl_secs(3600);
-let bridge = SfBridge::new_with_busbar_auth(wasm_bytes, config).await?;
-```
-
-**Credential Resolution Chain** (checked in order):
-1. Environment variables: `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL`
-2. JWT Bearer authentication (if configured)
-3. *(Future)* OS keychain via busbar-keychain
-
-**Token Caching**: Credentials are cached with configurable TTL and auto-refresh on expiry.
 
 4. **Credential Isolation**: The bridge stores the clients internally. When the WASM guest calls host functions (like `sf_query`), the bridge:
    - Receives the request from the guest (e.g., SOQL query)
@@ -192,35 +158,11 @@ pub fn query_accounts(input: String) -> FnResult<Json<Vec<serde_json::Value>>> {
 - `bulk` - Bulk API endpoints (requires `rest`)
 - `tooling` - Tooling API endpoints (requires `rest`)
 - `metadata` - Metadata API endpoints (requires `rest`)
-- `busbar` - Busbar authentication integration with transparent credential resolution
-- `busbar-capability` - Implement Busbar's `HostCapability` trait for use with Busbar runtime
-
-### Busbar Authentication Integration
-
-When the `busbar` feature is enabled, `SfBridge` can resolve credentials automatically from multiple sources:
-
-```rust
-use busbar_sf_bridge::{SfBridge, BusbarAuthConfig, JwtAuthConfig};
-
-// Automatic credential resolution
-let config = BusbarAuthConfig::new()
-    .with_jwt_auth(jwt_config)  // Optional
-    .with_token_ttl_secs(3600)  // Optional, default: 3600
-    .with_login_url("https://login.salesforce.com");  // Optional, default: production
-
-let wasm_bytes = std::fs::read("plugin.wasm")?;
-let bridge = SfBridge::new_with_busbar_auth(wasm_bytes, config).await?;
-```
-
-**Benefits:**
-- No need to manage authentication flow in your code
-- Works seamlessly in both local and CI/CD environments
-- Automatic token caching and refresh
-- WASM guests still never see credentials
+- `busbar` - Implement Busbar's `HostCapability` trait for use with Busbar runtime
 
 ### Busbar Capability Integration
 
-When the `busbar-capability` feature is enabled, `SfBridge` implements the `HostCapability` trait
+When the `busbar` feature is enabled, `SfBridge` implements the `HostCapability` trait
 from `busbar-capability`, making it a drop-in capability provider for the Busbar runtime:
 
 ```rust

@@ -52,9 +52,6 @@ dependencies = [
 # Optional feature for typed metadata operations with busbar-sf-types
 typed-metadata = ["metadata", "busbar-sf-metadata/typed"]
 
-# Optional feature for Busbar authentication integration (used in integration tests)
-busbar = []
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

@@ -43,15 +43,6 @@ pub enum Error {
     /// Configuration error.
     #[error("configuration error: {0}")]
     Config(String),
-
-    /// Authentication error (Busbar auth integration).
-    #[cfg(feature = "busbar")]
-    #[error("authentication error: {0}")]
-    Auth(String),
-
-    /// I/O error (for reading key files, etc.).
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
