@@ -1,0 +1,27 @@
+[package]
+name = "wasm-test-plugin"
+version = "0.1.0"
+edition = "2021"
+
+# Exclude from workspace - must be built separately for wasm32-unknown-unknown
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+busbar-sf-guest-sdk = { version = "0.0.3", path = "../../crates/sf-guest-sdk" }
+busbar-sf-wasm-types = { version = "0.0.3", path = "../../crates/sf-wasm-types" }
+extism-pdk = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Note: This test plugin is excluded from the main workspace (like sf-guest-sdk)
+# because it must be built for wasm32-unknown-unknown target.
+#
+# To build the test WASM:
+#   rustup target add wasm32-unknown-unknown
+#   cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml --target wasm32-unknown-unknown --release
+#
+# The compiled .wasm file will be at:
+#   target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm

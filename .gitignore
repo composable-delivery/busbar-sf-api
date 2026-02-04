@@ -2,6 +2,10 @@
 /target/
 Cargo.lock
 
+# Excluded crates also have target dirs
+/crates/sf-guest-sdk/target/
+/tests/wasm-test-plugin/target/
+
 # IDE
 .idea/
 .vscode/
@@ -22,3 +26,6 @@ Thumbs.db
 # Test artifacts
 *.log
 coverage/
+
+# Build script backups
+*.backup
