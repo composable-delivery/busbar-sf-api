@@ -270,16 +270,16 @@ pub fn test_composite_tree(input: String) -> FnResult<Json<serde_json::Value>> {
         sobject: "Account".to_string(),
         records: vec![json!({
             "attributes": {
-                "type": "Account",
-                "referenceId": "account1"
+                "type": "Account"
             },
+            "referenceId": "account1",
             "Name": account_name,
             "Contacts": {
                 "records": [{
                     "attributes": {
-                        "type": "Contact",
-                        "referenceId": "contact1"
+                        "type": "Contact"
                     },
+                    "referenceId": "contact1",
                     "LastName": contact_last_name
                 }]
             }
