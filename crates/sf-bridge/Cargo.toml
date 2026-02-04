@@ -14,6 +14,7 @@ rest = ["dep:busbar-sf-rest", "dep:busbar-sf-client"]
 bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
+busbar = ["dep:busbar-capability"]
 
 [dependencies]
 # Internal crates
@@ -43,6 +44,9 @@ thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+
+# Busbar capability system (optional)
+busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

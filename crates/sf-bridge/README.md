@@ -158,6 +158,30 @@ pub fn query_accounts(input: String) -> FnResult<Json<Vec<serde_json::Value>>> {
 - `bulk` - Bulk API endpoints (requires `rest`)
 - `tooling` - Tooling API endpoints (requires `rest`)
 - `metadata` - Metadata API endpoints (requires `rest`)
+- `busbar` - Implement Busbar's `HostCapability` trait for use with Busbar runtime
+
+### Busbar Capability Integration
+
+When the `busbar` feature is enabled, `SfBridge` implements the `HostCapability` trait
+from `busbar-capability`, making it a drop-in capability provider for the Busbar runtime:
+
+```rust
+use busbar_sf_bridge::SfBridge;
+use busbar_capability::HostCapability;
+
+// SfBridge implements HostCapability when busbar feature is enabled
+let manifest = bridge.manifest();
+println!("Namespace: {}", manifest.namespace); // "salesforce"
+println!("Operations: {}", manifest.operations.len()); // 98
+
+// Register with Busbar's capability registry
+registry.register_capability(Box::new(bridge))?;
+```
+
+The manifest includes all 98 Salesforce operations with appropriate risk classifications:
+- **ReadOnly**: query, describe, list operations
+- **WriteVisible**: create, update, upsert operations  
+- **Destructive**: delete, deploy operations
 
 ## Testing
 

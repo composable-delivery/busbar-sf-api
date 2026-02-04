@@ -30,23 +30,40 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+      
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   # ── Unit tests with coverage ──────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
+    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
+
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
@@ -79,10 +96,19 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
+    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+      
       - run: cargo doc --workspace --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
@@ -109,6 +135,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
+
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -164,6 +197,13 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
+
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:

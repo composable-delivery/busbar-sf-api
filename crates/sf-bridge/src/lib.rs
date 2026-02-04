@@ -79,6 +79,9 @@ mod error;
 mod host_functions;
 mod registration;
 
+#[cfg(feature = "busbar")]
+mod capability;
+
 pub use error::{Error, Result};
 
 use std::sync::Arc;
@@ -132,14 +135,14 @@ impl BridgeState {
 pub struct SfBridge {
     wasm_bytes: Arc<Vec<u8>>,
     #[cfg(feature = "rest")]
-    rest_client: SalesforceRestClient,
+    pub(crate) rest_client: SalesforceRestClient,
     #[cfg(feature = "bulk")]
-    bulk_client: BulkApiClient,
+    pub(crate) bulk_client: BulkApiClient,
     #[cfg(feature = "tooling")]
-    tooling_client: ToolingClient,
-    instance_url: Arc<str>,
-    access_token: Arc<str>,
-    handle: tokio::runtime::Handle,
+    pub(crate) tooling_client: ToolingClient,
+    pub(crate) instance_url: Arc<str>,
+    pub(crate) access_token: Arc<str>,
+    pub(crate) handle: tokio::runtime::Handle,
 }
 
 impl SfBridge {
