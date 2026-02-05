@@ -2,6 +2,9 @@
 /target/
 Cargo.lock
 
+.sf/
+.sfdx/
+
 # Excluded crates also have target dirs
 /crates/sf-guest-sdk/target/
 /tests/wasm-test-plugin/target/

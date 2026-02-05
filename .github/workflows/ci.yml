@@ -117,12 +117,21 @@ jobs:
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
+    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
+      
+      - name: Configure git credentials for private repos
+        env:
+          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+      
       - run: cargo check --workspace
 
   # ── Integration tests (real Salesforce org, excluding WASM bridge) ──

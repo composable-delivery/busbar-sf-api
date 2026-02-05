@@ -3,7 +3,7 @@
 # - rustup/cargo preinstalled
 # - a non-root user
 # - sensible defaults for VS Code + rust-analyzer
-FROM mcr.microsoft.com/devcontainers/rust:1-1.88-bookworm
+FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
 
 # Dev container images should not try to build the project at image-build time.
 # Codespaces will mount the repository into /workspaces/<repo>.
