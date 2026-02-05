@@ -244,6 +244,7 @@ impl KeychainAuthResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use busbar_sf_auth::Credentials;
 
     #[tokio::test]
     #[ignore] // Requires environment setup

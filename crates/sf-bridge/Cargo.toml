@@ -15,7 +15,12 @@ bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
 # Busbar ecosystem integration (Salesforce capability + keychain auth)
-busbar = ["rest", "dep:busbar-capability", "dep:busbar-keychain", "dep:busbar-sf-auth"]
+busbar = [
+    "rest",
+    "dep:busbar-capability",
+    "dep:busbar-keychain",
+    "dep:busbar-sf-auth",
+]
 
 [dependencies]
 # Internal crates

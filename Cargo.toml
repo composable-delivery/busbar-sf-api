@@ -52,6 +52,9 @@ dependencies = [
 # Optional feature for typed metadata operations with busbar-sf-types
 typed-metadata = ["metadata", "busbar-sf-metadata/typed"]
 
+# Busbar ecosystem integration (WASM bridge with keychain auth and capability provider)
+busbar = ["dep:busbar-sf-bridge"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -63,6 +66,7 @@ busbar-sf-rest = { workspace = true, optional = true }
 busbar-sf-bulk = { workspace = true, optional = true }
 busbar-sf-metadata = { workspace = true, optional = true }
 busbar-sf-tooling = { workspace = true, optional = true }
+busbar-sf-bridge = { workspace = true, optional = true, features = ["busbar"] }
 tokio.workspace = true
 chrono.workspace = true
 serde.workspace = true
