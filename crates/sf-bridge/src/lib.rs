@@ -77,7 +77,7 @@
 //!
 //! ## Example (Busbar Keychain Authentication)
 //!
-//! When the `busbar-keychain` feature is enabled:
+//! When the `busbar` feature is enabled:
 //!
 //! ```rust,ignore
 //! use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
@@ -105,10 +105,10 @@ mod registration;
 #[cfg(feature = "busbar")]
 mod capability;
 
-#[cfg(feature = "busbar-keychain")]
+#[cfg(feature = "busbar")]
 pub mod keychain_auth;
 
-#[cfg(feature = "busbar-keychain")]
+#[cfg(feature = "busbar")]
 pub use keychain_auth::{JwtAuthConfig, KeychainAuthConfig, KeychainAuthResolver};
 
 pub use error::{Error, Result};
@@ -251,7 +251,7 @@ impl SfBridge {
     ///     Ok(())
     /// }
     /// ```
-    #[cfg(all(feature = "busbar-keychain", feature = "rest"))]
+    #[cfg(all(feature = "busbar", feature = "rest"))]
     pub async fn new_with_keychain_auth(
         wasm_bytes: Vec<u8>,
         config: keychain_auth::KeychainAuthConfig,
@@ -263,7 +263,7 @@ impl SfBridge {
     /// Create a new bridge with Busbar keychain auth and a specific tokio runtime handle.
     ///
     /// Use this when constructing the bridge outside of a tokio context.
-    #[cfg(all(feature = "busbar-keychain", feature = "rest"))]
+    #[cfg(all(feature = "busbar", feature = "rest"))]
     pub async fn with_keychain_auth_and_handle(
         wasm_bytes: Vec<u8>,
         config: keychain_auth::KeychainAuthConfig,

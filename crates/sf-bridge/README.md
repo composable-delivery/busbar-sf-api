@@ -158,12 +158,15 @@ pub fn query_accounts(input: String) -> FnResult<Json<Vec<serde_json::Value>>> {
 - `bulk` - Bulk API endpoints (requires `rest`)
 - `tooling` - Tooling API endpoints (requires `rest`)
 - `metadata` - Metadata API endpoints (requires `rest`)
-- `busbar` - Implement Busbar's `HostCapability` trait for use with Busbar runtime
-- `busbar-keychain` - Busbar keychain integration for transparent credential resolution (optional, off by default)
+- `busbar` - Busbar ecosystem integration (Salesforce capability provider + keychain-based credential resolution, optional, off by default)
 
-### Busbar Keychain Integration
+### Busbar Integration
 
-When the `busbar-keychain` feature is enabled, `SfBridge` can resolve credentials automatically from the Busbar keychain system:
+When the `busbar` feature is enabled, `SfBridge` provides two key integrations:
+
+#### 1. Keychain-based Credential Resolution
+
+`SfBridge` can resolve credentials automatically from the Busbar keychain system:
 
 ```rust
 use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
@@ -187,10 +190,10 @@ let bridge = SfBridge::new_with_keychain_auth(wasm_bytes, config).await?;
 2. Busbar keychain via `busbar-keychain::SecretStore` - Local development
 3. JWT bearer authentication (if configured) - Server-to-server
 
-### Busbar Capability Integration
+#### 2. Busbar Capability Integration
 
-When the `busbar` feature is enabled, `SfBridge` implements the `HostCapability` trait
-from `busbar-capability`, making it a drop-in capability provider for the Busbar runtime:
+`SfBridge` implements the `HostCapability` trait from `busbar-capability`, making it
+a drop-in capability provider for the Busbar runtime:
 
 ```rust
 use busbar_sf_bridge::SfBridge;
