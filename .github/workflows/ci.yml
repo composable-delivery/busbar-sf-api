@@ -1,253 +1,262 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 env:
-  RUST_BACKTRACE: 1
-  CARGO_TERM_COLOR: always
+    RUST_BACKTRACE: 1
+    CARGO_TERM_COLOR: always
 
 jobs:
-  # ── Fast checks (no compilation) ──────────────────────────────────────
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all --check
+    # ── Fast checks (no compilation) ──────────────────────────────────────
+    fmt:
+        name: Format
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+            - run: cargo fmt --all --check
 
-  # ── Lint ──────────────────────────────────────────────────────────────
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
-      
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+    # ── Lint ──────────────────────────────────────────────────────────────
+    clippy:
+        name: Clippy
+        runs-on: ubuntu-latest
+        environment: GitHub composable-delivery
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+            - uses: Swatinem/rust-cache@v2
 
-  # ── Unit tests with coverage ──────────────────────────────────────────
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: Swatinem/rust-cache@v2
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+            - run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Clean coverage artifacts
-        run: cargo llvm-cov clean --workspace
+    # ── Unit tests with coverage ──────────────────────────────────────────
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        environment: GitHub composable-delivery
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+            - uses: taiki-e/install-action@cargo-llvm-cov
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Run unit tests with coverage
-        run: cargo llvm-cov --workspace --all-features --lib --lcov --output-path lcov-unit.info
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Run doc tests
-        if: always()
-        run: cargo test --workspace --doc
+            - name: Clean coverage artifacts
+              run: cargo llvm-cov clean --workspace
 
-      - name: Generate summary
-        if: always()
-        run: |
-          echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+            - name: Run unit tests with coverage
+              run: cargo llvm-cov --workspace --lib --lcov --output-path lcov-unit.info
 
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v5
-        with:
-          files: lcov-unit.info
-          flags: unit-tests
-          disable_search: true
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+            - name: Run doc tests
+              if: always()
+              run: cargo test --workspace --doc
 
-  # ── Documentation ─────────────────────────────────────────────────────
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
-      
-      - run: cargo doc --workspace --no-deps --all-features
-        env:
-          RUSTDOCFLAGS: -D warnings
+            - name: Generate summary
+              if: always()
+              run: |
+                  echo "### Unit Tests" >> "$GITHUB_STEP_SUMMARY"
+                  cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
-  # ── MSRV ──────────────────────────────────────────────────────────────
-  msrv:
-    name: MSRV
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.88"
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace
+            - name: Upload coverage to Codecov
+              if: always()
+              uses: codecov/codecov-action@v5
+              with:
+                  files: lcov-unit.info
+                  flags: unit-tests
+                  disable_search: true
+                  fail_ci_if_error: false
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # ── Integration tests (real Salesforce org, excluding WASM bridge) ──
-  integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    environment: scratch
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: Swatinem/rust-cache@v2
+    # ── Documentation ─────────────────────────────────────────────────────
+    docs:
+        name: Documentation
+        runs-on: ubuntu-latest
+        environment: GitHub composable-delivery
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Verify credentials
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          if [ -z "$SF_AUTH_URL" ]; then
-            echo "::error::SF_AUTH_URL secret is not configured"
-            exit 1
-          fi
+            - run: cargo doc --workspace --no-deps
+              env:
+                  RUSTDOCFLAGS: -D warnings
 
-      - name: Setup scratch org test data
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo run --bin setup-scratch-org
+    # ── MSRV ──────────────────────────────────────────────────────────────
+    msrv:
+        name: MSRV
+        runs-on: ubuntu-latest
+        environment: GitHub composable-delivery
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@master
+              with:
+                  toolchain: "1.88"
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Clean coverage artifacts
-        run: cargo llvm-cov clean --workspace
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Run integration tests with coverage (excluding bridge)
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
+            - run: cargo check --workspace
 
-      - name: Generate summary
-        if: always()
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+    # ── Integration tests (real Salesforce org, excluding WASM bridge) ──
+    integration:
+        name: Integration Tests
+        runs-on: ubuntu-latest
+        environment: scratch
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+            - uses: taiki-e/install-action@cargo-llvm-cov
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v5
-        with:
-          files: lcov-integration.info
-          flags: integration-tests
-          disable_search: true
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-  # ── WASM bridge integration tests (real Salesforce org) ──────────────
-  wasm-integration:
-    name: WASM Bridge Integration Tests
-    runs-on: ubuntu-latest
-    environment: scratch
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: Swatinem/rust-cache@v2
+            - name: Verify credentials
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  if [ -z "$SF_AUTH_URL" ]; then
+                    echo "::error::SF_AUTH_URL secret is not configured"
+                    exit 1
+                  fi
 
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+            - name: Setup scratch org test data
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: cargo run --bin setup-scratch-org
 
-      - name: Verify credentials
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          if [ -z "$SF_AUTH_URL" ]; then
-            echo "::error::SF_AUTH_URL secret is not configured"
-            exit 1
-          fi
+            - name: Clean coverage artifacts
+              run: cargo llvm-cov clean --workspace
 
-      - name: Setup scratch org test data
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: cargo run --bin setup-scratch-org
+            - name: Run integration tests with coverage (excluding bridge)
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  cargo llvm-cov --workspace --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
 
-      - name: Build WASM test plugin
-        run: |
-          cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml \
-            --target wasm32-unknown-unknown --release
+            - name: Generate summary
+              if: always()
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  echo "### Integration Tests" >> "$GITHUB_STEP_SUMMARY"
+                  cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Clean coverage artifacts
-        run: cargo llvm-cov clean --workspace
+            - name: Upload coverage to Codecov
+              if: always()
+              uses: codecov/codecov-action@v5
+              with:
+                  files: lcov-integration.info
+                  flags: integration-tests
+                  disable_search: true
+                  fail_ci_if_error: false
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Run WASM bridge integration tests with coverage
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+    # ── WASM bridge integration tests (real Salesforce org) ──────────────
+    wasm-integration:
+        name: WASM Bridge Integration Tests
+        runs-on: ubuntu-latest
+        environment: scratch
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: wasm32-unknown-unknown
+            - uses: taiki-e/install-action@cargo-llvm-cov
+            - uses: Swatinem/rust-cache@v2
 
-      - name: Generate summary
-        if: always()
-        env:
-          SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
-        run: |
-          echo "### WASM Bridge Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+            - name: Configure git credentials for private repos
+              env:
+                  KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+              run: |
+                  git config --global credential.helper store
+                  echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v5
-        with:
-          files: lcov-wasm-integration.info
-          flags: wasm-integration-tests
-          disable_search: true
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+            - name: Verify credentials
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  if [ -z "$SF_AUTH_URL" ]; then
+                    echo "::error::SF_AUTH_URL secret is not configured"
+                    exit 1
+                  fi
+
+            - name: Setup scratch org test data
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: cargo run --bin setup-scratch-org
+
+            - name: Build WASM test plugin
+              run: |
+                  cargo build --manifest-path tests/wasm-test-plugin/Cargo.toml \
+                    --target wasm32-unknown-unknown --release
+
+            - name: Clean coverage artifacts
+              run: cargo llvm-cov clean --workspace
+
+            - name: Run WASM bridge integration tests with coverage
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  cargo llvm-cov --workspace --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+
+            - name: Generate summary
+              if: always()
+              env:
+                  SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
+              run: |
+                  echo "### WASM Bridge Integration Tests" >> "$GITHUB_STEP_SUMMARY"
+                  cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Upload coverage to Codecov
+              if: always()
+              uses: codecov/codecov-action@v5
+              with:
+                  files: lcov-wasm-integration.info
+                  flags: wasm-integration-tests
+                  disable_search: true
+                  fail_ci_if_error: false
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

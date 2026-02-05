@@ -158,12 +158,42 @@ pub fn query_accounts(input: String) -> FnResult<Json<Vec<serde_json::Value>>> {
 - `bulk` - Bulk API endpoints (requires `rest`)
 - `tooling` - Tooling API endpoints (requires `rest`)
 - `metadata` - Metadata API endpoints (requires `rest`)
-- `busbar` - Implement Busbar's `HostCapability` trait for use with Busbar runtime
+- `busbar` - Busbar ecosystem integration (Salesforce capability provider + keychain-based credential resolution, optional, off by default)
 
-### Busbar Capability Integration
+### Busbar Integration
 
-When the `busbar` feature is enabled, `SfBridge` implements the `HostCapability` trait
-from `busbar-capability`, making it a drop-in capability provider for the Busbar runtime:
+When the `busbar` feature is enabled, `SfBridge` provides two key integrations:
+
+#### 1. Keychain-based Credential Resolution
+
+`SfBridge` can resolve credentials automatically from the Busbar keychain system:
+
+```rust
+use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
+
+// Automatic credential resolution from Busbar keychain
+let config = KeychainAuthConfig::new()
+    .with_keychain_prefix("sf/production");  // Looks for "sf/production/access_token" in keychain
+
+let wasm_bytes = std::fs::read("plugin.wasm")?;
+let bridge = SfBridge::new_with_keychain_auth(wasm_bytes, config).await?;
+```
+
+**Benefits:**
+- No need to manage authentication flow in your code
+- Secure credential storage via Busbar keychain (fnox backend)
+- Works seamlessly in both local and CI/CD environments
+- WASM guests still never see credentials
+
+**Credential Resolution Chain:**
+1. Environment variables (`SF_ACCESS_TOKEN`, `SF_INSTANCE_URL`) - CI/CD path
+2. Busbar keychain via `busbar-keychain::SecretStore` - Local development
+3. JWT bearer authentication (if configured) - Server-to-server
+
+#### 2. Busbar Capability Integration
+
+`SfBridge` implements the `HostCapability` trait from `busbar-capability`, making it
+a drop-in capability provider for the Busbar runtime:
 
 ```rust
 use busbar_sf_bridge::SfBridge;

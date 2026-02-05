@@ -83,10 +83,10 @@ jobs:
 
             - name: Configure git credentials for private repos
               env:
-                GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+                KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
               run: |
                 git config --global credential.helper store
-                echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+                echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
             - name: Cache cargo registry
               uses: actions/cache@v5

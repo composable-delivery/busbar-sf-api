@@ -51,7 +51,7 @@
 //! Each invocation creates a fresh WASM plugin instance from a pre-compiled
 //! module. The underlying clients share connection pools.
 //!
-//! ## Example
+//! ## Example (Standard Authentication)
 //!
 //! ```rust,ignore
 //! use busbar_sf_bridge::SfBridge;
@@ -74,6 +74,29 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Example (Busbar Keychain Authentication)
+//!
+//! When the `busbar` feature is enabled:
+//!
+//! ```rust,ignore
+//! use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Resolve credentials from Busbar keychain or environment variables
+//!     let config = KeychainAuthConfig::new()
+//!         .with_keychain_prefix("sf/production");
+//!     
+//!     let wasm_bytes = std::fs::read("my_plugin.wasm")?;
+//!     let bridge = SfBridge::new_with_keychain_auth(wasm_bytes, config).await?;
+//!
+//!     let result = bridge.call("run", b"input data").await?;
+//!     println!("Guest returned: {}", String::from_utf8_lossy(&result));
+//!
+//!     Ok(())
+//! }
+//! ```
 
 mod error;
 mod host_functions;
@@ -81,6 +104,12 @@ mod registration;
 
 #[cfg(feature = "busbar")]
 mod capability;
+
+#[cfg(feature = "busbar")]
+pub mod keychain_auth;
+
+#[cfg(feature = "busbar")]
+pub use keychain_auth::{JwtAuthConfig, KeychainAuthConfig, KeychainAuthResolver};
 
 pub use error::{Error, Result};
 
@@ -188,6 +217,73 @@ impl SfBridge {
             access_token,
             handle,
         })
+    }
+
+    /// Create a new bridge with Busbar keychain-based credential resolution.
+    ///
+    /// This constructor integrates with the Busbar keychain system to resolve
+    /// Salesforce credentials transparently. No pre-authenticated client is needed.
+    ///
+    /// Credentials are resolved in priority order:
+    /// 1. Environment variables (SF_ACCESS_TOKEN, SF_INSTANCE_URL)
+    /// 2. Busbar keychain (via busbar-keychain::SecretStore)
+    /// 3. JWT bearer auth (if configured in the config)
+    ///
+    /// WASM guests never see tokens - all credential resolution happens host-side.
+    ///
+    /// Must be called from within a tokio runtime context.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use busbar_sf_bridge::{SfBridge, KeychainAuthConfig};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     // Resolve from environment variables or keychain
+    ///     let config = KeychainAuthConfig::new()
+    ///         .with_keychain_prefix("sf/production");
+    ///     
+    ///     let wasm_bytes = std::fs::read("my_plugin.wasm")?;
+    ///     let bridge = SfBridge::new_with_keychain_auth(wasm_bytes, config).await?;
+    ///
+    ///     let result = bridge.call("run", b"input data").await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    #[cfg(all(feature = "busbar", feature = "rest"))]
+    pub async fn new_with_keychain_auth(
+        wasm_bytes: Vec<u8>,
+        config: keychain_auth::KeychainAuthConfig,
+    ) -> Result<Self> {
+        let handle = tokio::runtime::Handle::current();
+        Self::with_keychain_auth_and_handle(wasm_bytes, config, handle).await
+    }
+
+    /// Create a new bridge with Busbar keychain auth and a specific tokio runtime handle.
+    ///
+    /// Use this when constructing the bridge outside of a tokio context.
+    #[cfg(all(feature = "busbar", feature = "rest"))]
+    pub async fn with_keychain_auth_and_handle(
+        wasm_bytes: Vec<u8>,
+        config: keychain_auth::KeychainAuthConfig,
+        handle: tokio::runtime::Handle,
+    ) -> Result<Self> {
+        use keychain_auth::KeychainAuthResolver;
+
+        // Resolve credentials using the Busbar keychain
+        let resolver = KeychainAuthResolver::new(config).await?;
+        let credentials = resolver.resolve().await?;
+
+        // Import Credentials trait for access to methods
+        use busbar_sf_auth::Credentials;
+
+        // Create REST client with resolved credentials
+        let rest_client =
+            SalesforceRestClient::new(credentials.instance_url(), credentials.access_token())?;
+
+        // Use the existing with_handle constructor
+        Self::with_handle(wasm_bytes, rest_client, handle)
     }
 
     /// Call an exported function in the WASM guest.
