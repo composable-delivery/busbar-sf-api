@@ -23,10 +23,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILD_GITHUB_TOKENS: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKENS }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKENS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:

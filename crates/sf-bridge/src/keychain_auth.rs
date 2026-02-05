@@ -12,7 +12,7 @@
 //! WASM guests never see tokens - all credential resolution happens host-side.
 
 use busbar_keychain::SecretStore;
-use busbar_sf_auth::{Credentials, JwtAuth, SalesforceCredentials};
+use busbar_sf_auth::{JwtAuth, SalesforceCredentials};
 use busbar_sf_client::DEFAULT_API_VERSION;
 use std::sync::Arc;
 use tracing::{debug, instrument};
