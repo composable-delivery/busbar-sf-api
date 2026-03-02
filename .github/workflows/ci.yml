@@ -39,10 +39,10 @@ jobs:
       
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
       
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
@@ -58,10 +58,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
@@ -101,10 +101,10 @@ jobs:
       
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
       
       - run: cargo doc --workspace --no-deps --all-features
         env:
@@ -123,10 +123,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - run: cargo check --workspace
 
@@ -143,10 +143,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -205,10 +205,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
