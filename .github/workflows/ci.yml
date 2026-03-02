@@ -30,7 +30,6 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -40,10 +39,10 @@ jobs:
       
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
       
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
@@ -51,7 +50,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -60,10 +58,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
@@ -96,7 +94,6 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -104,10 +101,10 @@ jobs:
       
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
       
       - run: cargo doc --workspace --no-deps --all-features
         env:
@@ -117,7 +114,6 @@ jobs:
   msrv:
     name: MSRV
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
@@ -127,10 +123,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - run: cargo check --workspace
 
@@ -147,10 +143,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -209,10 +205,10 @@ jobs:
 
       - name: Configure git credentials for private repos
         env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
+          KANTEXT_BUILDS_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILDS_GITHUB_TOKEN }}
         run: |
           git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${KANTEXT_BUILDS_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
