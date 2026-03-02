@@ -8,11 +8,14 @@ use busbar_sf_client::{ClientConfig, SalesforceClient};
 
 use crate::error::Result;
 
+pub use data_cloud::DataCloudClient;
+
 mod binary;
 mod collections;
 mod composite;
 mod consent;
 mod crud;
+mod data_cloud;
 mod describe;
 mod embedded_service;
 mod invocable_actions;

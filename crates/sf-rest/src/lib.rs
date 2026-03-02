@@ -50,6 +50,7 @@ mod client;
 mod collections;
 mod composite;
 mod consent;
+mod data_cloud;
 mod describe;
 mod embedded_service;
 mod error;
@@ -69,7 +70,7 @@ mod user_password;
 
 // Main client
 pub use client::{
-    ApiVersion, DeletedRecord, GetDeletedResult, GetUpdatedResult, SObjectInfo,
+    ApiVersion, DataCloudClient, DeletedRecord, GetDeletedResult, GetUpdatedResult, SObjectInfo,
     SObjectInfoDescribe, SalesforceRestClient, SearchResult,
 };
 
@@ -168,6 +169,13 @@ pub use scheduler::{
 
 // PR #54: Embedded Service types
 pub use embedded_service::EmbeddedServiceConfig;
+
+// Data Cloud (Data 360) types
+pub use data_cloud::{
+    AsyncQueryStatus, ColumnInfo, DataCloudMetadataObject, DataCloudMetadataResponse,
+    DataCloudQueryRequest, DataCloudQueryResponse, QueryMetadata, VectorSearchRequest,
+    VectorSearchResponse, VectorSearchResult,
+};
 
 // Re-export sf-client types that users might need
 pub use busbar_sf_client::{ClientConfig, ClientConfigBuilder};
