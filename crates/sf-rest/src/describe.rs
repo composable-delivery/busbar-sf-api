@@ -6,6 +6,16 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Deserializes a JSON string or null into a `String`, mapping null to empty string.
+/// Use with `#[serde(deserialize_with = "null_as_empty_string")]`.
+fn null_as_empty_string<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(d)?;
+    Ok(opt.unwrap_or_default())
+}
+
 // ============================================================================
 // Describe Global Types
 // ============================================================================
@@ -228,9 +238,11 @@ pub struct ActionOverride {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct FieldDescribe {
     // === Identity ===
+    #[serde(deserialize_with = "null_as_empty_string")]
     pub name: String,
+    #[serde(deserialize_with = "null_as_empty_string")]
     pub label: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", deserialize_with = "null_as_empty_string")]
     pub field_type: String,
     #[serde(rename = "soapType")]
     pub soap_type: Option<String>,
@@ -370,7 +382,9 @@ pub struct FilteredLookupInfo {
 /// Picklist value for picklist fields.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PicklistValue {
+    #[serde(deserialize_with = "null_as_empty_string")]
     pub value: String,
+    #[serde(deserialize_with = "null_as_empty_string")]
     pub label: String,
     pub active: bool,
     #[serde(rename = "defaultValue")]
@@ -448,5 +462,52 @@ mod tests {
         assert_eq!(pv.label, "Hot");
         assert!(pv.active);
         assert!(!pv.default_value);
+    }
+
+    #[test]
+    fn test_field_describe_tolerates_null_string_fields() {
+        // Salesforce describe can return JSON null for these String fields; serde
+        // errors deserializing null into a (non-Option) String, which would fail the
+        // whole describe parse. `null_as_empty_string` must map them to "".
+        let json = r#"{
+            "name": null,
+            "label": null,
+            "type": null,
+            "createable": true,
+            "updateable": true,
+            "nillable": true,
+            "filterable": true,
+            "sortable": true,
+            "groupable": true,
+            "unique": false
+        }"#;
+
+        let field: FieldDescribe = serde_json::from_str(json).unwrap();
+        assert_eq!(field.name, "");
+        assert_eq!(field.label, "");
+        assert_eq!(field.field_type, "");
+        // A non-null value is still preserved verbatim.
+        let ok: FieldDescribe = serde_json::from_str(
+            r#"{"name":"Id","label":"Record ID","type":"id","createable":false,
+                "updateable":false,"nillable":false,"filterable":true,"sortable":true,
+                "groupable":true,"unique":false}"#,
+        )
+        .unwrap();
+        assert_eq!(ok.field_type, "id");
+    }
+
+    #[test]
+    fn test_picklist_value_tolerates_null_string_fields() {
+        let json = r#"{
+            "value": null,
+            "label": null,
+            "active": true,
+            "defaultValue": false
+        }"#;
+
+        let pv: PicklistValue = serde_json::from_str(json).unwrap();
+        assert_eq!(pv.value, "");
+        assert_eq!(pv.label, "");
+        assert!(pv.active);
     }
 }
