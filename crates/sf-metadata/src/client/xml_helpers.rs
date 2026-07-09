@@ -2,8 +2,8 @@ use crate::deploy::{ComponentFailure, DeployResult, DeployStatus};
 use crate::describe::{DescribeMetadataResult, MetadataType};
 use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
-use crate::retrieve::{RetrieveMessage, RetrieveResult, RetrieveStatus};
 use crate::redact::redact_session_ids;
+use crate::retrieve::{RetrieveMessage, RetrieveResult, RetrieveStatus};
 use crate::types::{
     ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
     SoapFault, TestFailure, UpsertResult,

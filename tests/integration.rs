@@ -5,8 +5,6 @@
 
 #[path = "integration/auth.rs"]
 mod auth;
-#[path = "integration/bridge.rs"]
-mod bridge;
 #[path = "integration/bulk.rs"]
 mod bulk;
 #[path = "integration/common.rs"]

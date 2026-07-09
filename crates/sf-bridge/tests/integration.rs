@@ -44,16 +44,24 @@
 //! SF_AUTH_URL="force://..." cargo test --test integration test_bridge_query_operation
 //! ```
 
-use super::common::get_credentials;
+#[path = "support.rs"]
+mod support;
+
 use busbar_sf_auth::Credentials;
 use busbar_sf_bridge::SfBridge;
 use busbar_sf_rest::SalesforceRestClient;
+use support::get_credentials;
 
 /// Load the test WASM plugin from disk at runtime.
 /// If the plugin isn't built yet, returns None and prints a warning.
 fn load_test_wasm_bytes() -> Option<Vec<u8>> {
-    let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/wasm-test-plugin/target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm");
+    // sf-bridge is excluded from the main busbar-sf-api workspace (see
+    // crates/sf-bridge/Cargo.toml), but the test WASM plugin fixture still
+    // lives at the repo root's tests/wasm-test-plugin/ — go up two levels
+    // from this crate's manifest dir to reach it.
+    let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "../../tests/wasm-test-plugin/target/wasm32-unknown-unknown/release/wasm_test_plugin.wasm",
+    );
 
     if !wasm_path.exists() {
         eprintln!(

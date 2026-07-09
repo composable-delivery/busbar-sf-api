@@ -8,12 +8,12 @@ members = [
     "crates/sf-metadata",
     "crates/sf-tooling",
     "crates/sf-wasm-types",
-    "crates/sf-bridge",
     # sf-guest-sdk is excluded: it compiles to wasm32-unknown-unknown only.
     # See examples/wasm-guest-plugin for usage.
 ]
 exclude = [
     "crates/sf-guest-sdk",
+    "crates/sf-bridge",
     "examples/wasm-guest-plugin",
 ]
 
@@ -72,7 +72,6 @@ zip.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-busbar-sf-bridge = { workspace = true }
 
 [[bin]]
 name = "setup-scratch-org"
@@ -148,7 +147,10 @@ busbar-sf-bulk = { version = "0.0.3", path = "crates/sf-bulk" }
 busbar-sf-metadata = { version = "0.0.3", path = "crates/sf-metadata" }
 busbar-sf-wasm-types = { version = "0.0.3", path = "crates/sf-wasm-types" }
 busbar-sf-tooling = { version = "0.0.3", path = "crates/sf-tooling" }
-busbar-sf-bridge = { version = "0.0.3", path = "crates/sf-bridge" }
+# busbar-sf-bridge is intentionally NOT listed here: it's excluded from this
+# workspace (see [workspace] exclude above) so the public CI/lockfile never
+# needs to resolve its optional busbar-capability dependency, which lives in
+# the private composable-delivery/busbar repo. See crates/sf-bridge/Cargo.toml.
 
 [profile.release]
 lto = true

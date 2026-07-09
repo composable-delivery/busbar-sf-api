@@ -42,8 +42,8 @@ pub enum ErrorKind {
     /// string — so callers get programmatic access to status, every count
     /// (components/tests deployed/errored/total), and every
     /// [`crate::deploy::ComponentFailure`], not only whatever fit in a
-    /// human-readable summary. `Display` (see [`fmt_deployment_failed`])
-    /// renders a comprehensive message from all of it, falling back
+    /// human-readable summary. `Display` renders a comprehensive message
+    /// from all of it, falling back
     /// gracefully when Salesforce's own `errorMessage` is empty (which
     /// happens whenever the real errors are per-component, not top-level —
     /// previously this produced an unhelpful "Unknown error" with the actual
@@ -103,7 +103,10 @@ fn fmt_deployment_failed(result: &DeployResult) -> String {
             .collect();
         msg.push_str(&lines.join("; "));
         if result.component_failures.len() > 10 {
-            msg.push_str(&format!(" (+{} more)", result.component_failures.len() - 10));
+            msg.push_str(&format!(
+                " (+{} more)",
+                result.component_failures.len() - 10
+            ));
         }
     }
     redact_session_ids(&msg)

@@ -15,7 +15,10 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── Fast checks (no compilation) ──────────────────────────────────────
+  # ── Fast checks (no compilation) ────────────────────────────────────────
+  # busbar-sf-bridge is excluded from the main workspace (see root Cargo.toml)
+  # so its formatting is checked here too — fmt needs no dependency
+  # resolution, so unlike clippy/build/test it doesn't need busbar access.
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -25,45 +28,33 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+      - run: cargo fmt --manifest-path crates/sf-bridge/Cargo.toml --check
 
-  # ── Lint ──────────────────────────────────────────────────────────────
+  # ── Lint ────────────────────────────────────────────────────────────────
+  # No private-repo access needed: busbar-sf-bridge (the only crate with an
+  # optional dependency on the private composable-delivery/busbar repo) is
+  # excluded from this workspace. See the wasm-integration job below for
+  # where sf-bridge itself gets built/tested.
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
-      
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   # ── Unit tests with coverage ──────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
@@ -96,19 +87,10 @@ jobs:
   docs:
     name: Documentation
     runs-on: ubuntu-latest
-    environment: GitHub composable-delivery
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
-      
       - run: cargo doc --workspace --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
@@ -125,7 +107,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
-  # ── Integration tests (real Salesforce org, excluding WASM bridge) ──
+  # ── Integration tests (real Salesforce org) ────────────────────────────
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -135,13 +117,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private repos
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -160,11 +135,11 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
-      - name: Run integration tests with coverage (excluding bridge)
+      - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
+          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
       - name: Generate summary
         if: always()
@@ -185,11 +160,25 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # ── WASM bridge integration tests (real Salesforce org) ──────────────
+  # ── sf-bridge + WASM bridge integration tests (real Salesforce org) ────
+  # busbar-sf-bridge lives outside the main workspace and carries an
+  # optional dependency on busbar-capability (private composable-delivery/
+  # busbar repo). Its own Cargo.lock needs to resolve that dependency's
+  # source to build/check/test AT ALL, regardless of whether the `busbar`
+  # feature is actually enabled — this is inherent to how Cargo resolves
+  # git dependencies, not something --features/--exclude can route around.
+  # This job is therefore internal-only and will fail for anyone without
+  # GH_TOKEN_BUILDS access (e.g. external forks) — that's expected.
   wasm-integration:
     name: WASM Bridge Integration Tests
     runs-on: ubuntu-latest
     environment: scratch
+    env:
+      # credential.helper alone isn't sufficient for cargo's built-in
+      # libgit2 git fetcher against this private repo; delegating to the
+      # system git binary (which does respect the credential file below)
+      # is required.
+      CARGO_NET_GIT_FETCH_WITH_CLI: true
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -198,7 +187,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
 
-      - name: Configure git credentials for private repos
+      - name: Configure git credentials for private busbar repo
         env:
           GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
         run: |
@@ -225,13 +214,13 @@ jobs:
             --target wasm32-unknown-unknown --release
 
       - name: Clean coverage artifacts
-        run: cargo llvm-cov clean --workspace
+        run: cargo llvm-cov clean --manifest-path crates/sf-bridge/Cargo.toml
 
       - name: Run WASM bridge integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+          cargo llvm-cov --manifest-path crates/sf-bridge/Cargo.toml --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture
 
       - name: Generate summary
         if: always()
@@ -239,7 +228,7 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### WASM Bridge Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --manifest-path crates/sf-bridge/Cargo.toml --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()

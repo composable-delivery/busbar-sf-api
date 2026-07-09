@@ -4,6 +4,7 @@ Cargo.lock
 
 # Excluded crates also have target dirs
 /crates/sf-guest-sdk/target/
+/crates/sf-bridge/target/
 /tests/wasm-test-plugin/target/
 
 # IDE
