@@ -1,6 +1,6 @@
 //! Metadata API integration tests using SF_AUTH_URL.
 
-use super::common::get_credentials;
+use super::common::{get_credentials, retry_on_propagation_lag};
 use busbar_sf_auth::Credentials;
 use busbar_sf_metadata::{DeployOptions, DeployStatus, MetadataClient};
 use serde_json::json;
@@ -299,11 +299,15 @@ async fn test_metadata_crud_custom_label_lifecycle() {
         update_results[0].errors
     );
 
-    // Delete
-    let delete_results = client
-        .delete_metadata("CustomLabel", &[&label_name])
-        .await
-        .expect("delete_metadata should succeed");
+    // Delete — the cross-reference check backing deleteMetadata can lag a
+    // few seconds behind a just-completed create, so retry past a
+    // transient INVALID_CROSS_REFERENCE_KEY before treating it as real.
+    let delete_names = [label_name.as_str()];
+    let delete_results = retry_on_propagation_lag(&["INVALID_CROSS_REFERENCE_KEY"], || {
+        client.delete_metadata("CustomLabel", &delete_names)
+    })
+    .await
+    .expect("delete_metadata should succeed");
 
     assert_eq!(delete_results.len(), 1);
     assert!(
@@ -374,11 +378,12 @@ async fn test_metadata_rename_custom_label() {
         .await
         .expect("create should succeed");
 
-    // Rename
-    let rename_result = client
-        .rename_metadata("CustomLabel", &old_name, &new_name)
-        .await
-        .expect("rename_metadata should succeed");
+    // Rename — same cross-reference propagation lag as delete_metadata above.
+    let rename_result = retry_on_propagation_lag(&["INVALID_CROSS_REFERENCE_KEY"], || {
+        client.rename_metadata("CustomLabel", &old_name, &new_name)
+    })
+    .await
+    .expect("rename_metadata should succeed");
 
     assert!(
         rename_result.success,

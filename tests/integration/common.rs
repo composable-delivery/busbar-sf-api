@@ -132,6 +132,48 @@ pub async fn get_credentials() -> SalesforceCredentials {
         .clone()
 }
 
+/// Retry an operation that references metadata just created moments earlier,
+/// tolerating Salesforce's metadata-propagation lag.
+///
+/// Salesforce's own deploy/create status endpoints can report success while
+/// the component isn't yet visible to every subsequent API call — cross-
+/// reference validation on `deleteMetadata`/`renameMetadata`, or external ID
+/// field resolution on a REST upsert, can lag a few seconds behind a
+/// `createMetadata`/deploy that already returned. This retries only errors
+/// whose message contains one of `retryable_substrings` (e.g.
+/// `"INVALID_CROSS_REFERENCE_KEY"`, `"NOT_FOUND"`) — anything else is a real
+/// failure and returns immediately, uncovered by the retry.
+pub async fn retry_on_propagation_lag<F, Fut, T, E>(
+    retryable_substrings: &[&str],
+    mut op: F,
+) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    const ATTEMPTS: u32 = 5;
+    const DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+    let mut last_err = None;
+    for attempt in 1..=ATTEMPTS {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                let msg = e.to_string();
+                let retryable = retryable_substrings.iter().any(|s| msg.contains(s));
+                if !retryable || attempt == ATTEMPTS {
+                    return Err(e);
+                }
+                eprintln!("  (attempt {attempt}/{ATTEMPTS} hit propagation lag, retrying: {msg})");
+                tokio::time::sleep(DELAY).await;
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.expect("loop always sets last_err before exiting without returning"))
+}
+
 /// Get credentials with a **fabricated** access token for destructive tests.
 ///
 /// Use this for tests that **revoke** tokens, so they don't invalidate

@@ -100,17 +100,23 @@ pub struct CompositeTreeRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositeTreeRecord {
     pub attributes: CompositeTreeAttributes,
-    #[serde(rename = "referenceId")]
-    pub reference_id: String,
     #[serde(flatten)]
     pub fields: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Attributes for a record in a composite tree request.
+///
+/// `referenceId` lives here (nested under `attributes`), not as a sibling
+/// field of the record — that's the shape the SObject Tree API expects.
+/// Sending it as a top-level record field instead makes Salesforce treat it
+/// as an attempted field value, rejected with `INVALID_FIELD`/"No such
+/// column 'referenceId'".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositeTreeAttributes {
     #[serde(rename = "type")]
     pub sobject_type: String,
+    #[serde(rename = "referenceId")]
+    pub reference_id: String,
 }
 
 /// Response from a composite tree request.
@@ -294,8 +300,8 @@ mod tests {
             records: vec![CompositeTreeRecord {
                 attributes: CompositeTreeAttributes {
                     sobject_type: "Account".to_string(),
+                    reference_id: "ref1".to_string(),
                 },
-                reference_id: "ref1".to_string(),
                 fields,
             }],
         };
@@ -303,7 +309,7 @@ mod tests {
         let json = serde_json::to_value(&request).unwrap();
         let record = &json["records"][0];
         assert_eq!(record["attributes"]["type"], "Account");
-        assert_eq!(record["referenceId"], "ref1");
+        assert_eq!(record["attributes"]["referenceId"], "ref1");
         assert_eq!(record["Name"], "Parent Account");
     }
 

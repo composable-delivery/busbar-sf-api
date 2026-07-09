@@ -270,16 +270,16 @@ pub fn test_composite_tree(input: String) -> FnResult<Json<serde_json::Value>> {
         sobject: "Account".to_string(),
         records: vec![json!({
             "attributes": {
-                "type": "Account"
+                "type": "Account",
+                "referenceId": "account1"
             },
-            "referenceId": "account1",
             "Name": account_name,
             "Contacts": {
                 "records": [{
                     "attributes": {
-                        "type": "Contact"
+                        "type": "Contact",
+                        "referenceId": "contact1"
                     },
-                    "referenceId": "contact1",
                     "LastName": contact_last_name
                 }]
             }
@@ -606,12 +606,16 @@ pub fn test_search(input: String) -> FnResult<Json<serde_json::Value>> {
 pub fn test_parameterized_search(input: String) -> FnResult<Json<serde_json::Value>> {
     let req: serde_json::Value = serde_json::from_str(&input)?;
 
-    // Build a parameterized search request as JSON
+    // Build a parameterized search request as JSON. `sobjects` must be a
+    // list of SearchSObjectSpec objects ({"name": "Account"}), not bare
+    // strings — the host deserializes this directly into
+    // busbar_sf_rest::ParameterizedSearchRequest.
     let search_req = json!({
         "q": req["q"].as_str().unwrap_or("test"),
         "sobjects": req["sobjects"].as_array().map(|arr| {
             arr.iter()
                 .filter_map(|v| v.as_str())
+                .map(|name| json!({"name": name}))
                 .collect::<Vec<_>>()
         }),
         "fields": req["fields"].as_array().map(|arr| {

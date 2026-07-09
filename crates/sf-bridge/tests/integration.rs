@@ -140,15 +140,18 @@ async fn test_bridge_rejects_invalid_wasm() {
     // Not a valid WASM module
     let invalid_wasm = vec![0x01, 0x02, 0x03, 0x04];
 
-    // Attempt to create a bridge with invalid WASM
-    // Extism/Wasmtime validates WASM at plugin creation time
-    let result = SfBridge::new(invalid_wasm, client);
+    // SfBridge::new()/with_handle() only stores the bytes — it builds no
+    // Extism Plugin (and so does no WASM validation) until call() actually
+    // instantiates one. Construction always succeeds; the invalid module is
+    // rejected on first use instead.
+    let bridge =
+        SfBridge::new(invalid_wasm, client).expect("new() stores bytes without validating them");
 
-    // Document current behavior: Extism rejects invalid WASM at construction
-    // If this test starts failing, it means Extism changed its validation strategy
+    let result = bridge.call("anything", Vec::<u8>::new()).await;
+
     assert!(
         result.is_err(),
-        "Bridge should reject invalid WASM at construction time"
+        "Bridge should reject invalid WASM when the plugin is actually instantiated"
     );
 }
 
