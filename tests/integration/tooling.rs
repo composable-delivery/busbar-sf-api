@@ -257,7 +257,7 @@ async fn test_tooling_collections_get_multiple() {
     let results: Vec<serde_json::Value> = client
         .get_multiple(sobject, &id_refs, fields)
         .await
-        .unwrap_or_else(|e| panic!("get_multiple failed for {sobject} with IDs {:?}: {e}", &ids));
+        .unwrap_or_else(|e| panic!("get_multiple failed for {sobject} with IDs {ids:?}: {e}"));
 
     assert_eq!(
         results.len(),

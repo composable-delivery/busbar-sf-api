@@ -2,6 +2,7 @@ use crate::deploy::{ComponentFailure, DeployResult, DeployStatus};
 use crate::describe::{DescribeMetadataResult, MetadataType};
 use crate::error::{Error, ErrorKind, Result};
 use crate::list::MetadataComponent;
+use crate::redact::redact_session_ids;
 use crate::retrieve::{RetrieveMessage, RetrieveResult, RetrieveStatus};
 use crate::types::{
     ComponentSuccess, DeleteResult, FileProperties, MetadataError, ReadResult, SaveResult,
@@ -10,7 +11,11 @@ use crate::types::{
 use busbar_sf_client::security::xml;
 
 impl super::MetadataClient {
-    /// Parse a SOAP fault from the response.
+    /// Parse a SOAP fault from the response. This is the ONE place all
+    /// SOAP-fault-producing call sites in this crate go through, so it's
+    /// also the one place to redact — a fault response occasionally echoes
+    /// request content back (some SOAP APIs do, for debugging), and this
+    /// crate's own request envelopes embed the session id verbatim.
     pub(crate) fn parse_soap_fault(&self, xml: &str) -> Option<SoapFault> {
         if !xml.contains("faultcode") {
             return None;
@@ -22,8 +27,8 @@ impl super::MetadataClient {
             .unwrap_or_else(|| "Unknown error".to_string());
 
         Some(SoapFault {
-            fault_code,
-            fault_string,
+            fault_code: redact_session_ids(&fault_code),
+            fault_string: redact_session_ids(&fault_string),
         })
     }
 

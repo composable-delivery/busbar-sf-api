@@ -81,12 +81,10 @@ jobs:
             - name: Install Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Configure git credentials for private repos
-              env:
-                GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-              run: |
-                git config --global credential.helper store
-                echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+            # No private-repo access needed: busbar-sf-bridge (the only crate
+            # with an optional dependency on the private composable-delivery/
+            # busbar repo) is excluded from this workspace and is never
+            # published here.
 
             - name: Cache cargo registry
               uses: actions/cache@v5
