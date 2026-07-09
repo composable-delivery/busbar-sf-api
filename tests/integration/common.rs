@@ -138,11 +138,19 @@ pub async fn get_credentials() -> SalesforceCredentials {
 /// Salesforce's own deploy/create status endpoints can report success while
 /// the component isn't yet visible to every subsequent API call — cross-
 /// reference validation on `deleteMetadata`/`renameMetadata`, or external ID
-/// field resolution on a REST upsert, can lag a few seconds behind a
-/// `createMetadata`/deploy that already returned. This retries only errors
-/// whose message contains one of `retryable_substrings` (e.g.
-/// `"INVALID_CROSS_REFERENCE_KEY"`, `"NOT_FOUND"`) — anything else is a real
-/// failure and returns immediately, uncovered by the retry.
+/// field resolution on a REST upsert, can lag behind a `createMetadata`/
+/// deploy that already returned. CustomLabel changes in particular also
+/// invalidate Translation Workbench caching, which has been observed to
+/// clear noticeably slower than plain metadata propagation — hence the
+/// generous ~45s total budget. This retries only errors whose message
+/// contains one of `retryable_substrings` (e.g. `"INVALID_CROSS_REFERENCE_KEY"`,
+/// `"NOT_FOUND"`) — anything else is a real failure and returns immediately,
+/// uncovered by the retry.
+///
+/// `op` must surface the propagation-lag condition as an `Err` — if the
+/// underlying API reports it as `success: false` inside an `Ok` response
+/// (as `deleteMetadata`/`createMetadata`/`updateMetadata` do), the caller
+/// needs to convert that to an `Err` inside `op` for the retry to see it.
 pub async fn retry_on_propagation_lag<F, Fut, T, E>(
     retryable_substrings: &[&str],
     mut op: F,
@@ -152,8 +160,8 @@ where
     Fut: std::future::Future<Output = Result<T, E>>,
     E: std::fmt::Display,
 {
-    const ATTEMPTS: u32 = 5;
-    const DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+    const ATTEMPTS: u32 = 15;
+    const DELAY: std::time::Duration = std::time::Duration::from_secs(3);
 
     let mut last_err = None;
     for attempt in 1..=ATTEMPTS {

@@ -302,9 +302,18 @@ async fn test_metadata_crud_custom_label_lifecycle() {
     // Delete — the cross-reference check backing deleteMetadata can lag a
     // few seconds behind a just-completed create, so retry past a
     // transient INVALID_CROSS_REFERENCE_KEY before treating it as real.
+    // deleteMetadata reports that as `success: false` inside an Ok(...)
+    // response rather than an Err, so surface it as one here for the
+    // retry helper (which only inspects Err) to see.
     let delete_names = [label_name.as_str()];
-    let delete_results = retry_on_propagation_lag(&["INVALID_CROSS_REFERENCE_KEY"], || {
-        client.delete_metadata("CustomLabel", &delete_names)
+    let delete_results = retry_on_propagation_lag(&["INVALID_CROSS_REFERENCE_KEY"], || async {
+        let results = client.delete_metadata("CustomLabel", &delete_names).await?;
+        if !results[0].success {
+            return Err(busbar_sf_metadata::Error::new(
+                busbar_sf_metadata::ErrorKind::Other(format!("{:?}", results[0].errors)),
+            ));
+        }
+        Ok(results)
     })
     .await
     .expect("delete_metadata should succeed");
