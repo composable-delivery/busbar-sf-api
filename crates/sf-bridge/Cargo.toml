@@ -23,9 +23,11 @@ rest = ["dep:busbar-sf-rest", "dep:busbar-sf-client"]
 bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
-# Internal-only: pulls in busbar-capability from the private busbar repo.
-# Never enabled by default and never required for the public build.
-busbar = ["dep:busbar-capability"]
+# `busbar` feature (HostCapability integration with the private busbar repo)
+# is temporarily disabled — see crates/sf-bridge/src/capability.rs and
+# src/lib.rs. Re-enable by uncommenting this line, the busbar-capability
+# dependency below, and the `mod capability;` declaration in lib.rs.
+# busbar = ["dep:busbar-capability"]
 
 [dependencies]
 # Internal crates
@@ -56,8 +58,8 @@ thiserror = "2.0"
 # Logging
 tracing = "0.1"
 
-# Busbar capability system (optional, internal-only — see `busbar` feature above)
-busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
+# Busbar capability system — temporarily disabled, see `busbar` feature above.
+# busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["full"] }

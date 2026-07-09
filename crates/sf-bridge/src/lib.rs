@@ -79,8 +79,11 @@ mod error;
 mod host_functions;
 mod registration;
 
-#[cfg(feature = "busbar")]
-mod capability;
+// `busbar` feature (HostCapability integration, crates/sf-bridge/src/capability.rs)
+// is temporarily disabled — see Cargo.toml. Re-enable by uncommenting this
+// along with the feature/dependency declarations there.
+// #[cfg(feature = "busbar")]
+// mod capability;
 
 pub use error::{Error, Result};
 
