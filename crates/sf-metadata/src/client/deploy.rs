@@ -159,10 +159,7 @@ impl super::MetadataClient {
                     return Ok(result);
                 } else {
                     return Err(Error::new(ErrorKind::DeploymentFailed {
-                        message: result
-                            .error_message
-                            .unwrap_or_else(|| "Unknown error".to_string()),
-                        failures: result.component_failures,
+                        result: Box::new(result),
                     }));
                 }
             }

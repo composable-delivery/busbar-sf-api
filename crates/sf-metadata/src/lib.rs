@@ -84,6 +84,7 @@ mod deploy;
 mod describe;
 mod error;
 mod list;
+mod redact;
 mod retrieve;
 mod types;
 

@@ -29,7 +29,7 @@ jobs:
             upload_url: ${{ steps.create_release.outputs.upload_url }}
             version: ${{ steps.get_version.outputs.version }}
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               with:
                   fetch-depth: 0
 
@@ -76,17 +76,15 @@ jobs:
         environment: crates.io
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
 
             - name: Install Rust
               uses: dtolnay/rust-toolchain@stable
 
-            - name: Configure git credentials for private repos
-              env:
-                GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-              run: |
-                git config --global credential.helper store
-                echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
+            # No private-repo access needed: busbar-sf-bridge (the only crate
+            # with an optional dependency on the private composable-delivery/
+            # busbar repo) is excluded from this workspace and is never
+            # published here.
 
             - name: Cache cargo registry
               uses: actions/cache@v5

@@ -1,11 +1,20 @@
 [package]
 name = "busbar-sf-bridge"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-rust-version.workspace = true
+version = "0.0.3"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/composable-delivery/busbar-sf-api"
+rust-version = "1.88"
 description = "Extism host bridge for sandboxed WASM access to Salesforce APIs"
+
+# Excluded from the main busbar-sf-api workspace (see root Cargo.toml
+# [workspace] exclude) so the public build/CI never needs to resolve the
+# optional `busbar` feature's busbar-capability dependency, which lives in
+# the private composable-delivery/busbar repo. This crate forms its own
+# single-package workspace as a result — every dependency below is pinned
+# explicitly rather than via `{ workspace = true }`, which only works for
+# actual members of a workspace.
+[workspace]
 
 [features]
 default = ["full"]
@@ -14,40 +23,46 @@ rest = ["dep:busbar-sf-rest", "dep:busbar-sf-client"]
 bulk = ["rest", "dep:busbar-sf-bulk"]
 tooling = ["rest", "dep:busbar-sf-tooling"]
 metadata = ["rest", "dep:busbar-sf-metadata"]
-busbar = ["dep:busbar-capability"]
+# `busbar` feature (HostCapability integration with the private busbar repo)
+# is temporarily disabled — see crates/sf-bridge/src/capability.rs and
+# src/lib.rs. Re-enable by uncommenting this line, the busbar-capability
+# dependency below, and the `mod capability;` declaration in lib.rs.
+# busbar = ["dep:busbar-capability"]
 
 [dependencies]
 # Internal crates
-busbar-sf-wasm-types = { workspace = true }
-busbar-sf-rest = { workspace = true, optional = true }
-busbar-sf-client = { workspace = true, optional = true }
-busbar-sf-bulk = { workspace = true, optional = true }
-busbar-sf-tooling = { workspace = true, optional = true }
-busbar-sf-metadata = { workspace = true, optional = true }
+busbar-sf-wasm-types = { version = "0.0.3", path = "../sf-wasm-types" }
+busbar-sf-rest = { version = "0.0.3", path = "../sf-rest", optional = true }
+busbar-sf-client = { version = "0.0.3", path = "../sf-client", optional = true }
+busbar-sf-bulk = { version = "0.0.3", path = "../sf-bulk", optional = true }
+busbar-sf-tooling = { version = "0.0.3", path = "../sf-tooling", optional = true }
+busbar-sf-metadata = { version = "0.0.3", path = "../sf-metadata", optional = true }
 
 # Extism host SDK
 extism = "1"
 
 # Async runtime
-tokio = { workspace = true }
+tokio = { version = "1.40", features = ["full"] }
 
 # Serialization
-serde = { workspace = true }
-serde_json = { workspace = true }
-rmp-serde = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rmp-serde = "1"
 
 # Encoding
-base64 = { workspace = true }
+base64 = "0.22"
 
 # Error handling
-thiserror = { workspace = true }
+thiserror = "2.0"
 
 # Logging
-tracing = { workspace = true }
+tracing = "0.1"
 
-# Busbar capability system (optional)
-busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
+# Busbar capability system — temporarily disabled, see `busbar` feature above.
+# busbar-capability = { git = "https://github.com/composable-delivery/busbar", optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["full"] }
-wiremock = { workspace = true }
+tokio = { version = "1.40", features = ["full"] }
+wiremock = "0.6"
+busbar-sf-auth = { version = "0.0.3", path = "../sf-auth" }
+chrono = { version = "0.4", features = ["serde"] }

@@ -15,35 +15,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # ── Fast checks (no compilation) ──────────────────────────────────────
+  # ── Fast checks (no compilation) ────────────────────────────────────────
+  # busbar-sf-bridge is excluded from the main workspace (see root Cargo.toml)
+  # so its formatting is checked here too — fmt needs no dependency
+  # resolution, so unlike clippy/build/test it doesn't need busbar access.
   fmt:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+      - run: cargo fmt --manifest-path crates/sf-bridge/Cargo.toml --check
 
-  # ── Lint ──────────────────────────────────────────────────────────────
+  # ── Lint ────────────────────────────────────────────────────────────────
+  # No private-repo access needed: busbar-sf-bridge (the only crate with an
+  # optional dependency on the private composable-delivery/busbar repo) is
+  # excluded from this workspace. See the wasm-integration job below for
+  # where sf-bridge itself gets built/tested.
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
-      
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   # ── Unit tests with coverage ──────────────────────────────────────────
@@ -51,17 +51,10 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private repos
-        env:
-          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
@@ -81,7 +74,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: lcov-unit.info
           flags: unit-tests
@@ -95,17 +88,9 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      
-      - name: Configure git credentials for private repos
-        env:
-          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
-      
       - run: cargo doc --workspace --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
@@ -115,7 +100,7 @@ jobs:
     name: MSRV
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.88"
@@ -130,23 +115,16 @@ jobs:
 
       - run: cargo check --workspace
 
-  # ── Integration tests (real Salesforce org, excluding WASM bridge) ──
+  # ── Integration tests (real Salesforce org) ────────────────────────────
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
     environment: scratch
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private repos
-        env:
-          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -165,11 +143,11 @@ jobs:
       - name: Clean coverage artifacts
         run: cargo llvm-cov clean --workspace
 
-      - name: Run integration tests with coverage (excluding bridge)
+      - name: Run integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture --skip bridge::
+          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-integration.info -- --nocapture
 
       - name: Generate summary
         if: always()
@@ -181,7 +159,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: lcov-integration.info
           flags: integration-tests
@@ -190,25 +168,22 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # ── WASM bridge integration tests (real Salesforce org) ──────────────
+  # ── sf-bridge + WASM bridge integration tests (real Salesforce org) ────
+  # busbar-sf-bridge lives outside the main workspace (see root Cargo.toml
+  # exclude). Its `busbar` feature (HostCapability integration with the
+  # private composable-delivery/busbar repo) is currently commented out in
+  # crates/sf-bridge/Cargo.toml, so this job needs no private-repo access.
   wasm-integration:
     name: WASM Bridge Integration Tests
     runs-on: ubuntu-latest
     environment: scratch
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private repos
-        env:
-          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
@@ -230,13 +205,13 @@ jobs:
             --target wasm32-unknown-unknown --release
 
       - name: Clean coverage artifacts
-        run: cargo llvm-cov clean --workspace
+        run: cargo llvm-cov clean --manifest-path crates/sf-bridge/Cargo.toml
 
       - name: Run WASM bridge integration tests with coverage
         env:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
-          cargo llvm-cov --workspace --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture bridge::
+          cargo llvm-cov --manifest-path crates/sf-bridge/Cargo.toml --all-features --test integration --lcov --output-path lcov-wasm-integration.info -- --nocapture
 
       - name: Generate summary
         if: always()
@@ -244,11 +219,11 @@ jobs:
           SF_AUTH_URL: ${{ secrets.SF_AUTH_URL }}
         run: |
           echo "### WASM Bridge Integration Tests" >> "$GITHUB_STEP_SUMMARY"
-          cargo llvm-cov report --workspace --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          cargo llvm-cov report --manifest-path crates/sf-bridge/Cargo.toml --summary-only 2>&1 | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: lcov-wasm-integration.info
           flags: wasm-integration-tests

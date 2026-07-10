@@ -1,6 +1,6 @@
 //! REST API integration tests using SF_AUTH_URL.
 
-use super::common::get_credentials;
+use super::common::{get_credentials, retry_on_propagation_lag};
 use busbar_sf_auth::Credentials;
 use busbar_sf_rest::{CompositeRequest, CompositeSubrequest, QueryBuilder, SalesforceRestClient};
 use serde::{Deserialize, Serialize};
@@ -189,15 +189,20 @@ async fn test_rest_upsert_operation() {
         "Name": format!("Upsert Test {}", unique_id)
     });
 
-    let upsert_result = client
-        .upsert(
+    // setup-scratch-org's deploy of BusbarIntTestExtId__c can report done
+    // before the field is visible to the REST layer's external-ID
+    // resolution, so retry past a transient NOT_FOUND before treating it
+    // as real.
+    let upsert_result = retry_on_propagation_lag(&["NOT_FOUND"], || {
+        client.upsert(
             "Account",
             "BusbarIntTestExtId__c",
             &unique_id,
             &account_data,
         )
-        .await
-        .expect("First upsert should succeed");
+    })
+    .await
+    .expect("First upsert should succeed");
 
     assert!(upsert_result.created, "First upsert should create record");
     let account_id = upsert_result.id.clone();
