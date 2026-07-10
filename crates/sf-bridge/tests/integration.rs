@@ -657,13 +657,15 @@ async fn test_bridge_get_deleted() {
         return;
     };
 
-    // Use a time range from yesterday to now
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org
+    // existed and Salesforce rejects it. Matches tests/integration/rest.rs.
     let now = chrono::Utc::now();
-    let yesterday = now - chrono::Duration::days(1);
+    let start = now - chrono::Duration::minutes(5);
 
     let input = serde_json::json!({
         "sobject": "Account",
-        "start": yesterday.to_rfc3339(),
+        "start": start.to_rfc3339(),
         "end": now.to_rfc3339()
     });
 
@@ -686,13 +688,15 @@ async fn test_bridge_get_updated() {
         return;
     };
 
-    // Use a time range from yesterday to now
+    // Use a short window (5 minutes) — on new scratch orgs, the replication
+    // date starts at org creation time, so "now - 1 day" is before the org
+    // existed and Salesforce rejects it. Matches tests/integration/rest.rs.
     let now = chrono::Utc::now();
-    let yesterday = now - chrono::Duration::days(1);
+    let start = now - chrono::Duration::minutes(5);
 
     let input = serde_json::json!({
         "sobject": "Account",
-        "start": yesterday.to_rfc3339(),
+        "start": start.to_rfc3339(),
         "end": now.to_rfc3339()
     });
 
