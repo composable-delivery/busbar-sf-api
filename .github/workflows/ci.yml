@@ -105,6 +105,14 @@ jobs:
         with:
           toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
+
+      - name: Configure git credentials for private repos
+        env:
+          KANTEXT_BUILD_GITHUB_TOKEN: ${{ secrets.KANTEXT_BUILD_GITHUB_TOKEN }}
+        run: |
+          git config --global credential.helper store
+          echo "https://${KANTEXT_BUILD_GITHUB_TOKEN}:x-oauth-basic@github.com" > ~/.git-credentials
+
       - run: cargo check --workspace
 
   # ── Integration tests (real Salesforce org) ────────────────────────────

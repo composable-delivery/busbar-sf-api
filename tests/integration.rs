@@ -9,6 +9,8 @@ mod auth;
 mod bulk;
 #[path = "integration/common.rs"]
 mod common;
+#[path = "integration/data_cloud.rs"]
+mod data_cloud;
 #[path = "integration/metadata.rs"]
 mod metadata;
 #[path = "integration/rest.rs"]

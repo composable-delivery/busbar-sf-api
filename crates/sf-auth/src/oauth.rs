@@ -232,6 +232,80 @@ impl OAuthClient {
         Ok(())
     }
 
+    /// Exchange a Salesforce access token for a Data Cloud (Data 360 / TSE) token.
+    ///
+    /// Data Cloud endpoints use a different instance URL (the TSE URL) and a
+    /// separate access token obtained via this OAuth 2.0 Token Exchange flow
+    /// ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)).
+    ///
+    /// # Arguments
+    ///
+    /// * `sf_access_token` — A valid Salesforce access token for the connected org.
+    /// * `login_url` — The Salesforce login/instance URL
+    ///   (e.g. `https://login.salesforce.com` or your org's My Domain URL).
+    ///
+    /// # Returns
+    ///
+    /// A [`DataCloudTokenResponse`] containing:
+    /// - `access_token` — The Data Cloud access token to use with `DataCloudClient`.
+    /// - `instance_url` — The TSE (Tenant Service Endpoint) base URL for Data Cloud calls.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use busbar_sf_auth::{OAuthClient, OAuthConfig};
+    /// # async fn example() -> Result<(), busbar_sf_auth::Error> {
+    /// let config = OAuthConfig::new("consumer_key");
+    /// let client = OAuthClient::new(config);
+    ///
+    /// let dc_token = client
+    ///     .exchange_for_data_cloud("sf_access_token", "https://myorg.my.salesforce.com")
+    ///     .await?;
+    ///
+    /// println!("Data Cloud TSE URL: {}", dc_token.instance_url);
+    /// // Use dc_token.access_token + dc_token.instance_url with DataCloudClient
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// The `sf_access_token` parameter is not logged to prevent credential exposure.
+    #[instrument(skip(self, sf_access_token))]
+    pub async fn exchange_for_data_cloud(
+        &self,
+        sf_access_token: &str,
+        login_url: &str,
+    ) -> Result<DataCloudTokenResponse> {
+        let params = [
+            ("grant_type", "urn:salesforce:grant-type:external:cdp"),
+            ("subject_token", sf_access_token),
+            (
+                "subject_token_type",
+                "urn:ietf:params:oauth:token-type:access_token",
+            ),
+        ];
+
+        let body = serde_urlencoded::to_string(params)?;
+
+        let response = self
+            .http_client
+            .post(format!("{}/services/oauth2/token", login_url))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error: OAuthErrorResponse = response.json().await?;
+            return Err(Error::new(ErrorKind::OAuth {
+                error: error.error,
+                description: error.error_description,
+            }));
+        }
+
+        let token: DataCloudTokenResponse = response.json().await?;
+        Ok(token)
+    }
+
     /// Handle a token response, checking for errors.
     async fn handle_token_response(&self, response: reqwest::Response) -> Result<TokenResponse> {
         if !response.status().is_success() {
@@ -429,6 +503,41 @@ pub struct TokenInfo {
     /// Subject.
     #[serde(default)]
     pub sub: Option<String>,
+}
+
+/// Response from a Data Cloud (Data 360) token exchange.
+///
+/// Contains the Data Cloud access token and the TSE (Tenant Service Endpoint)
+/// URL, which is the base URL for all Data Cloud API calls.
+///
+/// Sensitive fields are redacted in Debug output.
+#[derive(Clone, Deserialize, Serialize)]
+pub struct DataCloudTokenResponse {
+    /// Data Cloud access token. Use this with the `DataCloudClient` from `busbar-sf-rest`.
+    pub access_token: String,
+    /// TSE (Tenant Service Endpoint) URL — the base URL for Data Cloud API calls.
+    pub instance_url: String,
+    /// Token type (usually "Bearer").
+    #[serde(default)]
+    pub token_type: Option<String>,
+    /// Issued at timestamp.
+    #[serde(default)]
+    pub issued_at: Option<String>,
+    /// Signature for verification.
+    #[serde(default)]
+    pub signature: Option<String>,
+}
+
+impl std::fmt::Debug for DataCloudTokenResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataCloudTokenResponse")
+            .field("access_token", &"[REDACTED]")
+            .field("instance_url", &self.instance_url)
+            .field("token_type", &self.token_type)
+            .field("issued_at", &self.issued_at)
+            .field("signature", &self.signature.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 /// OAuth error response.
@@ -642,6 +751,94 @@ mod tests {
         assert!(
             err.to_string().contains("revocation failed"),
             "Error should mention revocation failed"
+        );
+    }
+
+    #[test]
+    fn test_data_cloud_token_response_debug_redacts_tokens() {
+        let response = DataCloudTokenResponse {
+            access_token: "super_secret_dc_token".to_string(),
+            instance_url: "https://something.c360a.salesforce.com".to_string(),
+            token_type: Some("Bearer".to_string()),
+            issued_at: Some("1234567890".to_string()),
+            signature: Some("signature_value".to_string()),
+        };
+
+        let debug_output = format!("{:?}", response);
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(!debug_output.contains("super_secret_dc_token"));
+        assert!(!debug_output.contains("signature_value"));
+        assert!(debug_output.contains("c360a.salesforce.com"));
+    }
+
+    #[tokio::test]
+    async fn test_exchange_for_data_cloud_success() {
+        use wiremock::matchers::{body_string_contains, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .and(header("Content-Type", "application/x-www-form-urlencoded"))
+            .and(body_string_contains(
+                "grant_type=urn%3Asalesforce%3Agrant-type%3Aexternal%3Acdp",
+            ))
+            .and(body_string_contains("subject_token=test_sf_access_token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "dc_access_token_123",
+                "instance_url": "https://something.c360a.salesforce.com",
+                "token_type": "Bearer",
+                "issued_at": "1234567890"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        let result = client
+            .exchange_for_data_cloud("test_sf_access_token", &mock_server.uri())
+            .await;
+
+        assert!(result.is_ok(), "Token exchange should succeed");
+        let dc_token = result.unwrap();
+        assert_eq!(dc_token.access_token, "dc_access_token_123");
+        assert_eq!(
+            dc_token.instance_url,
+            "https://something.c360a.salesforce.com"
+        );
+        assert_eq!(dc_token.token_type, Some("Bearer".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_exchange_for_data_cloud_failure() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/services/oauth2/token"))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "invalid_grant",
+                "error_description": "Access token expired"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let config = OAuthConfig::new("test_client_id");
+        let client = OAuthClient::new(config);
+
+        let result = client
+            .exchange_for_data_cloud("expired_token", &mock_server.uri())
+            .await;
+
+        assert!(result.is_err(), "Token exchange should fail");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, ErrorKind::OAuth { .. }),
+            "Should return OAuth error"
         );
     }
 }

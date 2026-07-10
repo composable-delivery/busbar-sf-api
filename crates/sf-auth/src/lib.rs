@@ -47,7 +47,9 @@ mod storage;
 pub use credentials::{Credentials, SalesforceCredentials};
 pub use error::{Error, ErrorKind, Result};
 pub use jwt::JwtAuth;
-pub use oauth::{OAuthClient, OAuthConfig, TokenInfo, TokenResponse, WebFlowAuth};
+pub use oauth::{
+    DataCloudTokenResponse, OAuthClient, OAuthConfig, TokenInfo, TokenResponse, WebFlowAuth,
+};
 pub use storage::{FileTokenStorage, TokenStorage};
 
 /// Default Salesforce login URL for production.
