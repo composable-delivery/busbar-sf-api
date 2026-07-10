@@ -161,24 +161,14 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # ── sf-bridge + WASM bridge integration tests (real Salesforce org) ────
-  # busbar-sf-bridge lives outside the main workspace and carries an
-  # optional dependency on busbar-capability (private composable-delivery/
-  # busbar repo). Its own Cargo.lock needs to resolve that dependency's
-  # source to build/check/test AT ALL, regardless of whether the `busbar`
-  # feature is actually enabled — this is inherent to how Cargo resolves
-  # git dependencies, not something --features/--exclude can route around.
-  # This job is therefore internal-only and will fail for anyone without
-  # GH_TOKEN_BUILDS access (e.g. external forks) — that's expected.
+  # busbar-sf-bridge lives outside the main workspace (see root Cargo.toml
+  # exclude). Its `busbar` feature (HostCapability integration with the
+  # private composable-delivery/busbar repo) is currently commented out in
+  # crates/sf-bridge/Cargo.toml, so this job needs no private-repo access.
   wasm-integration:
     name: WASM Bridge Integration Tests
     runs-on: ubuntu-latest
     environment: scratch
-    env:
-      # credential.helper alone isn't sufficient for cargo's built-in
-      # libgit2 git fetcher against this private repo; delegating to the
-      # system git binary (which does respect the credential file below)
-      # is required.
-      CARGO_NET_GIT_FETCH_WITH_CLI: true
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -186,13 +176,6 @@ jobs:
           targets: wasm32-unknown-unknown
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-
-      - name: Configure git credentials for private busbar repo
-        env:
-          GH_TOKEN_BUILDS: ${{ secrets.GH_TOKEN_BUILDS }}
-        run: |
-          git config --global credential.helper store
-          echo "https://${GH_TOKEN_BUILDS}:x-oauth-basic@github.com" > ~/.git-credentials
 
       - name: Verify credentials
         env:
