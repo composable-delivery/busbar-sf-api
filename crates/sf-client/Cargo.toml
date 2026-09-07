@@ -31,7 +31,7 @@ chrono.workspace = true
 urlencoding.workspace = true
 
 # For retry with jitter
-rand = "0.9"
+rand = "0.10"
 
 # For sanitizing error messages (lightweight regex)
 regex-lite = "0.1"
