@@ -127,7 +127,7 @@ uuid = { version = "1.10", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 bytes = "1.7"
 tempfile = "3.12"
-zip = "7.2"
+zip = "8.6"
 dirs = "6.0"
 
 # Crypto (for JWT)
