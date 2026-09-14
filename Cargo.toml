@@ -128,7 +128,7 @@ chrono = { version = "0.4", features = ["serde"] }
 bytes = "1.7"
 tempfile = "3.12"
 zip = "7.2"
-dirs = "6.0"
+dirs = "7.0"
 
 # Crypto (for JWT)
 jsonwebtoken = "9.3"
