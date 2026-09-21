@@ -131,7 +131,7 @@ zip = "7.2"
 dirs = "6.0"
 
 # Crypto (for JWT)
-jsonwebtoken = "9.3"
+jsonwebtoken = "11.1"
 sha2 = "0.10"
 
 # Testing
